@@ -1,0 +1,6 @@
+@BetterSchedule.Server_HostAddress = http://localhost:5285
+
+GET {{BetterSchedule.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
