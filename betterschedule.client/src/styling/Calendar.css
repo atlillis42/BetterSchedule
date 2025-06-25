@@ -909,7 +909,7 @@ Theme Designer Version: 2025.06.18.39140
 
 /* Body of the calendar that holds the view */
 .calendar-body {
-    flex-grow: 1;   
+    flex-grow: 1;
     min-height: 0; /* needed for flex children */
     overflow: hidden;
     position: relative;
