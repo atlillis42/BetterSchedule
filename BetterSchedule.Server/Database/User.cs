@@ -2,7 +2,7 @@
 
 namespace BetterSchedule.Server.Database
 {
-    public class User : IdentityUser
+    public class ApplicationUser : IdentityUser
     {
 
 

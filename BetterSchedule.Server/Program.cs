@@ -15,7 +15,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication().AddCookie(IdentityConstants.ApplicationScheme);
 
-builder.Services.AddIdentityCore<User>()
+builder.Services.AddIdentityCore<ApplicationUser>()
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddApiEndpoints();
 
@@ -38,7 +38,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapIdentityApi<User>();
+app.MapIdentityApi<ApplicationUser>();
 
 app.UseAuthorization();
 
