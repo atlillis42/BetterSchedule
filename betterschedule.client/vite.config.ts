@@ -42,12 +42,14 @@ export default defineConfig({
     plugins: [plugin()],
     resolve: {
         alias: {
-            '@': fileURLToPath(new URL('./src', import.meta.url))
+            '@': fileURLToPath(new URL('./src', import.meta.url)),
+            '@styles': fileURLToPath(new URL('./src/styles', import.meta.url)),
+            '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
         }
     },
     server: {
         proxy: {
-            '^/weatherforecast': {
+            '^/api': {
                 target,
                 secure: false
             }

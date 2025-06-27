@@ -6,7 +6,7 @@ import {
     DayPilotNavigator,
     DayPilotScheduler
 } from '@daypilot/daypilot-lite-react';
-import '../styling/Calendar.css';
+import '@styles/Calendar.css';
 
 
 
