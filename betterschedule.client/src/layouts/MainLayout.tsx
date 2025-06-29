@@ -1,5 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../components/auth/axios"; 
+import { useAuth } from "../components/auth/AuthContext";
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -7,15 +9,19 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const navigate = useNavigate();
+    const { refreshAuth } = useAuth(); // get the refreshAuth function from context 
 
     const handleLogout = async () => {
         try {
-            await fetch("/api/auth/logout", { method: "POST" });
-            navigate("/");
+            const result = await api.post("/auth/logout");
+            console.log("🔓 Logout response", result.data);
+            await refreshAuth(); // update auth state
+            navigate("/"); // go back to login screen
         } catch (err) {
             console.error("Logout failed", err);
         }
     };
+
 
     return (
         <div className="min-h-screen flex flex-col">

@@ -1,5 +1,8 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Identity;
+
 
 namespace BetterSchedule.Server.Controllers.Auth
 {
@@ -10,14 +13,24 @@ namespace BetterSchedule.Server.Controllers.Auth
         [HttpGet("status")]
         public IActionResult Status()
         {
-            if (User.Identity?.IsAuthenticated == true)
+            var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
+
+            return Ok(new
             {
-                return Ok(new { authenticated=true, User = User.Identity.Name });
-            }
-            else
-            {
-                return Unauthorized(new { authenticated = false });
-            }
+                authenticated = isAuthenticated,
+                user = isAuthenticated ? User.Identity?.Name : null
+            });
+        }
+
+        [HttpPost("logout")]
+        public async Task <IActionResult> Logout()
+        {
+            //Clear the authentication cookie
+            await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+
+            Response.Cookies.Delete(".AspNetCore.Identity.Application");
+
+            return Ok(new { message = "Logged out succesfully" });
         }
     }
 }

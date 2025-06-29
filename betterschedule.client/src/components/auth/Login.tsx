@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
@@ -8,6 +8,13 @@ const Login: React.FC = () => {
     const [status, setStatus] = useState("");
     const navigate = useNavigate();
     const { login } = useAuth();
+    const { isAuthenticated, loading } = useAuth(); 
+
+    useEffect(() => {
+        if (!loading && isAuthenticated) {
+            navigate("/calendar");
+        }
+    }, [loading, isAuthenticated, navigate]);
 
     const handleLogin = async () => {
         const result = await login(email, password);

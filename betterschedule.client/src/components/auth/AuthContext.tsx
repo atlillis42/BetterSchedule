@@ -19,15 +19,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const refreshAuth = async () => {
         try {
             const res = await api.get('/auth/status');
-            setIsAuthenticated(res.data.isAuthenticated);
-            setUser(res.data.user);
-        } catch {
+            console.log("🧪 /auth/status response", res.data);
+
+            const authValue = res.data?.authenticated ?? false;
+            const userValue = res.data?.user ?? null;
+
+            setIsAuthenticated(authValue);
+            setUser(userValue);
+        } catch (err) {
+            console.error("❌ Auth check failed", err);
             setIsAuthenticated(false);
             setUser(null);
         } finally {
             setLoading(false);
         }
     };
+
 
     const login = async (email: string, password: string) => {
         try {

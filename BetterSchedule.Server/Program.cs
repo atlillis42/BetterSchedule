@@ -22,6 +22,18 @@ builder.Services.AddIdentityCore<ApplicationUser>()
         .AddDefaultTokenProviders()
         .AddApiEndpoints();
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy
+            .WithOrigins("https://localhost:57890") // Frontend dev server port
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials(); // Allow cookies for authentication
+    });
+});
+
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -110,6 +122,8 @@ app.UseHttpsRedirection();
 
 app.MapIdentityApi<ApplicationUser>();
 
+app.UseCors(); // Use CORS policy defined above
+app.UseAuthentication(); // Ensure authentication is set up before authorization
 app.UseAuthorization();
 
 app.MapControllers();
