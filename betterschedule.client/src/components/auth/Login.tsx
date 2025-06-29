@@ -1,39 +1,21 @@
-// Login.tsx — React Component
 import React, { useState } from "react";
-
-interface LoginResponse {
-    success: boolean;
-    message: string;
-}
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [status, setStatus] = useState("");
-
-    const isDev = import.meta.env.MODE === "development";
+    const navigate = useNavigate();
+    const { login } = useAuth();
 
     const handleLogin = async () => {
-        try {
-            let response: Response;
-
-            if (isDev) {
-                response = await fetch("/api/dev/login", { method: "POST" });
-            } else {
-                response = await fetch("/api/auth/login", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ email, password }),
-                });
-            }
-
-            const text = await response.text();
-            setStatus(response.ok ? `✅ ${text}` : `❌ ${text}`);
-        } catch (err) {
-            setStatus("❌ Login failed. See console.");
-            console.error(err);
+        const result = await login(email, password);
+        if (result.success) {
+            setStatus(`✅ ${result.message}`);
+            navigate("/calendar");
+        } else {
+            setStatus(`❌ ${result.message}`);
         }
     };
 
@@ -69,21 +51,21 @@ const Login: React.FC = () => {
 
                 <button
                     onClick={handleLogin}
-                    className="bg-blue-600 text-white w-full py-3 rounded-lg hover:bg-blue-700 transition font-medium text-lg mb-3"
+                    className="bg-blue-600 text-white w-full py-3 rounded-lg hover:bg-blue-700 transition font-medium text-lg mb-3 shadow-sm"
                 >
-                    {isDev ? "Dev Login" : "Login"}
+                    {import.meta.env.MODE === "development" ? "Dev Login" : "Login"}
                 </button>
 
                 <button
                     onClick={handleGoogleLogin}
-                    className="bg-white border border-gray-300 text-gray-700 w-full py-2 rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-2"
+                    className="bg-gradient-to-r from-blue-100 to-blue-200 border border-blue-300 text-blue-800 w-full py-2 rounded-lg hover:from-blue-200 hover:to-blue-300 transition flex items-center justify-center gap-2 shadow-sm"
                 >
                     <img
                         src="https://www.svgrepo.com/show/475656/google-color.svg"
                         alt="Google"
                         className="w-5 h-5"
                     />
-                    <span className="text-sm">Sign in with Google</span>
+                    <span className="text-sm font-medium">Sign in with Google</span>
                 </button>
 
                 {status && (

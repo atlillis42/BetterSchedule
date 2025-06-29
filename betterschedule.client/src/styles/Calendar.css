@@ -931,3 +931,188 @@ Theme Designer Version: 2025.06.18.39140
         height: 100% !important;
         width: 100% !important;
     }
+
+/* Custom Navigator Theme: "betterschedule_navigator" */
+.betterschedule_navigator_main {
+    background-color: white;
+    border: 1px solid #cbd5e0;
+    font-family: inherit;
+}
+
+.betterschedule_navigator_title {
+    background: linear-gradient(90deg, #3c78d8, #1c4587);
+    color: white;
+    font-weight: 600;
+    padding: 12px;
+    text-align: center;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    height: 48px;
+}
+
+.betterschedule_navigator_day,
+.betterschedule_navigator_dayother {
+    text-align: center;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+    .betterschedule_navigator_day:hover,
+    .betterschedule_navigator_dayother:hover {
+        background-color: #ebf4ff;
+    }
+
+.betterschedule_navigator_daycurrent,
+.betterschedule_navigator_dayselected {
+    background-color: #1d4ed8;
+    color: white;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.betterschedule_navigator_dayheader {
+    font-weight: bold;
+    padding: 6px;
+    background-color: #f3f3f3;
+    color: #333;
+    border-radius: 4px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Ensures the DayPilot Navigator component aligns and stays visible */
+.calendar-sidebar {
+    flex: 0 0 220px;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border-right: 1px solid #ccc;
+    box-sizing: border-box;
+    overflow-y: auto;
+    z-index: 1;
+}
+
+/* Ensure buttons and views fill their areas */
+.calendar-body > div,
+.month-wrapper .daypilot-month {
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden;
+}
+
+/* Calendar Container Styling */
+.calendar-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    box-sizing: border-box;
+    flex-direction: row;
+}
+
+.calendar-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.calendar-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+    .calendar-toolbar button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        background-color: #3c78d8;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s ease;
+    }
+
+        .calendar-toolbar button:hover {
+            background-color: #2f66c4;
+        }
+
+        .calendar-toolbar button.selected {
+            background-color: #1c4587;
+        }
+
+    .calendar-toolbar .standalone {
+        margin-left: auto;
+        background-color: #f6b26b;
+        color: #333;
+    }
+
+.calendar-body {
+    flex-grow: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+/* DayPilot wrappers for Month, Week, Day views */
+.daypilot-calendar,
+.daypilot-month {
+    flex-grow: 1;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 600px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+}
+
+.dp-hidden {
+    display: none !important;
+}
+
+.month-wrapper {
+    height: 100%;
+    width: 100%;
+}
+
+    .month-wrapper .daypilot-month {
+        height: 100% !important;
+        width: 100% !important;
+    }
+
+/* Responsive Layout Adjustments */
+@media (max-width: 768px) {
+    .calendar-container {
+        flex-direction: column;
+    }
+
+    .calendar-sidebar {
+        width: 100%;
+        flex: 0 0 auto;
+        border-right: none;
+        border-bottom: 1px solid #ccc;
+    }
+
+    .calendar-main {
+        padding: 5px;
+    }
+
+    .calendar-toolbar {
+        justify-content: center;
+        gap: 6px;
+    }
+
+        .calendar-toolbar .standalone {
+            margin-left: 0;
+        }
+}
+

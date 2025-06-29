@@ -58,9 +58,10 @@ const Calendar = () => {
         view === 'Month' ? 'Month' : 'Day');
 
     return (
-        <div className="calendar-container">
-            <div className="calendar-sidebar">
+        <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
+            <div className="calendar-sidebar w-64 bg-white shadow-md border-r border-gray-200">
                 <DayPilotNavigator
+                    theme="betterschedule_navigator"
                     selectMode={getNavigatorMode()}
                     showMonths={3}
                     skipMonths={3}
@@ -69,8 +70,8 @@ const Calendar = () => {
                 />
             </div>
 
-            <div className="calendar-main">
-                <div className="calendar-toolbar">
+            <div className="calendar-main flex flex-col flex-1 min-w-0">
+                <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
                     <button onClick={() => setView('Day')} className={view === 'Day' ? 'selected' : ''}>
                         Day
                     </button>
@@ -88,7 +89,7 @@ const Calendar = () => {
                     </button>
                 </div>
 
-                <div className="calendar-body">
+                <div className="calendar-body flex-1 overflow-auto">
                     {view === 'Day' && (
                         <DayPilotCalendar
                             viewType="Day"
