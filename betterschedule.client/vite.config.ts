@@ -53,6 +53,9 @@ export default defineConfig({
         setupFiles: './src/__tests__/setupTests.ts',
         exclude: [...configDefaults.exclude], // Exclude default test files
         ui: true, // Enable UI mode for Vitest
+        deps: {
+            inline: [/^@auth/, /^@components/, /^@styles/, /^@/],
+        }
     },
     server: {
         proxy: {
