@@ -6,7 +6,9 @@ import {
     DayPilotNavigator,
     DayPilotScheduler
 } from '@daypilot/daypilot-lite-react';
-import '../styling/Calendar.css';
+import { getResources, getEvents } from "@/api/calendar";
+import '@styles/Calendar.css';
+import { formatWeekHeader } from "./CalendarUtilities"
 
 
 
@@ -30,37 +32,60 @@ const Calendar = () => {
     };
 
     useEffect(() => {
+        // Seed dummy arrays during development 
         setResources([
             { name: "Main Arena", id: "R1" },
             { name: "Secondary Arena", id: "R2" },
             { name: "Training Room", id: "R3" },
             { name: "Conference Room", id: "R4" },
-            { name: "VIP Lounge", id: "R5" },
+            { name: "VIP Lounge", id: "R5" }
         ]);
 
-        const demoEvents = [
-                    { id: 1, text: "Event 1", start: DayPilot.Date.today().addHours(9), end: DayPilot.Date.today().addHours(11), resource: "R1" },
-                    { id: 2, text: "Event 2", start: DayPilot.Date.today().addHours(10), end: DayPilot.Date.today().addHours(12), backColor: "#93c47d", resource: "R2" },
-                    { id: 3, text: "Event 3", start: DayPilot.Date.today().addDays(1).addHours(9), end: DayPilot.Date.today().addDays(1).addHours(11), backColor: "#ffd966", resource: "R3" },
-                    { id: 4, text: "Event 4", start: DayPilot.Date.today().addDays(1).addHours(11.5), end: DayPilot.Date.today().addDays(1).addHours(13.5), backColor: "#f6b26b", resource: "R4" },
-                    { id: 5, text: "Event 5", start: DayPilot.Date.today().addDays(4).addHours(9), end: DayPilot.Date.today().addDays(4).addHours(11), backColor: "#8e7cc3", resource:"R5" },
-                    { id: 6, text: "Event 6", start: DayPilot.Date.today().addDays(4).addHours(13), end: DayPilot.Date.today().addDays(4).addHours(15), backColor: "#6fa8dc", resource: "R1" },
-                ];               
-        setEvents(demoEvents);    
-    }, []);
+        setEvents([
+            { id: 1, text: "Event 1", start: DayPilot.Date.today().addHours(9), end: DayPilot.Date.today().addHours(11), resource: "R1" },
+            { id: 2, text: "Event 2", start: DayPilot.Date.today().addHours(10), end: DayPilot.Date.today().addHours(12), backColor: "#93c47d", resource: "R2" },
+            { id: 3, text: "Event 3", start: DayPilot.Date.today().addDays(1).addHours(9), end: DayPilot.Date.today().addDays(1).addHours(11), backColor: "#ffd966", resource: "R3" },
+            { id: 4, text: "Event 4", start: DayPilot.Date.today().addDays(1).addHours(11.5), end: DayPilot.Date.today().addDays(1).addHours(13.5), backColor: "#f6b26b", resource: "R4" },
+            { id: 5, text: "Event 5", start: DayPilot.Date.today().addDays(4).addHours(9), end: DayPilot.Date.today().addDays(4).addHours(11), backColor: "#8e7cc3", resource: "R5" },
+            { id: 6, text: "Event 6", start: DayPilot.Date.today().addDays(4).addHours(13), end: DayPilot.Date.today().addDays(4).addHours(15), backColor: "#6fa8dc", resource: "R1" }
+        ]);
+    }, []);   
+
+    // -----------------------------------------------------
+    //  Attempt to fetch real data *after* seeding dummy
+    // -----------------------------------------------------
+    useEffect(() => {
+        (async () => {
+            try {
+                // run the calls in parallel
+                const [realResources, realEvents] = await Promise.all([
+                    getResources(),                       // e.g. /api/calendar/resources
+                    getEvents(startDate, view)            // e.g. /api/calendar/events?start=…&view=…
+                ]);
+
+                // If either call returns an empty array, keep what was already displayed.
+                if (realResources.length) setResources(realResources);
+                if (realEvents.length) setEvents(realEvents);
+            } catch (err) {
+                // Won't blow up the UI – just logs and keep dummy data visible
+                console.error("⛔ Calendar API fetch failed – falling back to demo data", err);
+            }
+        })();
+    }, [startDate, view]);   // ← refetch when user changes date or view
 
     useEffect(() => {
         console.log("Resources:", resources);
         console.log("Events:", events);
-    }, [resources, events]);
+    }, [resources, events]); 
 
     const getNavigatorMode = () => (
         view === 'Month' ? 'Month' : 'Day');
 
     return (
-        <div className="calendar-container">
-            <div className="calendar-sidebar">
+        <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
+            <div className="calendar-sidebar w-64 bg-white shadow-md border-r border-gray-200">
                 <DayPilotNavigator
+                    theme="betterschedule_navigator"
                     selectMode={getNavigatorMode()}
                     showMonths={3}
                     skipMonths={3}
@@ -69,8 +94,8 @@ const Calendar = () => {
                 />
             </div>
 
-            <div className="calendar-main">
-                <div className="calendar-toolbar">
+            <div className="calendar-main flex flex-col flex-1 min-w-0">
+                <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
                     <button onClick={() => setView('Day')} className={view === 'Day' ? 'selected' : ''}>
                         Day
                     </button>
@@ -88,15 +113,25 @@ const Calendar = () => {
                     </button>
                 </div>
 
-                <div className="calendar-body">
+                <div className="calendar-body flex-1 overflow-auto">
                     {view === 'Day' && (
                         <DayPilotCalendar
                             viewType="Day"
                             theme="betterschedule"
+                            attributes={{ "data-testid": "daypilot-calendar" }}
                             startDate={startDate}
                             events={events}
                             durationBarVisible={false}
                             onTimeRangeSelected={onTimeRangeSelected}
+                            headerHeight={40}
+                            onBeforeHeaderRender={(args) => {
+                                const { weekday, short } = formatWeekHeader(args.header.start);
+                                args.header.html = `
+        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+          <span style="font-weight:600">${weekday}</span>
+          <span style="font-size:12px">${short}</span>
+        </div>`;
+                            }}
                         />
                     )}
 
@@ -104,10 +139,20 @@ const Calendar = () => {
                         <DayPilotCalendar
                             viewType="Week"
                             theme="betterschedule"
+                            attributes={{ "data-testid": "daypilot-calendar" }}
                             startDate={startDate}
                             events={events}
                             durationBarVisible={false}
                             onTimeRangeSelected={onTimeRangeSelected}
+                            headerHeight={40}
+                            onBeforeHeaderRender={(args) => {
+                                const { weekday, short } = formatWeekHeader(args.header.start);
+                                args.header.html = `
+        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+          <span style="font-weight:600">${weekday}</span>
+          <span style="font-size:12px">${short}</span>
+        </div>`;
+                            }}
                         />
                     )}
 

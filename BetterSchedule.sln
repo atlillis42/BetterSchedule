@@ -4,8 +4,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.14.36109.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{54A90642-561A-4BB1-A94E-469ADEE60C69}") = "betterschedule.client", "betterschedule.client\betterschedule.client.esproj", "{E43DDA9B-CC04-E6E6-D6E2-C798EA4BB4C0}"
+	ProjectSection(ProjectDependencies) = postProject
+		{A278A320-179F-4AA0-A009-2543CB73D0EB} = {A278A320-179F-4AA0-A009-2543CB73D0EB}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterSchedule.Server", "BetterSchedule.Server\BetterSchedule.Server.csproj", "{A278A320-179F-4AA0-A009-2543CB73D0EB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BetterSchedule.Tests", "BetterSchedule.Tests\BetterSchedule.Tests.csproj", "{EB13C9E3-4955-4E8E-8E86-C71746DB0514}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,6 +28,10 @@ Global
 		{A278A320-179F-4AA0-A009-2543CB73D0EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A278A320-179F-4AA0-A009-2543CB73D0EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A278A320-179F-4AA0-A009-2543CB73D0EB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EB13C9E3-4955-4E8E-8E86-C71746DB0514}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB13C9E3-4955-4E8E-8E86-C71746DB0514}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB13C9E3-4955-4E8E-8E86-C71746DB0514}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB13C9E3-4955-4E8E-8E86-C71746DB0514}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

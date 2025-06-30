@@ -1,7 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
-
-import { defineConfig } from 'vite';
-import plugin from '@vitejs/plugin-react';
+import { defineConfig, configDefaults } from 'vitest/config';
+import react from '@vitejs/plugin-react';
 import fs from 'fs';
 import path from 'path';
 import child_process from 'child_process';
@@ -39,17 +38,31 @@ const target = env.ASPNETCORE_HTTPS_PORT ? `https://localhost:${env.ASPNETCORE_H
 
 // https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [plugin()],
+    plugins: [react()],
     resolve: {
         alias: {
-            '@': fileURLToPath(new URL('./src', import.meta.url))
+            '@': fileURLToPath(new URL('./src', import.meta.url)),
+            '@styles': fileURLToPath(new URL('./src/styles', import.meta.url)),
+            '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
+            '@auth': fileURLToPath(new URL('./src/components/auth', import.meta.url)),
+        }
+    },
+    test: {
+        globals: true,
+        environment: 'jsdom',
+        setupFiles: './src/__tests__/setupTests.ts',
+        exclude: [...configDefaults.exclude], // Exclude default test files
+        ui: true, // Enable UI mode for Vitest
+        deps: {
+            inline: [/^@auth/, /^@components/, /^@styles/, /^@/],
         }
     },
     server: {
         proxy: {
-            '^/weatherforecast': {
+            '^/api': {
                 target,
-                secure: false
+                secure: false,
+                changeOrigin: true
             }
         },
         port: parseInt(env.DEV_SERVER_PORT || '57890'),

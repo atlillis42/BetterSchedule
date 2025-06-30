@@ -1,5 +1,5 @@
 import React from 'react';
-import Calendar from './components/Calendar.tsx';
+import Calendar from './components/calendar/Calendar.tsx';
 
 
 const App: React.FC = () => {
