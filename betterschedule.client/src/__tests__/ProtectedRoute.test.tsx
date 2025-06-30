@@ -13,7 +13,7 @@ import { useAuth } from "@auth/AuthContext";
 const mockedUseAuth = vi.mocked(useAuth, true);
 
 // Component under test
-import ProtectedRoute from "@auth/ProtectedRoute";
+import ProtectedRoute from "@components/layout/ProtectedRoute";
 
 // Simple helpers — tiny stand-in pages -----------------------------------
 const PrivatePage = () => <h1 data-testid="private">Private Page</h1>;
