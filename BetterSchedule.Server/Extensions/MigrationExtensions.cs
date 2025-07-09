@@ -13,25 +13,7 @@ namespace BetterSchedule.Server.Extensions
             using ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
             context.Database.Migrate();
-        }
-        //public static void ApplyMigrations(this IApplicationBuilder app)
-        //{
-        //    using IServiceScope scope = app.ApplicationServices.CreateScope();
-        //    var loggerFactory = scope.ServiceProvider.GetRequiredService<ILoggerFactory>();
-        //    var logger = loggerFactory.CreateLogger("MigrationExtensions");
-
-        //    try
-        //    {
-        //        using ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        //        context.Database.Migrate();
-        //        logger.LogInformation("Database migrations applied successfully.");
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        logger.LogError(ex, "An error occurred while applying database migrations.");
-        //        throw; // Optionally rethrow to stop startup
-        //    }
-        //}
+        }       
     }
 }
     

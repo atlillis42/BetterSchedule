@@ -3,5 +3,11 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "baseUrl": ".",
+  "paths": {
+    "@auth/*": [ "src/auth/*" ], // 👈 tell TS where @auth maps
+    "@components/*": [ "src/components/*" ],
+    "@api/*": [ "src/api/*" ]
+  }
 }

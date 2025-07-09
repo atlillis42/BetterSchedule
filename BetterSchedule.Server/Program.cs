@@ -1,3 +1,4 @@
+using BetterSchedule.Server.Data;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
@@ -7,8 +8,8 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
 builder.Services.AddControllers();
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -27,7 +28,6 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         policy
-            .WithOrigins("https://localhost:57890") // Frontend dev server port
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials(); // Allow cookies for authentication
@@ -42,13 +42,21 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-// Configure the HTTP request pipeline.
+
 if (app.Environment.IsDevelopment())
 {
-    using (var scope = app.Services.CreateScope())
+    using var scope = app.Services.CreateScope(); // Create Development scope so dev-only tasks share DI lifetime
+    var services = scope.ServiceProvider;
     
-    await IdentitySeeder.SeedDataAsync(scope.ServiceProvider);
+    app.ApplyMigrations(); // Apply Migrations in development mode
+  
 
+    await IdentitySeeder.SeedDataAsync(services); // Seed dev identity & roles
+
+    var db = services.GetRequiredService<ApplicationDbContext>();
+    await DbInitializer.SeedAsync(db, reset: true); // Seed calendar demo data
+
+    #region Dev Login Points
     // Universal dev login (all roles)
     app.MapPost("/api/dev/login", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
     {
@@ -110,12 +118,10 @@ if (app.Environment.IsDevelopment())
         await signInManager.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Hybrid (ServiceProvider + Client)");
     });
-
+    #endregion
 
     app.UseSwagger();
     app.UseSwaggerUI();
-
-    app.ApplyMigrations(); // Apply migrations in development mode
 }
 
 app.UseHttpsRedirection();
@@ -123,7 +129,7 @@ app.UseHttpsRedirection();
 app.MapIdentityApi<ApplicationUser>();
 
 app.UseCors(); // Use CORS policy defined above
-app.UseAuthentication(); // Ensure authentication is set up before authorization
+app.UseAuthentication(); // Authentication before Authorization
 app.UseAuthorization();
 
 app.MapControllers();

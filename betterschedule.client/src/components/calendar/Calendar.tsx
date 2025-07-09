@@ -6,7 +6,7 @@ import {
     DayPilotNavigator,
     DayPilotScheduler
 } from '@daypilot/daypilot-lite-react';
-import { getResources, getEvents } from "@/api/calendar";
+import { getResources, getEvents } from "@/api/calendar-api";
 import '@styles/Calendar.css';
 import { formatWeekHeader } from "./CalendarUtilities"
 
@@ -31,37 +31,17 @@ const Calendar = () => {
         setEvents(prev => [...prev, newEvent]);
     };
 
-    useEffect(() => {
-        // Seed dummy arrays during development 
-        setResources([
-            { name: "Main Arena", id: "R1" },
-            { name: "Secondary Arena", id: "R2" },
-            { name: "Training Room", id: "R3" },
-            { name: "Conference Room", id: "R4" },
-            { name: "VIP Lounge", id: "R5" }
-        ]);
-
-        setEvents([
-            { id: 1, text: "Event 1", start: DayPilot.Date.today().addHours(9), end: DayPilot.Date.today().addHours(11), resource: "R1" },
-            { id: 2, text: "Event 2", start: DayPilot.Date.today().addHours(10), end: DayPilot.Date.today().addHours(12), backColor: "#93c47d", resource: "R2" },
-            { id: 3, text: "Event 3", start: DayPilot.Date.today().addDays(1).addHours(9), end: DayPilot.Date.today().addDays(1).addHours(11), backColor: "#ffd966", resource: "R3" },
-            { id: 4, text: "Event 4", start: DayPilot.Date.today().addDays(1).addHours(11.5), end: DayPilot.Date.today().addDays(1).addHours(13.5), backColor: "#f6b26b", resource: "R4" },
-            { id: 5, text: "Event 5", start: DayPilot.Date.today().addDays(4).addHours(9), end: DayPilot.Date.today().addDays(4).addHours(11), backColor: "#8e7cc3", resource: "R5" },
-            { id: 6, text: "Event 6", start: DayPilot.Date.today().addDays(4).addHours(13), end: DayPilot.Date.today().addDays(4).addHours(15), backColor: "#6fa8dc", resource: "R1" }
-        ]);
-    }, []);   
-
     // -----------------------------------------------------
     //  Attempt to fetch real data *after* seeding dummy
     // -----------------------------------------------------
     useEffect(() => {
         (async () => {
             try {
-                // run the calls in parallel
+                // Trys to pull actual calendar resources and events
                 const [realResources, realEvents] = await Promise.all([
-                    getResources(),                       // e.g. /api/calendar/resources
-                    getEvents(startDate, view)            // e.g. /api/calendar/events?start=…&view=…
-                ]);
+                       getResources(),
+                       getEvents(startDate, view),   // ✔️ matches helper signature
+                     ]);
 
                 // If either call returns an empty array, keep what was already displayed.
                 if (realResources.length) setResources(realResources);
@@ -127,10 +107,10 @@ const Calendar = () => {
                             onBeforeHeaderRender={(args) => {
                                 const { weekday, short } = formatWeekHeader(args.header.start);
                                 args.header.html = `
-        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-          <span style="font-weight:600">${weekday}</span>
-          <span style="font-size:12px">${short}</span>
-        </div>`;
+                                <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                                  <span style="font-weight:600">${weekday}</span>
+                                  <span style="font-size:12px">${short}</span>
+                                </div>`;
                             }}
                         />
                     )}
@@ -148,10 +128,10 @@ const Calendar = () => {
                             onBeforeHeaderRender={(args) => {
                                 const { weekday, short } = formatWeekHeader(args.header.start);
                                 args.header.html = `
-        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-          <span style="font-weight:600">${weekday}</span>
-          <span style="font-size:12px">${short}</span>
-        </div>`;
+                                <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                                  <span style="font-weight:600">${weekday}</span>
+                                  <span style="font-size:12px">${short}</span>
+                                </div>`;
                             }}
                         />
                     )}

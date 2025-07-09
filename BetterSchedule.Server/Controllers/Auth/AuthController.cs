@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authentication;
+﻿using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 
 namespace BetterSchedule.Server.Controllers.Auth
@@ -23,7 +25,7 @@ namespace BetterSchedule.Server.Controllers.Auth
         }
 
         [HttpPost("logout")]
-        public async Task <IActionResult> Logout()
+        public async Task<IActionResult> Logout()
         {
             //Clear the authentication cookie
             await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
@@ -31,6 +33,19 @@ namespace BetterSchedule.Server.Controllers.Auth
             Response.Cookies.Delete(".AspNetCore.Identity.Application");
 
             return Ok(new { message = "Logged out succesfully" });
+        }
+
+        [HttpPost("refresh")]
+        [Authorize]               // must already have a valid cookie
+        public IActionResult Refresh()
+        {
+
+            return Ok(new
+            {
+                userId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+                roles = User.FindAll(ClaimTypes.Role).Select(r => r.Value)
+            });
+
         }
     }
 }
