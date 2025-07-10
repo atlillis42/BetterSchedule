@@ -27,8 +27,8 @@ public static class DbInitializer
             return;
 
         // --- Resources ---
-        var arena = new CalendarResource { Name = "Main Arena", ColorHex = "#ff7373" };
-        var studio2 = new CalendarResource { Name = "Studio 2", ColorHex = "#73cfff" };
+        var arena = new CalendarResource { Name = "Main Arena", BackColor = "#ff7373" };
+        var studio2 = new CalendarResource { Name = "Studio 2", BackColor = "#73cfff" };
 
         context.CalendarResources.AddRange(arena, studio2);
 
@@ -39,7 +39,7 @@ public static class DbInitializer
             StartUtc = DateTime.UtcNow.Date.AddHours(14),
             EndUtc = DateTime.UtcNow.Date.AddHours(15),
             Resource = arena,
-            BackColorHex = "#85d28d"
+            BackColor = "#85d28d"
         };
 
         context.CalendarEvents.AddRange(
@@ -50,7 +50,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(-6).AddHours(10),
         EndUtc = DateTime.UtcNow.Date.AddDays(-6).AddHours(12),
         Resource = arena,
-        BackColorHex = "#6ee7b7"
+        BackColor = "#6ee7b7"
     },
     new CalendarEvent
     {
@@ -58,7 +58,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(-7).AddHours(8),
         EndUtc = DateTime.UtcNow.Date.AddDays(-3).AddHours(18),
         Resource = studio2,
-        BackColorHex = "#a5b4fc"
+        BackColor = "#a5b4fc"
     },
     // Past event with no resource
     new CalendarEvent
@@ -67,7 +67,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(-5).AddHours(9),
         EndUtc = DateTime.UtcNow.Date.AddDays(-5).AddHours(11),
         Resource = null,
-        BackColorHex = "#fde68a"
+        BackColor = "#fde68a"
     },
 
     // Current week
@@ -77,7 +77,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddHours(13),
         EndUtc = DateTime.UtcNow.Date.AddHours(15),
         Resource = arena,
-        BackColorHex = "#fca5a5"
+        BackColor = "#fca5a5"
     },
     new CalendarEvent
     {
@@ -85,7 +85,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(2).AddHours(9),
         EndUtc = DateTime.UtcNow.Date.AddDays(5).AddHours(17),
         Resource = studio2,
-        BackColorHex = "#fdba74"
+        BackColor = "#fdba74"
     },
     // Today, no resource, different hours
     new CalendarEvent
@@ -94,7 +94,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddHours(6),
         EndUtc = DateTime.UtcNow.Date.AddHours(8),
         Resource = null,
-        BackColorHex = "#a7f3d0"
+        BackColor = "#a7f3d0"
     },
 
     // Future events
@@ -104,7 +104,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(10).AddHours(9),
         EndUtc = DateTime.UtcNow.Date.AddDays(10).AddHours(11),
         Resource = arena,
-        BackColorHex = "#818cf8"
+        BackColor = "#818cf8"
     },
     new CalendarEvent
     {
@@ -112,7 +112,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(15).AddHours(8),
         EndUtc = DateTime.UtcNow.Date.AddDays(22).AddHours(18),
         Resource = studio2,
-        BackColorHex = "#fbbf24"
+        BackColor = "#fbbf24"
     },
     // Future event, no resource
     new CalendarEvent
@@ -121,7 +121,7 @@ public static class DbInitializer
         StartUtc = DateTime.UtcNow.Date.AddDays(14).AddHours(14),
         EndUtc = DateTime.UtcNow.Date.AddDays(14).AddHours(15),
         Resource = null,
-        BackColorHex = "#e0e7ff"
+        BackColor = "#e0e7ff"
     }
 );
 

@@ -33,7 +33,7 @@ vi.mock("@daypilot/daypilot-lite-react", () => {
 // --------Import Helpers to Mocked Daypilot----------------------
 
 import { DayPilot } from "@daypilot/daypilot-lite-react";
-import { getResources, getEvents } from "@/api/calendar";
+import { getResources, getEvents } from "@/api/calendar-api";
 import { api } from "@auth/axios";
 vi.mock("@auth/axios", () => ({
     api: { get: vi.fn() },

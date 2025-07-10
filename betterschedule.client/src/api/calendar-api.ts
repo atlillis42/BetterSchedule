@@ -1,13 +1,12 @@
 import { api } from "@auth/axios";
 import { DayPilot } from "@daypilot/daypilot-lite-react";
+import type { CalendarEvent, CalendarResource } from "@/types/calendarDataTypes";
 
-// ---------------------------------------------------------------------------
-// DTOs returned *verbatim* by ASP‑NET CalendarController
-// ---------------------------------------------------------------------------
+// ------------ ASP-NET CalendarController DTOs ---------------
 export interface CalendarResourceDto {
     id: number;
     name: string;
-    colorHex?: string;
+    backColor?: string;
 }
 
 export interface CalendarEventDto {
@@ -15,33 +14,13 @@ export interface CalendarEventDto {
     text: string;
     startUtc: string;   // backend uses StartUtc / EndUtc
     endUtc: string;
-    resourceId: number;
+    resourceId?: number;
     backColor?: string;
 }
 
-// ---------------------------------------------------------------------------
-// UI aliases – reshaped so DayPilot gets the keys it expects (start/end)
-// ---------------------------------------------------------------------------
-export interface CalendarResource {
-    id: number;
-    name: string;
-    backColor?: string;
-}
+// --------------- REST api endpoints----------------------------
 
-export interface CalendarEvent {
-    id: number;
-    text: string;
-    start: string;     // ISO 8601 – DayPilot requires "start"
-    end: string;
-    resource: number;
-    backColor?: string;
-}
-
-// ---------------------------------------------------------------------------
-// REST helpers – point to live ASP.NET endpoints
-// ---------------------------------------------------------------------------
-
-/** GET /api/calendar/resources */
+// GET /api/calendar/resources 
 export const getResources = (): Promise<CalendarResource[]> =>
     api.get<CalendarResourceDto[]>("/calendar/resources").then((res) =>
         res.data.map((r) => ({
@@ -51,11 +30,9 @@ export const getResources = (): Promise<CalendarResource[]> =>
         }))
     );
 
-/**
- * GET /api/calendar/events
- *
- * Backend expects `start` & `end` (yyyy‑MM‑dd). Range size derived from view.
- */
+// GET /api/calendar/events
+// Backend expects `start` & `end` (yyyy‑MM‑dd). Range derived from view.
+
 export const getEvents = (
     start: DayPilot.Date,
     view: "Day" | "Week" | "Month" | "Resources"
@@ -73,7 +50,7 @@ export const getEvents = (
             res.data.map((e) => ({
                 id: e.id,
                 text: e.text,
-                start: e.startUtc, // 🟢 rename for DayPilot
+                start: e.startUtc, // rename for DayPilot
                 end: e.endUtc,
                 resource: e.resourceId,
                 backColor: e.backColor
@@ -81,9 +58,17 @@ export const getEvents = (
         );
 };
 
-// ---------------------------------------------------------------------------
-// TODOs
-// ---------------------------------------------------------------------------
+// POST /api/calendar/events
+export const createEvent = async (event: {
+    text: string;
+    startUtc: string;
+    endUtc: string;
+    resourceId?: number | null;
+    backColor?: string;
+}) =>
+    api.post("/calendar/events", event).then((res) => res.data);
+
+// ------------ TODO ----------------------------------
 // • Add SWR / React‑Query cache layer.
-// • POST/PUT/DELETE helpers when CRUD UI lands.
+// • PUT/DELETE helpers when CRUD UI lands.
 // • Centralise DTO ➜ UI mapping once shapes diverge further.

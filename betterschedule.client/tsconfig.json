@@ -4,10 +4,14 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
   ],
-  "baseUrl": ".",
-  "paths": {
-    "@auth/*": [ "src/auth/*" ], // 👈 tell TS where @auth maps
-    "@components/*": [ "src/components/*" ],
-    "@api/*": [ "src/api/*" ]
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": [ "*" ],
+      "@auth/*": [ "components/auth/*" ],
+      "@calendar/*": [ "components/calendar/*" ],
+      "@layout/*": [ "components/layout/*" ],
+      "@api/*": [ "api/*" ]
+    }
   }
 }

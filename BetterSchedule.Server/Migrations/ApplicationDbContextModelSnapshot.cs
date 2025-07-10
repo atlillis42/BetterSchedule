@@ -96,8 +96,7 @@ namespace BetterSchedule.Server.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("BackColorHex")
-                        .IsRequired()
+                    b.Property<string>("BackColor")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("EndUtc")
@@ -128,8 +127,7 @@ namespace BetterSchedule.Server.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("ColorHex")
-                        .IsRequired()
+                    b.Property<string>("BackColor")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")

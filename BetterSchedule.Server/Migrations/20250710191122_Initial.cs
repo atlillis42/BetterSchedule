@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -53,6 +53,21 @@ namespace BetterSchedule.Server.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_AspNetUsers", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "CalendarResources",
+                schema: "identity",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CalendarResources", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -172,6 +187,30 @@ namespace BetterSchedule.Server.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "CalendarEvents",
+                schema: "identity",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    StartUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EndUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ResourceId = table.Column<int>(type: "int", nullable: true),
+                    BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CalendarEvents", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_CalendarEvents_CalendarResources_ResourceId",
+                        column: x => x.ResourceId,
+                        principalSchema: "identity",
+                        principalTable: "CalendarResources",
+                        principalColumn: "Id");
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_AspNetRoleClaims_RoleId",
                 schema: "identity",
@@ -217,6 +256,12 @@ namespace BetterSchedule.Server.Migrations
                 column: "NormalizedUserName",
                 unique: true,
                 filter: "[NormalizedUserName] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CalendarEvents_ResourceId",
+                schema: "identity",
+                table: "CalendarEvents",
+                column: "ResourceId");
         }
 
         /// <inheritdoc />
@@ -243,11 +288,19 @@ namespace BetterSchedule.Server.Migrations
                 schema: "identity");
 
             migrationBuilder.DropTable(
+                name: "CalendarEvents",
+                schema: "identity");
+
+            migrationBuilder.DropTable(
                 name: "AspNetRoles",
                 schema: "identity");
 
             migrationBuilder.DropTable(
                 name: "AspNetUsers",
+                schema: "identity");
+
+            migrationBuilder.DropTable(
+                name: "CalendarResources",
                 schema: "identity");
         }
     }

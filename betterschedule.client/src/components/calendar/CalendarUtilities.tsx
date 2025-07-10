@@ -10,7 +10,7 @@ import { DayPilot } from "@daypilot/daypilot-lite-react";
 export function formatWeekHeader(date: DayPilot.Date | string | Date) {
     // Ensure we always work with a DayPilot.Date instance
     const dpDate =
-        date instanceof DayPilot.Date ? date : new DayPilot.Date(date as any);
+        date instanceof DayPilot.Date ? date : new DayPilot.Date(date as never);
 
     // Week-day name (e.g. Monday)
     const weekday = dpDate.toString("dddd");     

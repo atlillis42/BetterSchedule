@@ -6,7 +6,14 @@ import {
     DayPilotNavigator,
     DayPilotScheduler
 } from '@daypilot/daypilot-lite-react';
-import { getResources, getEvents } from "@/api/calendar-api";
+import { getResources, getEvents, createEvent } from "@api/calendar-api";
+import type {
+    CalendarTimeRangeSelectedArgs,
+    //NavigatorTimeRangeSelectedArgs,
+    //CalendarEventClickArgs,
+    //CalendarBeforeHeaderRenderArgs,
+} from "@/types/daypilotTypes";
+import type { CalendarEvent, CalendarResource } from "@/types/calendarDataTypes";
 import '@styles/Calendar.css';
 import { formatWeekHeader } from "./CalendarUtilities"
 
@@ -15,32 +22,90 @@ import { formatWeekHeader } from "./CalendarUtilities"
 const Calendar = () => {
     const [view, setView] = useState<'Day' | 'Week' | 'Month' | 'Resources'>('Week');
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
-    const [events, setEvents] = useState([]);
-    const [resources, setResources] = useState([]);
+    const [events, setEvents] = useState<CalendarEvent[]>([]);
+    const [resources, setResources] = useState<CalendarResource[]>([]);
 
-    const onTimeRangeSelected = async (args: any) => {
+    const onTimeRangeSelected = async (args: CalendarTimeRangeSelectedArgs) => {
         const dp = args.control;
-        const modal = await DayPilot.Modal.prompt('Create a new event:', 'Event Name');
+
+        // Build modal form: event name + resource picker
+        const resourceOptions = resources.map((r) => ({
+            name: r.name,
+            id: r.id
+        }));
+
+        const selectedResourceId =
+            view === "Resources" && args.resource
+                ? Number(args.resource)
+                : resourceOptions[0]?.id ?? null;
+
+        // Show form with event name and resource select
+        const form = [
+            { name: "Event Name", id: "text", type: "text" },
+            {
+                name: "Resource",
+                id: "resourceId",
+                type: "select",
+                options: [
+                    { name: "(None)", id: "" },
+                    ...resourceOptions.map((r) => ({
+                        name: r.name,
+                        id: r.id
+                    }))
+                ],
+                value: selectedResourceId
+            }
+        ];
+
+        const modal = await DayPilot.Modal.form(form, {
+            text: "",
+            resourceId: selectedResourceId
+        });
+
         dp.clearSelection();
-        if (modal.canceled) return;
-        const newEvent = {
-            start: args.start,
-            end: args.end,
-            text: modal.result,
+        if (modal.canceled || !modal.result || !modal.result.text) return;
+
+        const resourceId =
+            modal.result.resourceId === "" || modal.result.resourceId === undefined
+                ? null
+                : Number(modal.result.resourceId);
+
+        const payload = {
+            text: modal.result.text,
+            startUtc: args.start.toString(),
+            endUtc: args.end.toString(),
+            resourceId,
+            backColor: "#fca5a5"
         };
-        setEvents(prev => [...prev, newEvent]);
+
+        try {
+            const saved = await createEvent(payload);
+            setEvents((prev) => [
+                ...prev,
+                {
+                    id: saved.id,
+                    text: saved.text,
+                    start: saved.startUtc,
+                    end: saved.endUtc,
+                    resource: saved.resourceId,
+                    backColor: saved.backColor
+                }
+            ]);
+        } catch (err) {
+            console.error("Failed to create event:", err);
+            alert("Error creating event");
+        }
     };
 
-    // -----------------------------------------------------
-    //  Attempt to fetch real data *after* seeding dummy
-    // -----------------------------------------------------
+
+    // TODO: Remove when not in dev environment- Fetch data after seeding
     useEffect(() => {
         (async () => {
             try {
                 // Trys to pull actual calendar resources and events
                 const [realResources, realEvents] = await Promise.all([
                        getResources(),
-                       getEvents(startDate, view),   // ✔️ matches helper signature
+                       getEvents(startDate, view),  
                      ]);
 
                 // If either call returns an empty array, keep what was already displayed.
@@ -98,7 +163,6 @@ const Calendar = () => {
                         <DayPilotCalendar
                             viewType="Day"
                             theme="betterschedule"
-                            attributes={{ "data-testid": "daypilot-calendar" }}
                             startDate={startDate}
                             events={events}
                             durationBarVisible={false}
@@ -119,7 +183,6 @@ const Calendar = () => {
                         <DayPilotCalendar
                             viewType="Week"
                             theme="betterschedule"
-                            attributes={{ "data-testid": "daypilot-calendar" }}
                             startDate={startDate}
                             events={events}
                             durationBarVisible={false}

@@ -42,7 +42,7 @@ public class CalendarController : ControllerBase
             {
                 Id = r.Id,
                 Name = r.Name,
-                BackColor = r.ColorHex
+                BackColor = r.BackColor
             })
             .ToListAsync();
 
@@ -81,7 +81,7 @@ public class CalendarController : ControllerBase
                 StartUtc = e.StartUtc,
                 EndUtc = e.EndUtc,
                 ResourceId = e.ResourceId,
-                BackColor = e.BackColorHex
+                BackColor = e.BackColor
             })
             .ToListAsync();
 
@@ -106,7 +106,7 @@ public class CalendarController : ControllerBase
             StartUtc = payload.StartUtc,
             EndUtc = payload.EndUtc,
             ResourceId = payload.ResourceId,
-            BackColorHex = payload.BackColor ?? "#3a87ad" // default DayPilot blue
+            BackColor = payload.BackColor ?? "#3a87ad" // default DayPilot blue
         };
 
         _dbContext.CalendarEvents.Add(entity);
@@ -119,7 +119,7 @@ public class CalendarController : ControllerBase
             StartUtc = entity.StartUtc,
             EndUtc = entity.EndUtc,
             ResourceId = entity.ResourceId,
-            BackColor = entity.BackColorHex
+            BackColor = entity.BackColor
         };
 
         return CreatedAtAction(nameof(GetEventsAsync), new { start = entity.StartUtc, end = entity.EndUtc }, dto);
@@ -140,7 +140,7 @@ public class CalendarController : ControllerBase
         entity.StartUtc = payload.StartUtc;
         entity.EndUtc = payload.EndUtc;
         entity.ResourceId = payload.ResourceId;
-        entity.BackColorHex = payload.BackColor;
+        entity.BackColor = payload.BackColor;
 
         await _dbContext.SaveChangesAsync();
         return NoContent();

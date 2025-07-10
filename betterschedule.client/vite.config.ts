@@ -51,9 +51,10 @@ export default defineConfig({
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
             "@styles": fileURLToPath(new URL("./src/styles", import.meta.url)),
-            "@components": fileURLToPath(new URL("./src/components", import.meta.url)),
+            "@calendar": fileURLToPath(new URL("./src/components/calendar", import.meta.url)),
             "@auth": fileURLToPath(new URL("./src/components/auth", import.meta.url)),
-            "@api": fileURLToPath(new URL("./src/api", import.meta.url)),
+            "@layout": fileURLToPath(new URL("./src/components/layout", import.meta.url)),
+            "@api": fileURLToPath(new URL("./src/api", import.meta.url))    
         },
     },
     test: {
