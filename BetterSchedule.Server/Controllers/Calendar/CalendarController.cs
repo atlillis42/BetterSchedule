@@ -122,7 +122,7 @@ public class CalendarController : ControllerBase
             BackColor = entity.BackColor
         };
 
-        return CreatedAtAction(nameof(GetEventsAsync), new { start = entity.StartUtc, end = entity.EndUtc }, dto);
+        return Created($"/api/calendar/events/{entity.Id}", dto);
     }
 
     /// <summary>
@@ -161,6 +161,5 @@ public class CalendarController : ControllerBase
         await _dbContext.SaveChangesAsync();
         return NoContent();
     }
-
     #endregion
 }

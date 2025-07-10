@@ -54,7 +54,7 @@ if (app.Environment.IsDevelopment())
     await IdentitySeeder.SeedDataAsync(services); // Seed dev identity & roles
 
     var db = services.GetRequiredService<ApplicationDbContext>();
-    await DbInitializer.SeedAsync(db, reset: true); // Seed calendar demo data
+    await DbInitializer.SeedAsync(db); // Seed calendar demo data
 
     #region Dev Login Points
     // Universal dev login (all roles)

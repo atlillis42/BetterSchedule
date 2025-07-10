@@ -1,34 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 import {
     DayPilot,
     DayPilotCalendar,
     DayPilotMonth,
     DayPilotNavigator,
     DayPilotScheduler
-} from '@daypilot/daypilot-lite-react';
+} from "@daypilot/daypilot-lite-react";
 import { getResources, getEvents, createEvent } from "@api/calendar-api";
 import type {
     CalendarTimeRangeSelectedArgs,
-    //NavigatorTimeRangeSelectedArgs,
-    //CalendarEventClickArgs,
-    //CalendarBeforeHeaderRenderArgs,
 } from "@/types/daypilotTypes";
 import type { CalendarEvent, CalendarResource } from "@/types/calendarDataTypes";
-import '@styles/Calendar.css';
-import { formatWeekHeader } from "./CalendarUtilities"
+import "@styles/Calendar.css";
+import { formatWeekHeader } from "./CalendarUtilities";
 
+// ----------- Window Calculation Utility -------------
+function getVisibleRange(
+    startDate: DayPilot.Date,
+    view: "Day" | "Week" | "Month" | "Resources"
+) {
+    if (view === "Day") {
+        return { start: startDate, end: startDate.addDays(1) };
+    }
+    if (view === "Week") {
+        // Week starts on Sunday. Change to (1) for Monday.
+        const weekStart = startDate.firstDayOfWeek(0);
+        return { start: weekStart, end: weekStart.addDays(7) };
+    }
+    if (view === "Month") {
+        const firstOfMonth = startDate.firstDayOfMonth();
+        const gridStart = firstOfMonth.firstDayOfWeek(0);
+        return { start: gridStart, end: gridStart.addDays(42) };
+    }
+    return { start: startDate, end: startDate.addDays(1) };
+}
 
+// ---------------------------------------------------
 
 const Calendar = () => {
-    const [view, setView] = useState<'Day' | 'Week' | 'Month' | 'Resources'>('Week');
+    const [view, setView] = useState<"Day" | "Week" | "Month" | "Resources">("Week");
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
     const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [resources, setResources] = useState<CalendarResource[]>([]);
 
     const onTimeRangeSelected = async (args: CalendarTimeRangeSelectedArgs) => {
         const dp = args.control;
-
-        // Build modal form: event name + resource picker
         const resourceOptions = resources.map((r) => ({
             name: r.name,
             id: r.id
@@ -37,9 +53,8 @@ const Calendar = () => {
         const selectedResourceId =
             view === "Resources" && args.resource
                 ? Number(args.resource)
-                : resourceOptions[0]?.id ?? null;
+                : resourceOptions[0]?.id ?? undefined;
 
-        // Show form with event name and resource select
         const form = [
             { name: "Event Name", id: "text", type: "text" },
             {
@@ -67,7 +82,7 @@ const Calendar = () => {
 
         const resourceId =
             modal.result.resourceId === "" || modal.result.resourceId === undefined
-                ? null
+                ? undefined
                 : Number(modal.result.resourceId);
 
         const payload = {
@@ -79,52 +94,39 @@ const Calendar = () => {
         };
 
         try {
-            const saved = await createEvent(payload);
-            setEvents((prev) => [
-                ...prev,
-                {
-                    id: saved.id,
-                    text: saved.text,
-                    start: saved.startUtc,
-                    end: saved.endUtc,
-                    resource: saved.resourceId,
-                    backColor: saved.backColor
-                }
-            ]);
+            await createEvent(payload);
+            // Always refetch for current window after creation
+            const { start, end } = getVisibleRange(startDate, view);
+            const freshEvents = await getEvents(start, end);
+            setEvents(freshEvents);
         } catch (err) {
             console.error("Failed to create event:", err);
             alert("Error creating event");
         }
     };
 
-
-    // TODO: Remove when not in dev environment- Fetch data after seeding
     useEffect(() => {
         (async () => {
             try {
-                // Trys to pull actual calendar resources and events
+                const { start, end } = getVisibleRange(startDate, view);
                 const [realResources, realEvents] = await Promise.all([
-                       getResources(),
-                       getEvents(startDate, view),  
-                     ]);
-
-                // If either call returns an empty array, keep what was already displayed.
+                    getResources(),
+                    getEvents(start, end)
+                ]);
                 if (realResources.length) setResources(realResources);
                 if (realEvents.length) setEvents(realEvents);
             } catch (err) {
-                // Won't blow up the UI – just logs and keep dummy data visible
                 console.error("⛔ Calendar API fetch failed – falling back to demo data", err);
             }
         })();
-    }, [startDate, view]);   // ← refetch when user changes date or view
+    }, [startDate, view]);
 
     useEffect(() => {
         console.log("Resources:", resources);
         console.log("Events:", events);
-    }, [resources, events]); 
+    }, [resources, events]);
 
-    const getNavigatorMode = () => (
-        view === 'Month' ? 'Month' : 'Day');
+    const getNavigatorMode = () => (view === "Month" ? "Month" : "Day");
 
     return (
         <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
@@ -141,16 +143,16 @@ const Calendar = () => {
 
             <div className="calendar-main flex flex-col flex-1 min-w-0">
                 <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
-                    <button onClick={() => setView('Day')} className={view === 'Day' ? 'selected' : ''}>
+                    <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>
                         Day
                     </button>
-                    <button onClick={() => setView('Week')} className={view === 'Week' ? 'selected' : ''}>
+                    <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>
                         Week
                     </button>
-                    <button onClick={() => setView('Month')} className={view === 'Month' ? 'selected' : ''}>
+                    <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>
                         Month
                     </button>
-                    <button onClick={() => setView('Resources')} className={view === 'Resources' ? 'selected' : ''}>
+                    <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>
                         Resources
                     </button>
                     <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">
@@ -159,7 +161,7 @@ const Calendar = () => {
                 </div>
 
                 <div className="calendar-body flex-1 overflow-auto">
-                    {view === 'Day' && (
+                    {view === "Day" && (
                         <DayPilotCalendar
                             viewType="Day"
                             theme="betterschedule"
@@ -179,7 +181,7 @@ const Calendar = () => {
                         />
                     )}
 
-                    {view === 'Week' && (
+                    {view === "Week" && (
                         <DayPilotCalendar
                             viewType="Week"
                             theme="betterschedule"
@@ -199,7 +201,7 @@ const Calendar = () => {
                         />
                     )}
 
-                    {view === 'Month' && (
+                    {view === "Month" && (
                         <div className="month-wrapper">
                             <DayPilotMonth
                                 startDate={startDate}
@@ -211,11 +213,11 @@ const Calendar = () => {
                         </div>
                     )}
 
-                    {view === 'Resources' && (
+                    {view === "Resources" && (
                         <DayPilotScheduler
                             startDate={startDate}
                             days={5} //TODO: Make this dynamic based on user selection
-                            scale="Hour" //backendUrl="/api/scheduler"
+                            scale="Hour"
                             timeHeaders={[
                                 { groupBy: "Day", format: "dddd MMM d" },
                                 { groupBy: "Hour" }
@@ -226,7 +228,6 @@ const Calendar = () => {
                             headerHeight={30}
                             rowHeaderWidth={150}
                             durationBarVisible={false}
-                            //theme="betterschedule"
                         />
                     )}
                 </div>

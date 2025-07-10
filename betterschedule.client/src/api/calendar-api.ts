@@ -35,10 +35,8 @@ export const getResources = (): Promise<CalendarResource[]> =>
 
 export const getEvents = (
     start: DayPilot.Date,
-    view: "Day" | "Week" | "Month" | "Resources"
+    end: DayPilot.Date
 ): Promise<CalendarEvent[]> => {
-    const end = start.addDays(view === "Day" ? 1 : view === "Week" ? 7 : 30);
-
     return api
         .get<CalendarEventDto[]>("/calendar/events", {
             params: {
@@ -50,7 +48,7 @@ export const getEvents = (
             res.data.map((e) => ({
                 id: e.id,
                 text: e.text,
-                start: e.startUtc, // rename for DayPilot
+                start: e.startUtc,
                 end: e.endUtc,
                 resource: e.resourceId,
                 backColor: e.backColor
