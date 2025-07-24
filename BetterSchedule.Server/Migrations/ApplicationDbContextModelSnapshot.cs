@@ -99,14 +99,14 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("BackColor")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("EndUtc")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("EndUtc")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int?>("ResourceId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime>("StartUtc")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("StartUtc")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Title")
                         .IsRequired()

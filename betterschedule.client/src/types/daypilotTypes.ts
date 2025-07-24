@@ -1,51 +1,34 @@
-// Central DayPilot Lite event handler arg types for BetterSchedule
-
 import { DayPilot } from "@daypilot/daypilot-lite-react";
 
 // --- Base: Shared by most handlers
 export interface DayPilotTimeRangeArgs {
+    /** Start of selected time range (DayPilot.Date) */
     start: DayPilot.Date;
+    /** End of selected time range (DayPilot.Date) */
     end: DayPilot.Date;
 }
 
-// --- Control: minimal interface for callback 'control' property
+/** DayPilot control object (allows actions like clearSelection) */
 export interface DayPilotControl {
     clearSelection: () => void;
-    // add more if used in your app
 }
 
 // --- Calendar/Scheduler: time range selection (week/day/resource view)
 export interface CalendarTimeRangeSelectedArgs extends DayPilotTimeRangeArgs {
     control: DayPilotControl;
+    /** Resource id (may be number or string, depending on your data) */
     resource?: number | string;
 }
 
-// --- Navigator: date select
-export interface NavigatorTimeRangeSelectedArgs {
-    day: DayPilot.Date;
-    control: DayPilotControl;
-}
 
-// --- Calendar/Scheduler: event click
-export interface CalendarEventClickArgs {
+export interface DayPilotEventArgs {
     e: {
-        id: number | string;
-        text: string;
-        start: DayPilot.Date;
-        end: DayPilot.Date;
-        resource?: number | string;
-        // more event properties can be added here
+        id: () => number | string;
+        text: () => string;
+        start: () => string;
+        end: () => string;
+        resource: () => number | string;
+        backColor: string;
     };
-    control: DayPilotControl;
 }
 
-// --- Calendar/Scheduler: before header render
-export interface CalendarBeforeHeaderRenderArgs {
-    header: {
-        start: DayPilot.Date;
-        end?: DayPilot.Date;
-        html: string;
-        // add other header fields if needed
-    };
-    control: DayPilotControl;
-}

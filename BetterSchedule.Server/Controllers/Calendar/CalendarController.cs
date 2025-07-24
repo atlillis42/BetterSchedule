@@ -53,11 +53,6 @@ public class CalendarController : ControllerBase
 
     #region Events
 
-    /// <summary>
-    /// Fetch calendar events in the requested date window.
-    /// </summary>
-    /// <param name="start">ISO date – inclusive start of range (UTC).</param>
-    /// <param name="end">ISO date – exclusive end of range (UTC).</param>
     [HttpGet("events")]
     [ProducesResponseType(typeof(IEnumerable<CalendarEventDto>), 200)]
     public async Task<IActionResult> GetEventsAsync([FromQuery] DateTime start, [FromQuery] DateTime end)
@@ -106,7 +101,7 @@ public class CalendarController : ControllerBase
             StartUtc = payload.StartUtc,
             EndUtc = payload.EndUtc,
             ResourceId = payload.ResourceId,
-            BackColor = payload.BackColor ?? "#3a87ad" // default DayPilot blue
+            BackColor = payload.BackColor ?? "#3a87ad"
         };
 
         _dbContext.CalendarEvents.Add(entity);
