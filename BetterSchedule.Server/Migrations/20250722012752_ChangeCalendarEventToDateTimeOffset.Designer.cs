@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BetterSchedule.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250528215626_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20250722012752_ChangeCalendarEventToDateTimeOffset")]
+    partial class ChangeCalendarEventToDateTimeOffset
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -26,7 +26,7 @@ namespace BetterSchedule.Server.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("BetterSchedule.Server.Database.User", b =>
+            modelBuilder.Entity("BetterSchedule.Server.Database.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")
                         .HasColumnType("nvarchar(450)");
@@ -89,6 +89,57 @@ namespace BetterSchedule.Server.Migrations
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", "identity");
+                });
+
+            modelBuilder.Entity("BetterSchedule.Server.Models.CalendarEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BackColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("EndUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int?>("ResourceId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StartUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ResourceId");
+
+                    b.ToTable("CalendarEvents", "identity");
+                });
+
+            modelBuilder.Entity("BetterSchedule.Server.Models.CalendarResource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BackColor")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CalendarResources", "identity");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -224,6 +275,15 @@ namespace BetterSchedule.Server.Migrations
                     b.ToTable("AspNetUserTokens", "identity");
                 });
 
+            modelBuilder.Entity("BetterSchedule.Server.Models.CalendarEvent", b =>
+                {
+                    b.HasOne("BetterSchedule.Server.Models.CalendarResource", "Resource")
+                        .WithMany()
+                        .HasForeignKey("ResourceId");
+
+                    b.Navigation("Resource");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole", null)
@@ -235,7 +295,7 @@ namespace BetterSchedule.Server.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserClaim<string>", b =>
                 {
-                    b.HasOne("BetterSchedule.Server.Database.User", null)
+                    b.HasOne("BetterSchedule.Server.Database.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -244,7 +304,7 @@ namespace BetterSchedule.Server.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserLogin<string>", b =>
                 {
-                    b.HasOne("BetterSchedule.Server.Database.User", null)
+                    b.HasOne("BetterSchedule.Server.Database.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -259,7 +319,7 @@ namespace BetterSchedule.Server.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("BetterSchedule.Server.Database.User", null)
+                    b.HasOne("BetterSchedule.Server.Database.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -268,7 +328,7 @@ namespace BetterSchedule.Server.Migrations
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
                 {
-                    b.HasOne("BetterSchedule.Server.Database.User", null)
+                    b.HasOne("BetterSchedule.Server.Database.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)

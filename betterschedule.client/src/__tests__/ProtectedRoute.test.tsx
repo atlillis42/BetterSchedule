@@ -1,7 +1,8 @@
-import { vi, describe, beforeEach, test, expect } from "vitest";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { useAuth } from "@auth/AuthContext";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
 // Mock the AuthContext hook so we can force various auth states
 vi.mock("@auth/AuthContext", () => {
@@ -9,11 +10,10 @@ vi.mock("@auth/AuthContext", () => {
         useAuth: vi.fn(),
     };
 });
-import { useAuth } from "@auth/AuthContext";
 const mockedUseAuth = vi.mocked(useAuth, true);
 
 // Component under test
-import ProtectedRoute from "@auth/ProtectedRoute";
+import ProtectedRoute from "@layout/ProtectedRoute";
 
 // Simple helpers — tiny stand-in pages -----------------------------------
 const PrivatePage = () => <h1 data-testid="private">Private Page</h1>;
