@@ -26,6 +26,24 @@ vi.mock("@daypilot/daypilot-lite-react", () => {
             // fixed value keeps tests deterministic
             return new FakeDate("2025-01-01");
         }
+
+        /** Always return Monday for week tests (or Sunday if 0) */
+        firstDayOfWeek(startOn = 0) {
+            const d = new Date(this.iso);
+            const day = d.getDay(); // Sunday=0, Monday=1, ...
+            const diff = (7 + day - startOn) % 7;
+            d.setDate(d.getDate() - diff);
+            const iso = d.toISOString().substring(0, 10);
+            return new FakeDate(iso);
+        }
+
+        /** Always return first of month */
+        firstDayOfMonth() {
+            const d = new Date(this.iso);
+            d.setDate(1);
+            const iso = d.toISOString().substring(0, 10);
+            return new FakeDate(iso);
+        }
     }
 
     return { DayPilot: { Date: FakeDate } };
@@ -52,16 +70,17 @@ describe("calendar API helpers", () => {
 
     it("calls /calendar/events with correct params for Week view", async () => {
         const start = new DayPilot.Date("2025-06-23"); // Monday
+        const end = start.addDays(7); // Next Monday
         mockedApi.get.mockResolvedValueOnce({ data: [] });
 
-        await getEvents(start, "Week");
+        await getEvents(start, end);
 
         expect(mockedApi.get).toHaveBeenCalledWith(
             "/calendar/events",
             expect.objectContaining({
                 params: {
                     start: "2025-06-23",
-                    end: "2025-06-30",     // 7 days later
+                    end: "2025-06-30",
                 },
             })
         );
