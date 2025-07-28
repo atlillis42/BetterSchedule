@@ -1,139 +1,173 @@
-# BetterSchedule
+BetterSchedule
 
-Scheduling Application built in React/ASP.Net Core 8 
+A flexible, role-based scheduling platform for service businesses and teams, built with React (SPA) & ASP.NET Core 8.
+Project Goals
 
-Overall Goal:
+BetterSchedule aims to provide a powerful scheduling and booking system with multi-role access, customizable services, and extensible features for both web and mobile.
 
-Create a full featured scheduling app (Web page and mobile) that allows for decrementing service packages, multiple location options for services (with corresponding calendar blocking), login, calendar, calendar integration, payment links, notifications, and waiver attachments.
+    Managers: Manage users, services, bookings, and system settings.
 
-MVP Goal:
+    Service Providers: Define their own availability, appointment types, and client bookings.
 
-    Users can login, have user roles, and access their own calendar and reservations list (Cookie based Authentication and Authorization                           
-    Manager/Owner can change user roles
-    Basic Calendar functionality on a React SPA (Daypilot open source components)
-    Ability to attach reservation info to calendar
-    Users can view, book, and cancel reservations
-        Booking- (GuestName, Date/Time, ReservationType, **Maybe ReservationLength, **?MVP Location)
-    Users can define when their calendar availability for reservations
-        Future - availability can be changed for specific reservation types
-    Users can create unique reservation types
-    User can view reservation history (All history of User)
-        Future - Adjustable display criteria- view by Guest, Date-Range, reservation type, etc.
-Task List:
+    Clients: Self-register, view, and manage their own appointments.
 
-        Basic ASP.NET Core Identity Back-End Auth setup/dev Db initial/continuous Migration - DONE
-        Front-End Auth wire-up (ASP.NET -> React client)
-        Login Page
-        DayPilot Schedule Integration
-        Models (in progress Todo list)
-            ApplicationUser (separate from Auth?)
-            Reservation
-            AppointmentType
-            Packages (Auto-Decrementing, assigned to clients)
-            Calendar Related
-            Location (Model or property within Appointment Type)
-        Calendar Component
-            Front-End
-            Back-End
-        Booking Component
-            Front-End
-            Back-End
-        Client View Component
-            Front-End
-            Back-End
-        Appointments View/Setup Component
-            Front-End
-            Back-End
-        Availability View/Setup Component
-            Front-End
-            Back-End
-        Roles Admin Component
-            Front-End
-            Back-End
-        Documents Component (Required Y/N, fillable form that saves to db)
-            Front-End
-            Back-End
-        Roles/Claims setup 
-        Role based Auth added to all endpoints
-        UI and UX cleanup
-        Unit Tests
-        BugFixes/Refactor
+Live Status
 
+    ✅ Authentication & roles: ASP.NET Core Identity, cookie-based login, user roles (Manager, Service Provider, Client), dev DB seeding, and front-end protected route logic.
 
-        After MVP complete:
-        External Auth Provider
-        External Payment Provider
-        Notifications
-        Default No-Show/Can change
-        
+    ✅ Calendar Core: Full CRUD for events/resources (DayPilot-based), robust event modal validation, and multi-view calendar (Day/Week/Month/Resource) with complete tests.
 
+    ✅ Front-End Auth Context: React SPA state for login/logout, role switching, and protected UI.
 
-        
-Full Feature Goal:
+    ✅ Testing: Comprehensive tests for calendar UI, modals, and API edge cases.
 
-Manager can own a calendar node? (name tbd). They have general high level control of application, and unique permissions to create users within their space etc
+    ✅ Dev Tools: Demo data seeding and DB reset for quick starts.
 
-    Can create and assign service provider users
-    Access to all records (possibly allow more customization on a node-by-node basis
-    Can link up online payment portal
-    can create locations/seats/spaces/ etc. that can be rented
-    Can determine default no-show penalty and notification types (allow for them to open that to service providers?)
-    Can view service provider schedules and edit those schedules
-    Login through same portal, has unique page they can access OR auto routed to first
-    Waiver digital storage option?
-    Can set specific hours for different locations (assumed ownership of locations)
+    ❌ Reservation/Booking Model: Not yet implemented (currently only calendar events/resources, no true “reservations”/“appointment types”/“packages”).
 
-Allow multiple "service providers" within organization.
+    ❌ Availability Setup: No models/endpoints/UI for providers to set open/blocked hours.
 
-    One user would own the application. "Manager" role?
-    User could designate other users to "service provider roles". Those roles could be defined
-    Service providers can list their services, manage their schedule, etc. Ideally payment agreements between service providers and "Manager" can be automatically enacted
-    Service providers can see schedule of their upcoming clients/services/location for it
-    Service providers can View several different "views" of schedule (daily, monthly, yearly)
-    Service Providers can view reports of their activity/sales/linked clients
-    Service Providers can create clients in the application
+    ❌ Appointment Types/Services: Not yet implemented in backend or UI.
 
-Calendar
+    ❌ Package/Session Tracking: No packages, decrementing, or package assignment yet.
 
-    Needs to digitally link to DateTime
-    Output to calendar view
-    Dates are clickable/interactable buttons
-    Needs to link up to all schedule actions *Book a time *Cancel a booking *Block off service availability *Add service availability *Recurring schedules *Pull data from server if allow guests to book own appt.
-        View by service provider (default view of self for service provider)
-        View by location/overall bookings(default view for manager?)
-    Maybe lock by timeslots? Optional, or default 30/60 minute increments?
+    ❌ Role-based Data Filtering: Not yet enforcing per-role data visibility in calendar or API.
 
-Users
+    ❌ Payment, Documents, Notifications: Not yet implemented.
 
-    Authentication and Authorization scaffolded with google initially maybe?
-    I don't want to figure out security stuff on my own.
-    Normal user information (Id, name, email, phone, b-day,)
-    PackageId (links to package information)
-    PaymentsId (links to payments information)
-    ReservationsId (links to actual scheduled stuff)
-    User Roles (Manager, Service Provider, potentially allow for mixed role permissions (so several tiers of service providers)
+    ❌ Reporting & History: Not yet implemented.
 
-Appointments (Actually half of this should be "AppointmentTypes" and half should be Reservations)****
+    ❌ Admin UI for role/user management: Not yet implemented.
 
-    Need to show up in Calendar
-    Link to service provider
-    Link to created "client"
-    Link to DateTime
-    Link to Location
-    Modifiable "length"
-    "TypeOf" appointment probably can be created and filled in by service provider and/or manager
-    Connect to Reservations
+Screenshots
 
-Reservations
+Coming soon. Features include themed DayPilot calendar, multi-view support, event modal popups, and role-based UI skeleton.
+Tech Stack
 
-    List of Appointments, basically. SQL statement to define them based on datetime, user, view etc.
+    Frontend: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS
 
-Payment Stuff
+    Backend: ASP.NET Core 8, Entity Framework Core, ASP.NET Identity
 
-    Research what prebuilt options for this are. Likely something google or venmo/stripe or something have already built out will do the trick
-    Will need to link somehow to a transaction id
+    Database: SQL Server (localdb for dev), EF Core Migrations
 
-Transactions
+    Testing: Vitest, React Testing Library, xUnit (back end)
 
-    Will need a list of transactional stuff. Handled by API and SQL
-    Probably use some basic sales style stuff for MVP before upgrading for better reporting and movement
+    Dev Tools: DB reset endpoints, dev login/testing helpers
+
+MVP Feature List
+
+    User login and role-based access (Manager, Provider, Client)
+
+    Calendar with multi-view (Day, Week, Month, Resource)
+
+    CRUD for calendar events/resources via modals
+
+    Event validation and error handling (no invalid times, required fields enforced)
+
+    Protected frontend routes & role context
+
+    Automated test coverage for calendar and API flows
+
+    Dev data seeding and DB reset for fast start
+
+Immediate Roadmap / Next Steps
+Short-Term Priorities:
+
+    Reservations & Booking
+
+        Add Reservation and AppointmentType models (DB, API, UI)
+
+        Booking and cancellation logic for clients
+
+        Link reservations to calendar events
+
+    Availability Management
+
+        Allow providers to set/edit available times
+
+        Enforce/validate booking within availability
+
+    Role-Based Filtering & Permissions
+
+        Restrict calendar/event visibility by role (own vs. all)
+
+        Enforce role-based CRUD permissions in API & UI
+
+    Packages & Session Tracking
+
+        Implement Packages and auto-decrementing logic
+
+        Connect reservations to packages
+
+    Admin & User Management UI
+
+        UI for role assignment, user management, and calendar/resource assignment
+
+    Error Handling/Notifications
+
+        Replace browser alerts with toast/snackbar UX for errors and success
+
+    API Caching Layer
+
+        Add React Query/SWR for event/resource APIs
+
+Long-Term / Full Feature Goals
+
+    Client self-registration, duplicate account merge
+
+    Custom appointment types (per manager/provider)
+
+    Payments & transaction history (Stripe or similar)
+
+    Document/waiver uploads and versioning
+
+    Location/capacity management
+
+    Reservation/appointment history & reporting
+
+    Mobile responsive UI and PWA
+
+    External calendar sync (Google, Apple, iCal)
+
+    Soft deletes, audit logs, tagging, advanced filtering
+
+    Admin dashboards, user analytics, dark mode
+
+Models (in Progress / Planned)
+
+    ApplicationUser: Auth & profile info, roles
+
+    Reservation: Booked instance of an AppointmentType, linked to user/provider
+
+    AppointmentType: Service definition (duration, location, price, waiver)
+
+    Package: Assignable, auto-decrementing sessions
+
+    Location: Bookable spaces, with capacity/hours
+
+    AvailabilitySlot: Provider-specific open/blocked times
+
+Setup & Development
+
+    Clone repo and run dotnet ef database update to apply migrations and seed dev data
+
+    Start backend (dotnet run) and frontend (npm run dev)
+
+    Access dev login for demo roles (manager, provider, client)
+
+    Use /api/devtools/reset-db to reset DB state in dev
+
+Testing
+
+    Run npm run test (front end) for all UI/API/unit tests
+
+    Backend: dotnet test
+
+Contributing
+
+Pull requests and issue tickets welcome!
+Roadmap is visible in this README—please file issues for bugs or feature requests.
+New contributors: see /docs for API/data model plans.
+License
+
+MIT License
