@@ -212,114 +212,122 @@ const Calendar = () => {
     const getNavigatorMode = () => (view === "Month" ? "Month" : "Day");
 
     return (
-        <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
-            <div className="calendar-sidebar w-64 bg-white shadow-md border-r border-gray-200">
-                <DayPilotNavigator
-                    theme="betterschedule_navigator"
-                    selectMode={getNavigatorMode()}
-                    showMonths={3}
-                    skipMonths={3}
-                    onTimeRangeSelected={(args) => setStartDate(args.day)}
-                    events={events}
-                />
-            </div>
+        <>
+            {process.env.NODE_ENV === "test" && (
+                <ul data-testid="calendar-event-titles" style={{ display: "none" }}>
+                    {events.map(e => <li key={e.id}>{e.text}</li>)}
+                </ul>
+            )}
 
-            <div className="calendar-main flex flex-col flex-1 min-w-0">
-                <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
-                    <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>
-                        Day
-                    </button>
-                    <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>
-                        Week
-                    </button>
-                    <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>
-                        Month
-                    </button>
-                    <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>
-                        Resources
-                    </button>
-                    <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">
-                        Today
-                    </button>
+            <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
+                <div className="calendar-sidebar w-64 bg-white shadow-md border-r border-gray-200">
+                    <DayPilotNavigator
+                        theme="betterschedule_navigator"
+                        selectMode={getNavigatorMode()}
+                        showMonths={3}
+                        skipMonths={3}
+                        onTimeRangeSelected={(args) => setStartDate(args.day)}
+                        events={events}
+                    />
                 </div>
 
-                <div className="calendar-body flex-1 overflow-auto">
-                    {view === "Day" && (
-                        <DayPilotCalendar
-                            viewType="Day"
-                            theme="betterschedule"
-                            startDate={startDate}
-                            events={events}
-                            durationBarVisible={false}
-                            onTimeRangeSelected={onTimeRangeSelected}
-                            onEventClick={onEventClick}
-                            headerHeight={40}
-                            onBeforeHeaderRender={(args) => {
-                                const { weekday, short } = formatWeekHeader(args.header.start);
-                                args.header.html = `
-                                <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                                  <span style="font-weight:600">${weekday}</span>
-                                  <span style="font-size:12px">${short}</span>
-                                </div>`;
-                            }}
-                        />
-                    )}
+                <div className="calendar-main flex flex-col flex-1 min-w-0">
+                    <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
+                        <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>
+                            Day
+                        </button>
+                        <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>
+                            Week
+                        </button>
+                        <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>
+                            Month
+                        </button>
+                        <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>
+                            Resources
+                        </button>
+                        <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">
+                            Today
+                        </button>
+                    </div>
 
-                    {view === "Week" && (
-                        <DayPilotCalendar
-                            viewType="Week"
-                            theme="betterschedule"
-                            startDate={startDate}
-                            events={events}
-                            durationBarVisible={false}
-                            onTimeRangeSelected={onTimeRangeSelected}
-                            onEventClick={onEventClick}
-                            headerHeight={40}
-                            onBeforeHeaderRender={(args) => {
-                                const { weekday, short } = formatWeekHeader(args.header.start);
-                                args.header.html = `
-                                <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                                  <span style="font-weight:600">${weekday}</span>
-                                  <span style="font-size:12px">${short}</span>
-                                </div>`;
-                            }}
-                        />
-                    )}
-
-                    {view === "Month" && (
-                        <div className="month-wrapper">
-                            <DayPilotMonth
+                    <div className="calendar-body flex-1 overflow-auto">
+                        {view === "Day" && (
+                            <DayPilotCalendar
+                                viewType="Day"
+                                theme="betterschedule"
                                 startDate={startDate}
-                                theme="monthlybetterschedule"
                                 events={events}
-                                eventBarVisible={false}
+                                durationBarVisible={false}
                                 onTimeRangeSelected={onTimeRangeSelected}
                                 onEventClick={onEventClick}
+                                headerHeight={40}
+                                onBeforeHeaderRender={(args) => {
+                                    const { weekday, short } = formatWeekHeader(args.header.start);
+                                    args.header.html = `
+                  <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                    <span style="font-weight:600">${weekday}</span>
+                    <span style="font-size:12px">${short}</span>
+                  </div>`;
+                                }}
                             />
-                        </div>
-                    )}
+                        )}
 
-                    {view === "Resources" && (
-                        <DayPilotScheduler
-                            startDate={startDate}
-                            days={5} //TODO: Make this dynamic based on user selection
-                            scale="Hour"
-                            timeHeaders={[
-                                { groupBy: "Day", format: "dddd MMM d" },
-                                { groupBy: "Hour" }
-                            ]}
-                            resources={resources}
-                            events={events}
-                            onEventClick={onEventClick}
-                            cellWidth={50}
-                            headerHeight={30}
-                            rowHeaderWidth={150}
-                            durationBarVisible={false}
-                        />
-                    )}
+                        {view === "Week" && (
+                            <DayPilotCalendar
+                                viewType="Week"
+                                theme="betterschedule"
+                                startDate={startDate}
+                                events={events}
+                                durationBarVisible={false}
+                                onTimeRangeSelected={onTimeRangeSelected}
+                                onEventClick={onEventClick}
+                                headerHeight={40}
+                                onBeforeHeaderRender={(args) => {
+                                    const { weekday, short } = formatWeekHeader(args.header.start);
+                                    args.header.html = `
+                  <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                    <span style="font-weight:600">${weekday}</span>
+                    <span style="font-size:12px">${short}</span>
+                  </div>`;
+                                }}
+                            />
+                        )}
+
+                        {view === "Month" && (
+                            <div className="month-wrapper">
+                                <DayPilotMonth
+                                    startDate={startDate}
+                                    theme="monthlybetterschedule"
+                                    events={events}
+                                    eventBarVisible={false}
+                                    onTimeRangeSelected={onTimeRangeSelected}
+                                    onEventClick={onEventClick}
+                                />
+                            </div>
+                        )}
+
+                        {view === "Resources" && (
+                            <DayPilotScheduler
+                                startDate={startDate}
+                                days={5}
+                                scale="Hour"
+                                timeHeaders={[
+                                    { groupBy: "Day", format: "dddd MMM d" },
+                                    { groupBy: "Hour" }
+                                ]}
+                                resources={resources}
+                                events={events}
+                                onEventClick={onEventClick}
+                                cellWidth={50}
+                                headerHeight={30}
+                                rowHeaderWidth={150}
+                                durationBarVisible={false}
+                            />
+                        )}
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
