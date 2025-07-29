@@ -1,0 +1,112 @@
+﻿using BetterSchedule.Server.Data;
+using BetterSchedule.Server.Database;
+using BetterSchedule.Server.Models.DTOs.AppointmentType;
+using BetterSchedule.Server.Models.Scheduling;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace BetterSchedule.Server.Controllers.Scheduling
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class AppointmentTypeController : ControllerBase
+    {
+        private readonly ApplicationDbContext _dbContext;
+
+        public AppointmentTypeController(ApplicationDbContext dbContext)
+        {
+            _dbContext = dbContext;
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> GetAll()
+        {
+            var types = await _dbContext.AppointmentTypes
+                .Where(t => !t.IsDeleted)
+                .ToListAsync();
+
+            return Ok(types.Select(ToDto));
+        }
+
+        [HttpGet("{id}")]
+        public async Task<ActionResult<AppointmentTypeDto>> GetById(int id)
+        {
+            var t = await _dbContext.AppointmentTypes.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            if (t == null) return NotFound();
+            return Ok(ToDto(t));
+        }
+
+        [HttpPost]
+        public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var type = new AppointmentType
+            {
+                Name = dto.Name,
+                Duration = dto.Duration,
+                Price = dto.Price ?? 0.00m, // Default to $0 if not supplied
+                Description = dto.Description,
+                CreatedByUserId = dto.CreatedByUserId,
+                AssignedLocationId = dto.AssignedLocationId,
+                IsPublic = dto.IsPublic,
+                RequiresWaiver = dto.RequiresWaiver,
+                IsDeleted = false
+            };
+            _dbContext.AppointmentTypes.Add(type);
+            await _dbContext.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetById), new { id = type.Id }, ToDto(type));
+        }
+
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, [FromBody] UpdateAppointmentTypeDto dto)
+        {
+            var type = await _dbContext.AppointmentTypes.FindAsync(id);
+            if (type == null || type.IsDeleted) return NotFound();
+
+            if (dto.Name != null) type.Name = dto.Name;
+            if (dto.Duration.HasValue) type.Duration = dto.Duration.Value;
+            if (dto.Price.HasValue) type.Price = dto.Price.Value;
+            if (dto.Description != null) type.Description = dto.Description;
+            if (dto.IsPublic.HasValue) type.IsPublic = dto.IsPublic.Value;
+            if (dto.RequiresWaiver.HasValue) type.RequiresWaiver = dto.RequiresWaiver.Value;
+            if (dto.IsDeleted.HasValue) type.IsDeleted = dto.IsDeleted.Value;
+            if (dto.AssignedLocationId != null) type.AssignedLocationId = dto.AssignedLocationId;
+
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> SoftDelete(int id)
+        {
+            var type = await _dbContext.AppointmentTypes.FindAsync(id);
+            if (type == null || type.IsDeleted) return NotFound();
+
+            type.IsDeleted = true;
+            await _dbContext.SaveChangesAsync();
+            return NoContent();
+        }
+
+        private static AppointmentTypeDto ToDto(AppointmentType t) => new AppointmentTypeDto
+        {
+            Id = t.Id,
+            Name = t.Name,
+            Duration = t.Duration,
+            Price = t.Price,
+            Description = t.Description,
+            CreatedByUserId = t.CreatedByUserId,
+            AssignedLocationId = t.AssignedLocationId,
+            IsPublic = t.IsPublic,
+            RequiresWaiver = t.RequiresWaiver,
+            IsDeleted = t.IsDeleted
+        };
+    }
+}

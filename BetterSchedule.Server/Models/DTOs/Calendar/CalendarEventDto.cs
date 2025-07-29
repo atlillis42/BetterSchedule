@@ -1,4 +1,4 @@
-﻿namespace BetterSchedule.Server.Models.DTOs
+﻿namespace BetterSchedule.Server.Models.DTOs.Calendar
 {
     public sealed record CalendarEventDto
     {

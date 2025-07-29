@@ -36,7 +36,7 @@ namespace BetterSchedule.Server.Models.Scheduling
         public bool IsDeleted { get; set; } = false; // Soft delete
 
         // List of all participants (useful for group appointments, additional providers, or client + guest(s))
-        //TODO: public List<ReservationParticipant> Participants { get; set; } = new();    // Uncomment later
+        public List<ReservationParticipant> Participants { get; set; } = new();  
 
         // TODO: public Guid? RecurrenceId { get; set; } // Uncomment for future recurring booking support
     }
