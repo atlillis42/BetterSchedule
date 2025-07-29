@@ -1,7 +1,7 @@
 ﻿using BetterSchedule.Server.Data;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models;
-using BetterSchedule.Server.Models.DTOs;
+using BetterSchedule.Server.Models.DTOs.Calendar;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
