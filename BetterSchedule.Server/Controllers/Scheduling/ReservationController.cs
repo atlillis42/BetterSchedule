@@ -2,6 +2,7 @@
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
+using BetterSchedule.Server.Models.DTOs.Common;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
@@ -25,15 +26,59 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _dbContext = dbContext;
         }
 
+        /// <summary>
+        /// Get reservations filtered by client/provider, date range, appointment type, status.
+        /// Example: /api/reservation?clientId=...&providerId=...&start=2025-07-01&end=2025-07-31&status=Booked
+        /// </summary>
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ReservationDto>>> GetAll()
+        public async Task<ActionResult<PagedResult<ReservationDto>>> GetFiltered(
+            [FromQuery] string? clientId,
+            [FromQuery] string? providerId,
+            [FromQuery] int? appointmentTypeId,
+            [FromQuery] string? status,
+            [FromQuery] DateTime? start,
+            [FromQuery] DateTime? end,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20
+        )
         {
-            var reservations = await _dbContext.Reservations
+            var query = _dbContext.Reservations
+                .AsNoTracking()
+                .Where(r => !r.IsDeleted);
+
+            if (!string.IsNullOrWhiteSpace(clientId))
+                query = query.Where(r => r.ClientId == clientId);
+
+            if (!string.IsNullOrWhiteSpace(providerId))
+                query = query.Where(r => r.ServiceProviderId == providerId);
+
+            if (appointmentTypeId.HasValue)
+                query = query.Where(r => r.AppointmentTypeId == appointmentTypeId);
+
+            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReservationStatus>(status, true, out var parsedStatus))
+                query = query.Where(r => r.Status == parsedStatus);
+
+            if (start.HasValue)
+                query = query.Where(r => r.EndTime >= start.Value);
+
+            if (end.HasValue)
+                query = query.Where(r => r.StartTime <= end.Value);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .OrderBy(r => r.StartTime)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Include(r => r.Participants)
-                .Where(r => !r.IsDeleted)
                 .ToListAsync();
 
-            return Ok(reservations.Select(ToDto));
+            return Ok(new PagedResult<ReservationDto>
+            {
+                Items = items.Select(ToDto).ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            });
         }
 
         [HttpGet("{id}")]

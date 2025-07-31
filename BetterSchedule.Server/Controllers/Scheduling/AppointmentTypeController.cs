@@ -1,6 +1,7 @@
 ﻿using BetterSchedule.Server.Data;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
+using BetterSchedule.Server.Models.DTOs.Common;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -24,13 +25,49 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> GetAll()
+        public async Task<ActionResult<PagedResult<AppointmentTypeDto>>> GetFiltered(
+            [FromQuery] string? createdByUserId,
+            [FromQuery] bool? isPublic,
+            [FromQuery] bool? requiresWaiver,
+            [FromQuery] string? name,
+            [FromQuery] string? assignedLocationId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20
+        )
         {
-            var types = await _dbContext.AppointmentTypes
-                .Where(t => !t.IsDeleted)
+            var query = _dbContext.AppointmentTypes
+                .AsNoTracking()
+                .Where(t => !t.IsDeleted);
+
+            if (!string.IsNullOrWhiteSpace(createdByUserId))
+                query = query.Where(t => t.CreatedByUserId == createdByUserId);
+
+            if (isPublic.HasValue)
+                query = query.Where(t => t.IsPublic == isPublic);
+
+            if (requiresWaiver.HasValue)
+                query = query.Where(t => t.RequiresWaiver == requiresWaiver);
+
+            if (!string.IsNullOrWhiteSpace(name))
+                query = query.Where(t => t.Name.Contains(name));
+
+            if (!string.IsNullOrWhiteSpace(assignedLocationId))
+                query = query.Where(t => t.AssignedLocationId == assignedLocationId);
+
+            var totalCount = await query.CountAsync();
+            var items = await query
+                .OrderBy(t => t.Name)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .ToListAsync();
 
-            return Ok(types.Select(ToDto));
+            return Ok(new PagedResult<AppointmentTypeDto>
+            {
+                Items = items.Select(ToDto).ToList(),
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            });
         }
 
         [HttpGet("{id}")]
