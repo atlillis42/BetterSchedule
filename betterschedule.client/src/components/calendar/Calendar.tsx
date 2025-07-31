@@ -16,7 +16,7 @@ import {
 import type {
     CalendarTimeRangeSelectedArgs,
 } from "@/types/daypilotTypes";
-import type { ApiEvent, UiEvent, CalendarResource } from "@/types/calendarDataTypes";
+import type { UiEvent, CalendarResource } from "@/types/calendarDataTypes";
 import "@styles/Calendar.css";
 import { formatWeekHeader, eventModalFields, getVisibleRange, buildEventApiDto, combineDateTime, extractEventFields, getLocalDateString, getLocalTimeString, toUiEvent } from "./CalendarUtilities";
 
