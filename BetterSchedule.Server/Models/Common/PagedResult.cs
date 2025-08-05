@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BetterSchedule.Server.Models.DTOs.Common
+namespace BetterSchedule.Server.Models.Common
 {
     public class PagedResult<T>
     {

@@ -2,14 +2,14 @@
 {
     public class UpdateAppointmentTypeDto
     {
-        public int Id { get; set; }
-        public string? Name { get; set; }
-        public TimeSpan? Duration { get; set; }
-        public decimal? Price { get; set; }
-        public string? Description { get; set; }
-        public bool? IsPublic { get; set; }
-        public bool? RequiresWaiver { get; set; }
-        public bool? IsDeleted { get; set; }
-        public string? AssignedLocationId { get; set; }
+        public int Id { get; init; }
+        public string? Name { get; init; }
+        public TimeSpan? Duration { get; init; }
+        public decimal? Price { get; init; }
+        public string? Description { get; init; }
+        public bool? IsPublic { get; init; }
+        public bool? RequiresWaiver { get; init; }
+        public bool? IsDeleted { get; init; }
+        public string? AssignedLocationId { get; init; }
     }
 }

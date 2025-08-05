@@ -17,10 +17,10 @@ namespace BetterSchedule.Server.Models.Scheduling
         public int AppointmentTypeId { get; set; }    // FK to AppointmentType
 
         [Required]
-        public DateTime StartTime { get; set; }
+        public DateTimeOffset StartTime { get; set; }
 
         [Required]
-        public DateTime EndTime { get; set; }
+        public DateTimeOffset EndTime { get; set; }
 
         public string? LocationId { get; set; }
 
@@ -30,8 +30,8 @@ namespace BetterSchedule.Server.Models.Scheduling
 
         public string? Notes { get; set; }
 
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-        public DateTime? UpdatedAt { get; set; }
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset? UpdatedAt { get; set; }
 
         public bool IsDeleted { get; set; } = false; // Soft delete
 

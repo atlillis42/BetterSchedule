@@ -4,21 +4,26 @@ import Login from "@auth/Login";
 import Calendar from "@calendar/Calendar";
 import MainLayout from "@layout/MainLayout";
 import ProtectedRoute from "@layout/ProtectedRoute";
+import { ToastContainer } from "react-toastify";
+
 
 const AppRoutes = () => {
     return (
-        <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/calendar"
-                element={
-                    <ProtectedRoute>
-                        <MainLayout>
-                            <Calendar />
-                        </MainLayout>
-                    </ProtectedRoute>  
-                }
-            />
-        </Routes>
+        <>
+            <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/calendar"
+                    element={
+                        <ProtectedRoute>
+                            <MainLayout>
+                                <Calendar />
+                            </MainLayout>
+                        </ProtectedRoute>
+                    }
+                />
+            </Routes>
+            <ToastContainer />
+        </>
     );
 };
 

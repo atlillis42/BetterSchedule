@@ -2,18 +2,18 @@
 {
     public class ReservationDto
     {
-        public int Id { get; set; }
-        public string ClientId { get; set; }
-        public string ServiceProviderId { get; set; }
-        public int AppointmentTypeId { get; set; }
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public string? LocationId { get; set; }
-        public int? PackageAssignmentId { get; set; }
-        public string Status { get; set; }
-        public string? Notes { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public DateTime? UpdatedAt { get; set; }
-        public bool IsDeleted { get; set; }
+        public int Id { get; init; }
+        public string ClientId { get; init; }
+        public string ServiceProviderId { get; init; }
+        public int AppointmentTypeId { get; init; }
+        public DateTimeOffset StartTime { get; init; }
+        public DateTimeOffset EndTime { get; init; }
+        public string? LocationId { get; init; }
+        public int? PackageAssignmentId { get; init; }
+        public string Status { get; init; }
+        public string? Notes { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public DateTimeOffset? UpdatedAt { get; init; }
+        public bool IsDeleted { get; init; }
     }
 }

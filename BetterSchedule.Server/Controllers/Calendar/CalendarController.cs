@@ -51,89 +51,100 @@ public class CalendarController : ControllerBase
 
     #endregion
 
-    #region Events
+    #region BlockedTimes
 
-    [HttpGet("events")]
-    [ProducesResponseType(typeof(IEnumerable<CalendarEventDto>), 200)]
-    public async Task<IActionResult> GetEventsAsync([FromQuery] DateTime start, [FromQuery] DateTime end)
+    /// <summary>
+    /// Returns blocked time slots that overlap the given window (start, end).
+    /// Respects soft-deleted blocks (IsDeleted = false).
+    /// </summary>
+    [HttpGet("blockedtimes")]
+    [ProducesResponseType(typeof(IEnumerable<BlockedTimeDto>), 200)]
+    public async Task<IActionResult> GetBlockedTimesAsync(
+        [FromQuery] DateTimeOffset start,
+        [FromQuery] DateTimeOffset end)
     {
-        // Ensure the query parameters are treated as UTC to match stored values
-        var startUtc = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-        var endUtc = DateTime.SpecifyKind(end, DateTimeKind.Utc);
-
-        if (endUtc <= startUtc)
-        {
+        // Basic validation: End must be after start
+        if (end <= start)
             return BadRequest("End must be after start.");
-        }
 
-        var events = await _dbContext.CalendarEvents
+        // Overlap logic: returns any block that overlaps [start, end)
+        // That is: block starts before window ends, and ends after window starts
+        var blocks = await _dbContext.BlockedTimes
             .AsNoTracking()
-            .Where(e => e.StartUtc < endUtc && e.EndUtc > startUtc) // overlaps window
-            .Select(e => new CalendarEventDto
+            .Where(b => !b.IsDeleted && b.StartTime < end && b.EndTime > start)
+            .Select(b => new BlockedTimeDto
             {
-                Id = e.Id,
-                Text = e.Title,
-                StartUtc = e.StartUtc,
-                EndUtc = e.EndUtc,
-                ResourceId = e.ResourceId,
-                BackColor = e.BackColor
+                Id = b.Id,
+                Reason = b.Reason,
+                StartTime = b.StartTime,
+                EndTime = b.EndTime,
+                ResourceId = b.ResourceId,
+                BackColor = b.BackColor
             })
             .ToListAsync();
 
-        var probe = await _dbContext.CalendarEvents
-    .OrderBy(e => e.StartUtc)
-    .Select(e => new { e.Id, e.Title, e.StartUtc, e.EndUtc })
-    .ToListAsync();
-
-        return Ok(events);
+        return Ok(blocks);
     }
 
     /// <summary>
-    /// Create a new calendar event.
+    /// Create a new blocked time.
     /// </summary>
-    [HttpPost("events")]
-    [ProducesResponseType(typeof(CalendarEventDto), 201)]
-    public async Task<IActionResult> CreateEventAsync([FromBody] CalendarEventCreateDto payload)
+    [HttpPost("blockedtimes")]
+    [ProducesResponseType(typeof(BlockedTimeDto), 201)]
+    public async Task<IActionResult> CreateBlockedTimeAsync([FromBody] BlockedTimeCreateDto payload)
     {
-        var entity = new CalendarEvent
+        // Simple validation: require reason, start < end
+        if (string.IsNullOrWhiteSpace(payload.Reason))
+            return BadRequest("Reason is required.");
+        if (payload.EndTime <= payload.StartTime)
+            return BadRequest("End time must be after start time.");
+
+        var entity = new BlockedTime
         {
-            Title = payload.Text,
-            StartUtc = payload.StartUtc,
-            EndUtc = payload.EndUtc,
+            Reason = payload.Reason,
+            StartTime = payload.StartTime,
+            EndTime = payload.EndTime,
             ResourceId = payload.ResourceId,
-            BackColor = payload.BackColor ?? "#3a87ad"
+            BackColor = payload.BackColor ?? "#3a87ad",
+            IsDeleted = false
         };
 
-        _dbContext.CalendarEvents.Add(entity);
+        _dbContext.BlockedTimes.Add(entity);
         await _dbContext.SaveChangesAsync();
 
-        var dto = new CalendarEventDto
+        var dto = new BlockedTimeDto
         {
             Id = entity.Id,
-            Text = entity.Title,
-            StartUtc = entity.StartUtc,
-            EndUtc = entity.EndUtc,
+            Reason = entity.Reason,
+            StartTime = entity.StartTime,
+            EndTime = entity.EndTime,
             ResourceId = entity.ResourceId,
             BackColor = entity.BackColor
         };
 
-        return Created($"/api/calendar/events/{entity.Id}", dto);
+        return Created($"/api/calendar/blockedtimes/{entity.Id}", dto);
     }
 
     /// <summary>
-    /// Update an existing event.
+    /// Update an existing blocked time.
     /// </summary>
-    [HttpPut("events/{id:int}")]
+    [HttpPut("blockedtimes/{id:int}")]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
-    public async Task<IActionResult> UpdateEventAsync(int id, [FromBody] CalendarEventUpdateDto payload)
+    public async Task<IActionResult> UpdateBlockedTimeAsync(int id, [FromBody] BlockedTimeUpdateDto payload)
     {
-        var entity = await _dbContext.CalendarEvents.FindAsync(id);
-        if (entity is null) return NotFound();
+        // Simple validation: require reason, start < end
+        if (string.IsNullOrWhiteSpace(payload.Reason))
+            return BadRequest("Reason is required.");
+        if (payload.EndTime <= payload.StartTime)
+            return BadRequest("End time must be after start time.");
 
-        entity.Title = payload.Text;
-        entity.StartUtc = payload.StartUtc;
-        entity.EndUtc = payload.EndUtc;
+        var entity = await _dbContext.BlockedTimes.FindAsync(id);
+        if (entity is null || entity.IsDeleted) return NotFound();
+
+        entity.Reason = payload.Reason;
+        entity.StartTime = payload.StartTime;
+        entity.EndTime = payload.EndTime;
         entity.ResourceId = payload.ResourceId;
         entity.BackColor = payload.BackColor;
 
@@ -142,19 +153,21 @@ public class CalendarController : ControllerBase
     }
 
     /// <summary>
-    /// Delete an event by id.
+    /// Soft-delete a blocked time by id.
     /// </summary>
-    [HttpDelete("events/{id:int}")]
+    [HttpDelete("blockedtimes/{id:int}")]
     [ProducesResponseType(204)]
     [ProducesResponseType(404)]
-    public async Task<IActionResult> DeleteEventAsync(int id)
+    public async Task<IActionResult> DeleteBlockedTimeAsync(int id)
     {
-        var entity = await _dbContext.CalendarEvents.FindAsync(id);
-        if (entity is null) return NotFound();
+        var entity = await _dbContext.BlockedTimes.FindAsync(id);
+        if (entity is null || entity.IsDeleted) return NotFound();
 
-        _dbContext.CalendarEvents.Remove(entity);
+        entity.IsDeleted = true;
         await _dbContext.SaveChangesAsync();
         return NoContent();
     }
+
     #endregion
+
 }

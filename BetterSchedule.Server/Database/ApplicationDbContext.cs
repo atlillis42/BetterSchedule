@@ -12,7 +12,7 @@ namespace BetterSchedule.Server.Database
             : base(options) { }
 
         public DbSet<CalendarResource> CalendarResources { get; set; }
-        public DbSet<CalendarEvent> CalendarEvents { get; set; }
+        public DbSet<BlockedTime> BlockedTimes { get; set; }
         public DbSet<Reservation> Reservations { get; set; }
         public DbSet<AppointmentType> AppointmentTypes { get; set; }
         public DbSet<ReservationParticipant> ReservationParticipants { get; set; }

@@ -5,19 +5,17 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
     public class CreateReservationDto
     {
         [Required]
-        public string ClientId { get; set; }
+        public string ClientId { get; init; }
         [Required]
-        public string ServiceProviderId { get; set; }
+        public string ServiceProviderId { get; init; }
         [Required]
-        public int AppointmentTypeId { get; set; }
+        public int AppointmentTypeId { get; init; }
         [Required]
-        public DateTime StartTime { get; set; }
+        public DateTimeOffset StartTime { get; init; }
         [Required]
-        public DateTime EndTime { get; set; }
-
-
-        public string? LocationId { get; set; }
-        public int? PackageAssignmentId { get; set; }
-        public string? Notes { get; set; }
+        public DateTimeOffset EndTime { get; init; }
+        public string? LocationId { get; init; }
+        public int? PackageAssignmentId { get; init; }
+        public string? Notes { get; init; }
     }
 }
