@@ -3,7 +3,8 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import { AuthProvider } from "./components/auth/AuthContext";
-import "./styles/tailwind.css"; // Remove if no longer using Tailwind or global styles
+import "react-toastify/dist/ReactToastify.css";
+import "./styles/tailwind.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
@@ -11,6 +12,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <BrowserRouter>
                 <AppRoutes />
             </BrowserRouter>
-        </AuthProvider>       
+        </AuthProvider>
     </React.StrictMode>
 );

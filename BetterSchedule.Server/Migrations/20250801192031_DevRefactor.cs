@@ -6,13 +6,35 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial : Migration
+    public partial class DevRefactor : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.EnsureSchema(
                 name: "identity");
+
+            migrationBuilder.CreateTable(
+                name: "AppointmentTypes",
+                schema: "identity",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Duration = table.Column<TimeSpan>(type: "time", nullable: false),
+                    Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedByUserId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AssignedLocationId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsPublic = table.Column<bool>(type: "bit", nullable: false),
+                    RequiresWaiver = table.Column<bool>(type: "bit", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AppointmentTypes", x => x.Id);
+                });
 
             migrationBuilder.CreateTable(
                 name: "AspNetRoles",
@@ -35,6 +57,8 @@ namespace BetterSchedule.Server.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    FullName = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -68,6 +92,31 @@ namespace BetterSchedule.Server.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CalendarResources", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Reservations",
+                schema: "identity",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ClientId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    ServiceProviderId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    StartTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    EndTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    LocationId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    PackageAssignmentId = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Notes = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Reservations", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -188,27 +237,51 @@ namespace BetterSchedule.Server.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "CalendarEvents",
+                name: "BlockedTimes",
                 schema: "identity",
                 columns: table => new
                 {
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
-                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    StartUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    EndUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Reason = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    StartTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    EndTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     ResourceId = table.Column<int>(type: "int", nullable: true),
-                    BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_CalendarEvents", x => x.Id);
+                    table.PrimaryKey("PK_BlockedTimes", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_CalendarEvents_CalendarResources_ResourceId",
+                        name: "FK_BlockedTimes_CalendarResources_ResourceId",
                         column: x => x.ResourceId,
                         principalSchema: "identity",
                         principalTable: "CalendarResources",
                         principalColumn: "Id");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ReservationParticipants",
+                schema: "identity",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ReservationId = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Role = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ReservationParticipants", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ReservationParticipants_Reservations_ReservationId",
+                        column: x => x.ReservationId,
+                        principalSchema: "identity",
+                        principalTable: "Reservations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
@@ -258,15 +331,25 @@ namespace BetterSchedule.Server.Migrations
                 filter: "[NormalizedUserName] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_CalendarEvents_ResourceId",
+                name: "IX_BlockedTimes_ResourceId",
                 schema: "identity",
-                table: "CalendarEvents",
+                table: "BlockedTimes",
                 column: "ResourceId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReservationParticipants_ReservationId",
+                schema: "identity",
+                table: "ReservationParticipants",
+                column: "ReservationId");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "AppointmentTypes",
+                schema: "identity");
+
             migrationBuilder.DropTable(
                 name: "AspNetRoleClaims",
                 schema: "identity");
@@ -288,7 +371,11 @@ namespace BetterSchedule.Server.Migrations
                 schema: "identity");
 
             migrationBuilder.DropTable(
-                name: "CalendarEvents",
+                name: "BlockedTimes",
+                schema: "identity");
+
+            migrationBuilder.DropTable(
+                name: "ReservationParticipants",
                 schema: "identity");
 
             migrationBuilder.DropTable(
@@ -301,6 +388,10 @@ namespace BetterSchedule.Server.Migrations
 
             migrationBuilder.DropTable(
                 name: "CalendarResources",
+                schema: "identity");
+
+            migrationBuilder.DropTable(
+                name: "Reservations",
                 schema: "identity");
         }
     }

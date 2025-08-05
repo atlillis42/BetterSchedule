@@ -42,6 +42,12 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<string>("FullName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("bit");
 
@@ -88,7 +94,7 @@ namespace BetterSchedule.Server.Migrations
                     b.ToTable("AspNetUsers", "identity");
                 });
 
-            modelBuilder.Entity("BetterSchedule.Server.Models.CalendarEvent", b =>
+            modelBuilder.Entity("BetterSchedule.Server.Models.BlockedTime", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -99,24 +105,27 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("BackColor")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTimeOffset>("EndUtc")
+                    b.Property<DateTimeOffset>("EndTime")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("ResourceId")
                         .HasColumnType("int");
 
-                    b.Property<DateTimeOffset>("StartUtc")
+                    b.Property<DateTimeOffset>("StartTime")
                         .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("ResourceId");
 
-                    b.ToTable("CalendarEvents", "identity");
+                    b.ToTable("BlockedTimes", "identity");
                 });
 
             modelBuilder.Entity("BetterSchedule.Server.Models.CalendarResource", b =>
@@ -196,11 +205,11 @@ namespace BetterSchedule.Server.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
 
-                    b.Property<DateTime>("EndTime")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("EndTime")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -218,14 +227,14 @@ namespace BetterSchedule.Server.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("StartTime")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset>("StartTime")
+                        .HasColumnType("datetimeoffset");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");
 
@@ -390,7 +399,7 @@ namespace BetterSchedule.Server.Migrations
                     b.ToTable("AspNetUserTokens", "identity");
                 });
 
-            modelBuilder.Entity("BetterSchedule.Server.Models.CalendarEvent", b =>
+            modelBuilder.Entity("BetterSchedule.Server.Models.BlockedTime", b =>
                 {
                     b.HasOne("BetterSchedule.Server.Models.CalendarResource", "Resource")
                         .WithMany()
@@ -402,7 +411,7 @@ namespace BetterSchedule.Server.Migrations
             modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.ReservationParticipant", b =>
                 {
                     b.HasOne("BetterSchedule.Server.Models.Scheduling.Reservation", "Reservation")
-                        .WithMany()
+                        .WithMany("Participants")
                         .HasForeignKey("ReservationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -459,6 +468,11 @@ namespace BetterSchedule.Server.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.Reservation", b =>
+                {
+                    b.Navigation("Participants");
                 });
 #pragma warning restore 612, 618
         }

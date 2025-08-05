@@ -1,15 +1,18 @@
-// Shared types for calendar events and resources (API, DayPilot, backend DTOs)
+import type { DayPilot } from "@daypilot/daypilot-lite-react";
+import type { BlockedTimeDto } from "@/api/blockedtime-api";
+import type { ReservationDto } from "@/api/reservation-api";
 
-export interface ApiEvent {
-    id: number | string;
+export interface UiEvent {
+    id: string | number;
     text: string;
-    startUtc: string;          // ISO-8601, UTC
-    endUtc: string;          // ISO-8601, UTC
-    resourceId?: number | string;
+    start: DayPilot.Date;
+    end: DayPilot.Date;
+    resource?: string | number;
     backColor?: string;
+    type?: "reservation" | "blockedTime";
+    reservation?: ReservationDto;
+    blockedTime?: BlockedTimeDto;
 }
-
-export type UiEvent = import("@daypilot/daypilot-lite-react").DayPilot.EventData;
 
 export interface CalendarResource {
     id: number;

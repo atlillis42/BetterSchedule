@@ -1,12 +1,6 @@
 import React from 'react';
-import Calendar from './components/calendar/Calendar.tsx';
+import AppRoutes from './routes/AppRoutes';
 
-
-const App: React.FC = () => {
-  return (
-    <Calendar/>
- 
-  );
-};
+const App: React.FC = () => <AppRoutes />;
 
 export default App;

@@ -1,7 +1,7 @@
 ﻿using BetterSchedule.Server.Data;
 using BetterSchedule.Server.Database;
+using BetterSchedule.Server.Models.Common;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
-using BetterSchedule.Server.Models.DTOs.Common;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;

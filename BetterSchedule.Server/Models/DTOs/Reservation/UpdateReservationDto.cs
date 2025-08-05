@@ -2,13 +2,13 @@
 {
     public class UpdateReservationDto
     {
-        public int Id { get; set; }
-        public string? Notes { get; set; }
-        public DateTime? StartTime { get; set; }
-        public DateTime? EndTime { get; set; }
-        public string? Status { get; set; }
-        public string? LocationId { get; set; }
-        public int? PackageAssignmentId { get; set; }
+        public int Id { get; init; }
+        public string? Notes { get; init; }
+        public DateTime? StartTime { get; init; }
+        public DateTime? EndTime { get; init; }
+        public string? Status { get; init; }
+        public string? LocationId { get; init; }
+        public int? PackageAssignmentId { get; init; }
         // Add more fields if you want to support updating more properties
     }
 }
