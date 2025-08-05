@@ -11,105 +11,129 @@ BetterSchedule aims to provide a powerful scheduling and booking system with mul
 
     Clients: Self-register, view, and manage their own appointments.
 
-Live Status
+Live Status (August 2025)
 
-    ✅ Authentication & roles: ASP.NET Core Identity, cookie-based login, user roles (Manager, Service Provider, Client), dev DB seeding, and front-end protected route logic.
+✅ Authentication & roles:
 
-    ✅ Calendar Core: Full CRUD for events/resources (DayPilot-based), robust event modal validation, and multi-view calendar (Day/Week/Month/Resource) with complete tests.
+    ASP.NET Core Identity, cookie-based login
 
-    ✅ Front-End Auth Context: React SPA state for login/logout, role switching, and protected UI.
+    User roles (Manager, Service Provider, Client)
 
-    ✅ Testing: Comprehensive tests for calendar UI, modals, and API edge cases.
+    Dev DB seeding and front-end protected route logic
 
-    ✅ Dev Tools: Demo data seeding and DB reset for quick starts.
+✅ Calendar Core:
 
-    ❌ Reservation/Booking Model: Not yet implemented (currently only calendar events/resources, no true “reservations”/“appointment types”/“packages”).
+    Full CRUD for reservations and blocked times, with custom React modals and robust validation
 
-    ❌ Availability Setup: No models/endpoints/UI for providers to set open/blocked hours.
+    Multi-view DayPilot calendar (Day/Week/Month/Resource)
 
-    ❌ Appointment Types/Services: Not yet implemented in backend or UI.
+    Event mapping, color-coding, and state management overhaul
 
-    ❌ Package/Session Tracking: No packages, decrementing, or package assignment yet.
+    Toast notifications for all actions (via react-toastify)
 
-    ❌ Role-based Data Filtering: Not yet enforcing per-role data visibility in calendar or API.
+✅ Front-End Auth Context:
 
-    ❌ Payment, Documents, Notifications: Not yet implemented.
+    React SPA state for login/logout, role switching, and protected UI
 
-    ❌ Reporting & History: Not yet implemented.
+✅ Dev Tools:
 
-    ❌ Admin UI for role/user management: Not yet implemented.
+    Demo data seeding and DB reset for quick starts
 
+⏳ Reservations & Booking:
+
+    [In Progress] New models and CRUD for Reservations and Appointment Types
+
+    Async client search and dynamic resource selection in modal forms
+
+⏳ API/Validation Refactor:
+
+    Modular API logic (reservation, blocked time, resources, client search)
+
+    Centralized axios instance with global error handling
+
+    Custom validation for each event type
+
+⏳ UI/UX Enhancements:
+
+    Improved modal design, toolbar controls, and mobile-responsiveness
+
+    Role-based routing, MainLayout, and consistent app styling
+
+❌ Availability Setup: Provider hours, open/blocked slot management
+❌ Package/Session Tracking
+❌ Payment, Documents, Notifications
+❌ Admin UI for role/user/resource management
+❌ Advanced Reporting, History, Audit, Analytics
 Screenshots
 
-Coming soon. Features include themed DayPilot calendar, multi-view support, event modal popups, and role-based UI skeleton.
+Coming soon: New calendar UI, modals, toast notifications, and themed layouts!
 Tech Stack
 
-    Frontend: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS
+    Frontend: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS, react-toastify
 
     Backend: ASP.NET Core 8, Entity Framework Core, ASP.NET Identity
 
     Database: SQL Server (localdb for dev), EF Core Migrations
 
-    Testing: Vitest, React Testing Library, xUnit (back end)
+    Testing: Vitest, React Testing Library, xUnit (backend)
 
-    Dev Tools: DB reset endpoints, dev login/testing helpers
+    Dev Tools: DB reset endpoints, demo login/testing helpers
 
 MVP Feature List
 
-    User login and role-based access (Manager, Provider, Client)
+User login and role-based access (Manager, Provider, Client)
 
-    Calendar with multi-view (Day, Week, Month, Resource)
+Calendar with multi-view (Day, Week, Month, Resource)
 
-    CRUD for calendar events/resources via modals
+CRUD for reservations and blocked times via custom modals
 
-    Event validation and error handling (no invalid times, required fields enforced)
+Field validation and error handling (required fields, date/time logic)
 
-    Protected frontend routes & role context
+Protected frontend routes & role context
 
-    Automated test coverage for calendar and API flows
+Toast notifications for all user actions and API errors
 
     Dev data seeding and DB reset for fast start
 
 Immediate Roadmap / Next Steps
 Short-Term Priorities:
+Reservations & Booking
 
-    Reservations & Booking
+Add Reservation and AppointmentType models (DB, API, UI)
 
-        Add Reservation and AppointmentType models (DB, API, UI)
+Booking and cancellation logic for clients
 
-        Booking and cancellation logic for clients
+    Link reservations to packages (future)
 
-        Link reservations to calendar events
+Availability Management
 
-    Availability Management
+Allow providers to set/edit available times
 
-        Allow providers to set/edit available times
+    Enforce/validate booking within availability
 
-        Enforce/validate booking within availability
+Role-Based Filtering & Permissions
 
-    Role-Based Filtering & Permissions
+Restrict calendar/event visibility by role (own vs. all)
 
-        Restrict calendar/event visibility by role (own vs. all)
+    Enforce role-based CRUD permissions in API & UI
 
-        Enforce role-based CRUD permissions in API & UI
+Packages & Session Tracking
 
-    Packages & Session Tracking
+Implement Packages and auto-decrementing logic
 
-        Implement Packages and auto-decrementing logic
+    Connect reservations to packages
 
-        Connect reservations to packages
+Admin & User Management UI
 
-    Admin & User Management UI
+    UI for role assignment, user management, and calendar/resource assignment
 
-        UI for role assignment, user management, and calendar/resource assignment
+Error Handling/Notifications
 
-    Error Handling/Notifications
+    Replace browser alerts with toast/snackbar UX for errors and success
 
-        Replace browser alerts with toast/snackbar UX for errors and success
+API Caching Layer
 
-    API Caching Layer
-
-        Add React Query/SWR for event/resource APIs
+    Add React Query/SWR for event/resource APIs
 
 Long-Term / Full Feature Goals
 
@@ -133,7 +157,7 @@ Long-Term / Full Feature Goals
 
     Admin dashboards, user analytics, dark mode
 
-Models (in Progress / Planned)
+Models (In Progress / Planned)
 
     ApplicationUser: Auth & profile info, roles
 
@@ -171,3 +195,5 @@ New contributors: see /docs for API/data model plans.
 License
 
 MIT License
+
+**Questions, feature requests, or bugs? File an Issue or start a PR—thanks for checking out BetterSchedule
