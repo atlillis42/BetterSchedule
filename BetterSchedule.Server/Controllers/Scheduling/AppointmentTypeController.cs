@@ -1,5 +1,4 @@
-﻿using BetterSchedule.Server.Data;
-using BetterSchedule.Server.Database;
+﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Common;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
 using BetterSchedule.Server.Models.Scheduling;
@@ -27,17 +26,20 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         [HttpGet]
         public async Task<ActionResult<PagedResult<AppointmentTypeDto>>> GetFiltered(
             [FromQuery] string? createdByUserId,
+            [FromQuery] string organizationId,
             [FromQuery] bool? isPublic,
             [FromQuery] bool? requiresWaiver,
             [FromQuery] string? name,
-            [FromQuery] string? assignedLocationId,
+            [FromQuery] int? assignedLocationId, 
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20
         )
         {
             var query = _dbContext.AppointmentTypes
                 .AsNoTracking()
-                .Where(t => !t.IsDeleted);
+                .Include(t => t.CreatedByUser)
+                .Include(t => t.AssignedLocation)
+                .Where(t => !t.IsDeleted && t.OrganizationId == organizationId);
 
             if (!string.IsNullOrWhiteSpace(createdByUserId))
                 query = query.Where(t => t.CreatedByUserId == createdByUserId);
@@ -51,8 +53,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (!string.IsNullOrWhiteSpace(name))
                 query = query.Where(t => t.Name.Contains(name));
 
-            if (!string.IsNullOrWhiteSpace(assignedLocationId))
-                query = query.Where(t => t.AssignedLocationId == assignedLocationId);
+            if (assignedLocationId.HasValue)
+                query = query.Where(t => t.AssignedLocationId == assignedLocationId.Value);
 
             var totalCount = await query.CountAsync();
             var items = await query
@@ -73,7 +75,11 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         [HttpGet("{id}")]
         public async Task<ActionResult<AppointmentTypeDto>> GetById(int id)
         {
-            var t = await _dbContext.AppointmentTypes.FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            var t = await _dbContext.AppointmentTypes
+                .Include(x => x.CreatedByUser)
+                .Include(x => x.AssignedLocation)
+                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+
             if (t == null) return NotFound();
             return Ok(ToDto(t));
         }
@@ -87,8 +93,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var type = new AppointmentType
             {
                 Name = dto.Name,
+                OrganizationId = dto.OrganizationId,
                 Duration = dto.Duration,
-                Price = dto.Price ?? 0.00m, // Default to $0 if not supplied
+                Price = dto.Price,
                 Description = dto.Description,
                 CreatedByUserId = dto.CreatedByUserId,
                 AssignedLocationId = dto.AssignedLocationId,
@@ -99,7 +106,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _dbContext.AppointmentTypes.Add(type);
             await _dbContext.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetById), new { id = type.Id }, ToDto(type));
+            // Fetch with navigation for DTO output
+            var created = await _dbContext.AppointmentTypes
+                .Include(x => x.CreatedByUser)
+                .Include(x => x.AssignedLocation)
+                .FirstOrDefaultAsync(x => x.Id == type.Id);
+
+            return CreatedAtAction(nameof(GetById), new { id = type.Id }, ToDto(created!));
         }
 
         [HttpPut("{id}")]
@@ -114,7 +127,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.Description != null) type.Description = dto.Description;
             if (dto.IsPublic.HasValue) type.IsPublic = dto.IsPublic.Value;
             if (dto.RequiresWaiver.HasValue) type.RequiresWaiver = dto.RequiresWaiver.Value;
-            if (dto.IsDeleted.HasValue) type.IsDeleted = dto.IsDeleted.Value;
             if (dto.AssignedLocationId != null) type.AssignedLocationId = dto.AssignedLocationId;
 
             await _dbContext.SaveChangesAsync();
@@ -140,10 +152,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             Price = t.Price,
             Description = t.Description,
             CreatedByUserId = t.CreatedByUserId,
+            CreatedByUserName = t.CreatedByUser?.UserName, 
             AssignedLocationId = t.AssignedLocationId,
+            AssignedLocationName = t.AssignedLocation?.Name, 
             IsPublic = t.IsPublic,
             RequiresWaiver = t.RequiresWaiver,
-            IsDeleted = t.IsDeleted
+            IsDeleted = t.IsDeleted,
+            OrganizationId = t.OrganizationId
         };
     }
 }

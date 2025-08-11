@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using BetterSchedule.Server.Models.Tenant;
+using Microsoft.AspNetCore.Identity;
 
 namespace BetterSchedule.Server.Database
 {
@@ -6,6 +7,8 @@ namespace BetterSchedule.Server.Database
     {
         public string? FullName { get; set; }
         public bool IsDeleted { get; set; } = false;
+        public string? OrganizationId { get; set; }
+        public Organization? Organization { get; set; }
 
     }
 }

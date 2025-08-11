@@ -24,20 +24,27 @@ export interface CreateAppointmentTypeDto {
     requiresWaiver: boolean;
 }
 
+interface PagedResult<T> {
+    items: T[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+}
+
 export async function getAppointmentTypes(): Promise<AppointmentTypeDto[]> {
-    const { data } = await api.get<AppointmentTypeDto[]>("/appointmenttypes");
-    return data;
+    const { data } = await api.get<PagedResult<AppointmentTypeDto>>("/appointmenttype");
+    return data.items;
 }
 
 export async function createAppointmentType(payload: CreateAppointmentTypeDto): Promise<AppointmentTypeDto> {
-    const { data } = await api.post("/appointmenttypes", payload);
+    const { data } = await api.post("/appointmenttype", payload);
     return data;
 }
 
 export async function updateAppointmentType(id: number, payload: Partial<CreateAppointmentTypeDto>): Promise<void> {
-    await api.put(`/appointmenttypes/${id}`, payload);
+    await api.put(`/appointmenttype/${id}`, payload);
 }
 
 export async function deleteAppointmentType(id: number): Promise<void> {
-    await api.delete(`/appointmenttypes/${id}`);
+    await api.delete(`/appointmenttype/${id}`);
 }

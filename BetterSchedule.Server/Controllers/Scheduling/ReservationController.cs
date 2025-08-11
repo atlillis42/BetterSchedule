@@ -1,14 +1,12 @@
-﻿using BetterSchedule.Server.Data;
-using BetterSchedule.Server.Database;
+﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Common;
-using BetterSchedule.Server.Models.DTOs;
-using BetterSchedule.Server.Models.DTOs.AppointmentType;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -27,17 +25,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         /// <summary>
-        /// Get reservations filtered by client/provider, date range, appointment type, status.
-        /// Example: /api/reservation?clientId=...&providerId=...&start=2025-07-01&end=2025-07-31&status=Booked
+        /// Get reservations filtered by client/provider, date range, appointment type, status, and organization.
+        /// Example: /api/reservation?organizationId=...&clientId=...&providerId=...&start=2025-07-01&end=2025-07-31&status=Booked
         /// </summary>
         [HttpGet]
         public async Task<ActionResult<PagedResult<ReservationDto>>> GetFiltered(
+            [FromQuery] string? organizationId,
             [FromQuery] string? clientId,
             [FromQuery] string? providerId,
             [FromQuery] int? appointmentTypeId,
             [FromQuery] string? status,
-            [FromQuery] DateTime? start,
-            [FromQuery] DateTime? end,
+            [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end,
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20
         )
@@ -45,6 +44,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var query = _dbContext.Reservations
                 .AsNoTracking()
                 .Where(r => !r.IsDeleted);
+
+            if (!string.IsNullOrWhiteSpace(organizationId))
+                query = query.Where(r => r.OrganizationId == organizationId);
 
             if (!string.IsNullOrWhiteSpace(clientId))
                 query = query.Where(r => r.ClientId == clientId);
@@ -109,7 +111,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 PackageAssignmentId = dto.PackageAssignmentId,
                 Notes = dto.Notes,
                 Status = ReservationStatus.Booked,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow,
+                OrganizationId = dto.OrganizationId 
             };
 
             _dbContext.Reservations.Add(reservation);
@@ -132,7 +135,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.LocationId != null) reservation.LocationId = dto.LocationId;
             if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId.Value;
 
-            reservation.UpdatedAt = DateTime.UtcNow;
+            reservation.UpdatedAt = DateTimeOffset.UtcNow;
             await _dbContext.SaveChangesAsync();
 
             return NoContent();
@@ -163,7 +166,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             Notes = r.Notes,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
-            IsDeleted = r.IsDeleted
+            IsDeleted = r.IsDeleted,
+            OrganizationId = r.OrganizationId
         };
     }
 }

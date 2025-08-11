@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using BetterSchedule.Server.Models.Tenant;
+using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Models.Scheduling
 {
@@ -16,6 +17,10 @@ namespace BetterSchedule.Server.Models.Scheduling
 
         [Required]
         public ReservationParticipantRole Role { get; set; } = ReservationParticipantRole.Client;
+
+        [Required]
+        public string OrganizationId { get; set; }
+        public Organization Organization { get; set; }
     }
 
     public enum ReservationParticipantRole

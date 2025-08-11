@@ -1,5 +1,5 @@
 ﻿#if DEBUG
-using BetterSchedule.Server.Data;
+using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Calendar;
 using Microsoft.AspNetCore.Authorization;

@@ -75,9 +75,6 @@ const Login: React.FC = () => {
                     <span className="text-sm font-medium">Sign in with Google</span>
                 </button>
 
-                {status && (
-                    <p className="mt-4 text-sm text-center text-gray-600 whitespace-pre-wrap">{status}</p>
-                )}
             </div>
         </div>
     );

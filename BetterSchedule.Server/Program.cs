@@ -1,4 +1,4 @@
-using BetterSchedule.Server.Data;
+using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
@@ -22,6 +22,9 @@ builder.Services.AddIdentityCore<ApplicationUser>()
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders()
         .AddApiEndpoints();
+
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
+
 
 builder.Services.AddCors(options =>
 {
@@ -49,77 +52,59 @@ if (app.Environment.IsDevelopment())
     var services = scope.ServiceProvider;
     
     app.ApplyMigrations(); // Apply Migrations in development mode
-  
 
-    await IdentitySeeder.SeedDataAsync(services); // Seed dev identity & roles
 
     var db = services.GetRequiredService<ApplicationDbContext>();
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-    await DbInitializer.SeedAsync(db, userManager, roleManager, reset: false); //Seed Demo Data
+    await DbInitializer.SeedAsync(db, userManager, roleManager);
 
     #region Dev Login Points
+
     // Universal dev login (all roles)
-    app.MapPost("/api/dev/login", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login", async (UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
     {
         var user = await userManager.FindByEmailAsync("admin@dev.local");
         if (user == null)
-        {
             return Results.NotFound("Developer user not found.");
-        }
 
         await signInManager.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as dev user with all roles");
     });
 
     // Login as ServiceProvider only
-    app.MapPost("/api/dev/login/serviceprovider", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/serviceprovider", async (UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
     {
-        var email = "provider@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
+        var user = await userManager.FindByEmailAsync("provider@dev.local");
         if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "ServiceProvider");
-        }
+            return Results.NotFound("Developer ServiceProvider not found.");
 
         await signInManager.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Service Provider");
     });
 
     // Login as Client only
-    app.MapPost("/api/dev/login/client", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/client", async (UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
     {
-        var email = "client@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
+        var user = await userManager.FindByEmailAsync("client@dev.local");
         if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "Client");
-        }
+            return Results.NotFound("Developer Client not found.");
 
         await signInManager.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Client");
     });
 
     // Hybrid login: ServiceProvider + Client
-    app.MapPost("/api/dev/login/hybrid", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/hybrid", async (UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
     {
-        var email = "hybrid@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
+        var user = await userManager.FindByEmailAsync("hybrid@dev.local");
         if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "ServiceProvider");
-            await userManager.AddToRoleAsync(user, "Client");
-        }
+            return Results.NotFound("Developer hybrid user not found.");
 
         await signInManager.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Hybrid (ServiceProvider + Client)");
     });
+
     #endregion
 
     app.UseSwagger();
