@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- AI helper artifacts ---
+changes-for-ai.txt
+commit-msg.txt
+*.diff
+*.patch
+*.ai.txt
+
+# --- Repomix outputs ---
+repomix-output.xml
+repomix-output*.*
+**/repomix-output.xml
+**/repomix-output*.*
+repomix/
+.repominx*/  
