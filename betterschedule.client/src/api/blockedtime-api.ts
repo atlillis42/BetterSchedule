@@ -1,42 +1,63 @@
 import { api } from "@auth/axios";
+import { toast } from "react-toastify";
 
-export interface BlockedTimeDto {
+export type BlockedTimeDto = {
     id: number;
+    organizationId: string;
     reason: string;
-    startTime: string; // ISO string
-    endTime: string;   // ISO string
-    resourceId?: number;
-    backColor?: string;
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    resourceId: number;
+    backColor?: string | null;
     isDeleted: boolean;
-}
+};
 
-export interface CreateBlockedTimeDto {
+export type CreateBlockedTimeDto = {
     reason: string;
-    startTime: string;
-    endTime: string;
-    resourceId?: number;
-    backColor?: string;
-}
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    resourceId: number;
+    backColor?: string | null;
+};
 
-export async function getBlockedTimes(params?: { start: string; end: string }): Promise<BlockedTimeDto[]> {
-    const { data } = await api.get<BlockedTimeDto[]>("/calendar/blockedtimes", { params });
+export type UpdateBlockedTimeDto = {
+    reason: string;
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    resourceId: number;
+    backColor?: string | null;
+};
+
+export async function getBlockedTimes(params: {
+    start?: string;
+    end?: string;
+}): Promise<BlockedTimeDto[]> {
+    const { data } = await api.get("/blocked-times", { params });
     return data;
 }
 
-export async function getAllBlockedTimes(): Promise<BlockedTimeDto[]> {
-    const { data } = await api.get<BlockedTimeDto[]>("/calendar/blockedtimes/all");
+export async function createBlockedTime(
+    payload: CreateBlockedTimeDto,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<BlockedTimeDto> {
+    const { data } = await api.post("/blocked-times", payload);
+    if (opts.toastSuccess) toast.success("Blocked time created.");
     return data;
 }
 
-export async function createBlockedTime(payload: CreateBlockedTimeDto): Promise<BlockedTimeDto> {
-    const { data } = await api.post("/calendar/blockedtimes", payload);
-    return data;
+export async function updateBlockedTime(
+    id: number,
+    payload: UpdateBlockedTimeDto,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<void> {
+    await api.put(`/blocked-times/${id}`, payload);
+    if (opts.toastSuccess) toast.success("Blocked time updated.");
 }
 
-export async function updateBlockedTime(id: number, payload: CreateBlockedTimeDto): Promise<void> {
-    await api.put(`/calendar/blockedtimes/${id}`, payload);
-}
-
-export async function deleteBlockedTime(id: number): Promise<void> {
-    await api.delete(`/calendar/blockedtimes/${id}`);
+export async function deleteBlockedTime(
+    id: number,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<void> {
+    await api.delete(`/blocked-times/${id}`);
+    if (opts.toastSuccess) toast.success("Blocked time deleted.");
 }

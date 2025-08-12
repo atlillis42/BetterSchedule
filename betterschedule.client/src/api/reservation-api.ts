@@ -1,47 +1,73 @@
 import { api } from "@auth/axios";
+import { toast } from "react-toastify";
 
-export interface ReservationDto {
+export type ReservationDto = {
     id: number;
+    organizationId: string;
     clientId: string;
     serviceProviderId: string;
     appointmentTypeId: number;
-    startTime: string; // ISO string
-    endTime: string;   // ISO string
-    status: string;
-    notes?: string;
-    locationId?: string;
-    packageAssignmentId?: number;
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    status: string;    // "Booked" | "Completed" | "Canceled" | "NoShow" ...
+    notes?: string | null;
+    locationId?: string | null;
+    packageAssignmentId?: number | null;
     createdAt: string;
-    updatedAt?: string;
+    updatedAt?: string | null;
     isDeleted: boolean;
-}
+};
 
-export interface CreateReservationDto {
+export type CreateReservationDto = {
     clientId: string;
     serviceProviderId: string;
     appointmentTypeId: number;
-    startTime: string;
-    endTime: string;
-    locationId?: string;
-    packageAssignmentId?: number;
-    notes?: string;
-}
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    notes?: string | null;
+    locationId?: string | null;
+    packageAssignmentId?: number | null;
+};
 
-export async function getReservations(params?: { start?: string; end?: string }): Promise<ReservationDto[]> {
+export type UpdateReservationDto = {
+    notes?: string | null;
+    startTime?: string; // ISO
+    endTime?: string;   // ISO
+    status?: string | null;
+    locationId?: string | null;
+    packageAssignmentId?: number | null;
+};
+
+export async function getReservations(params: {
+    start?: string;
+    end?: string;
+}): Promise<ReservationDto[]> {
     const { data } = await api.get("/reservation", { params });
-    // Support both paged and non-paged response shapes
-    return data.items || data;
-}
-
-export async function createReservation(payload: CreateReservationDto): Promise<ReservationDto> {
-    const { data } = await api.post("/reservation", payload);
     return data;
 }
 
-export async function updateReservation(id: number, payload: Partial<CreateReservationDto>): Promise<void> {
-    await api.put(`/reservation/${id}`, payload);
+export async function createReservation(
+    payload: CreateReservationDto,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<ReservationDto> {
+    const { data } = await api.post("/reservation", payload);
+    if (opts.toastSuccess) toast.success("Reservation created.");
+    return data;
 }
 
-export async function deleteReservation(id: number): Promise<void> {
+export async function updateReservation(
+    id: number,
+    payload: UpdateReservationDto,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<void> {
+    await api.put(`/reservation/${id}`, payload);
+    if (opts.toastSuccess) toast.success("Reservation updated.");
+}
+
+export async function deleteReservation(
+    id: number,
+    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+): Promise<void> {
     await api.delete(`/reservation/${id}`);
+    if (opts.toastSuccess) toast.success("Reservation deleted.");
 }

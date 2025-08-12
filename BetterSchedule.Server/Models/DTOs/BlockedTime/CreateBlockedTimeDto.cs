@@ -1,12 +1,9 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace BetterSchedule.Server.Models.DTOs.Calendar
+namespace BetterSchedule.Server.Models.DTOs.BlockedTime
 {
-    public sealed record BlockedTimeDto
+    public class CreateBlockedTimeDto
     {
-        public int Id { get; init; }
-        [Required]
-        public string OrganizationId { get; set; }
         [Required]
         public string Reason { get; init; } = default!;
         [Required]
@@ -15,6 +12,5 @@ namespace BetterSchedule.Server.Models.DTOs.Calendar
         public DateTimeOffset EndTime { get; init; }
         public int? ResourceId { get; init; }
         public string? BackColor { get; init; }
-        public bool IsDeleted { get; init; }
     }
 }

@@ -5,16 +5,16 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
     public class ReservationDto
     {
         [Required]
-        public string OrganizationId { get; set; }
+        public string OrganizationId { get; set; } = default!;
 
         [Required]
         public int Id { get; init; }
 
         [Required]
-        public string ClientId { get; init; }
+        public string ClientId { get; init; } = default!;
 
         [Required]
-        public string ServiceProviderId { get; init; }
+        public string ServiceProviderId { get; init; } = default!;
 
         [Required]
         public int AppointmentTypeId { get; init; }
@@ -29,7 +29,7 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
         public int? PackageAssignmentId { get; init; }
 
         [Required]
-        public string Status { get; init; } // If using enum, may want to change type
+        public string Status { get; init; } = default!;
 
         public string? Notes { get; init; }
 

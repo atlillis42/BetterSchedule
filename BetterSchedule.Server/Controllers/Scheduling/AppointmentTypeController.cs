@@ -1,164 +1,181 @@
-﻿using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models.Common;
+﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Database;
+using BetterSchedule.Server.Models;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
-    public class AppointmentTypeController : ControllerBase
+    [Authorize] // reads for any signed-in user; writes are role-gated
+    public sealed class AppointmentTypeController : ControllerBase
     {
-        private readonly ApplicationDbContext _dbContext;
+        private readonly ApplicationDbContext _db;
+        public AppointmentTypeController(ApplicationDbContext db) => _db = db;
 
-        public AppointmentTypeController(ApplicationDbContext dbContext)
-        {
-            _dbContext = dbContext;
-        }
+        private string OrgId => User.GetOrgIdOrThrow();
 
+        // GET /api/appointmenttype
         [HttpGet]
-        public async Task<ActionResult<PagedResult<AppointmentTypeDto>>> GetFiltered(
-            [FromQuery] string? createdByUserId,
-            [FromQuery] string organizationId,
-            [FromQuery] bool? isPublic,
-            [FromQuery] bool? requiresWaiver,
-            [FromQuery] string? name,
-            [FromQuery] int? assignedLocationId, 
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20
-        )
+        public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> List(CancellationToken ct)
         {
-            var query = _dbContext.AppointmentTypes
+            var orgId = OrgId;
+
+            
+            var items = await _db.AppointmentTypes
                 .AsNoTracking()
-                .Include(t => t.CreatedByUser)
-                .Include(t => t.AssignedLocation)
-                .Where(t => !t.IsDeleted && t.OrganizationId == organizationId);
+                .Where(a => a.OrganizationId == orgId && !a.IsDeleted)
+                .OrderBy(a => a.Name)
+                .Select(a => new AppointmentTypeDto
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Duration = a.Duration,                  // TimeSpan
+                    Price = a.Price,
+                    Description = a.Description,
+                    CreatedByUserId = a.CreatedByUserId,    // stored on entity
+                    CreatedByUserName = _db.Users
+                        .Where(u => u.Id == a.CreatedByUserId)
+                        .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
+                        .FirstOrDefault(),
+                    AssignedLocationId = a.AssignedLocationId,
+                    AssignedLocationName = null,            
+                    IsPublic = a.IsPublic,
+                    RequiresWaiver = a.RequiresWaiver,
+                    IsDeleted = a.IsDeleted,
+                    OrganizationId = a.OrganizationId
+                })
+                .ToListAsync(ct);
 
-            if (!string.IsNullOrWhiteSpace(createdByUserId))
-                query = query.Where(t => t.CreatedByUserId == createdByUserId);
-
-            if (isPublic.HasValue)
-                query = query.Where(t => t.IsPublic == isPublic);
-
-            if (requiresWaiver.HasValue)
-                query = query.Where(t => t.RequiresWaiver == requiresWaiver);
-
-            if (!string.IsNullOrWhiteSpace(name))
-                query = query.Where(t => t.Name.Contains(name));
-
-            if (assignedLocationId.HasValue)
-                query = query.Where(t => t.AssignedLocationId == assignedLocationId.Value);
-
-            var totalCount = await query.CountAsync();
-            var items = await query
-                .OrderBy(t => t.Name)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            return Ok(new PagedResult<AppointmentTypeDto>
-            {
-                Items = items.Select(ToDto).ToList(),
-                Page = page,
-                PageSize = pageSize,
-                TotalCount = totalCount
-            });
+            return Ok(items);
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<AppointmentTypeDto>> GetById(int id)
+        // GET /api/appointmenttype/{id:int}
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<AppointmentTypeDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
-            var t = await _dbContext.AppointmentTypes
-                .Include(x => x.CreatedByUser)
-                .Include(x => x.AssignedLocation)
-                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            var orgId = OrgId;
 
-            if (t == null) return NotFound();
-            return Ok(ToDto(t));
+            var dto = await _db.AppointmentTypes
+                .AsNoTracking()
+                .Where(a => a.OrganizationId == orgId && !a.IsDeleted && a.Id == id)
+                .Select(a => new AppointmentTypeDto
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Duration = a.Duration,
+                    Price = a.Price,
+                    Description = a.Description,
+                    CreatedByUserId = a.CreatedByUserId,
+                    CreatedByUserName = _db.Users
+                        .Where(u => u.Id == a.CreatedByUserId)
+                        .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
+                        .FirstOrDefault(),
+                    AssignedLocationId = a.AssignedLocationId,
+                    AssignedLocationName = null,
+                    IsPublic = a.IsPublic,
+                    RequiresWaiver = a.RequiresWaiver,
+                    IsDeleted = a.IsDeleted,
+                    OrganizationId = a.OrganizationId
+                })
+                .FirstOrDefaultAsync(ct);
+
+            return dto is null ? NotFound() : Ok(dto);
         }
 
+        // POST /api/appointmenttype
         [HttpPost]
-        public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto)
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto, CancellationToken ct)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            var orgId = OrgId;
 
-            var type = new AppointmentType
+            
+            var entity = new AppointmentType
             {
+                OrganizationId = orgId,
                 Name = dto.Name,
-                OrganizationId = dto.OrganizationId,
                 Duration = dto.Duration,
                 Price = dto.Price,
                 Description = dto.Description,
-                CreatedByUserId = dto.CreatedByUserId,
+                CreatedByUserId = dto.CreatedByUserId,   // keep as provided; optionally override with current user if desired
                 AssignedLocationId = dto.AssignedLocationId,
                 IsPublic = dto.IsPublic,
                 RequiresWaiver = dto.RequiresWaiver,
                 IsDeleted = false
             };
-            _dbContext.AppointmentTypes.Add(type);
-            await _dbContext.SaveChangesAsync();
 
-            // Fetch with navigation for DTO output
-            var created = await _dbContext.AppointmentTypes
-                .Include(x => x.CreatedByUser)
-                .Include(x => x.AssignedLocation)
-                .FirstOrDefaultAsync(x => x.Id == type.Id);
+            _db.AppointmentTypes.Add(entity);
+            await _db.SaveChangesAsync(ct);
 
-            return CreatedAtAction(nameof(GetById), new { id = type.Id }, ToDto(created!));
+            // Return full read DTO
+            return CreatedAtAction(nameof(GetById), new { id = entity.Id }, new AppointmentTypeDto
+            {
+                Id = entity.Id,
+                Name = entity.Name,
+                Duration = entity.Duration,
+                Price = entity.Price,
+                Description = entity.Description,
+                CreatedByUserId = entity.CreatedByUserId,
+                CreatedByUserName = await _db.Users
+                    .Where(u => u.Id == entity.CreatedByUserId)
+                    .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
+                    .FirstOrDefaultAsync(ct),
+                AssignedLocationId = entity.AssignedLocationId,
+                AssignedLocationName = null,
+                IsPublic = entity.IsPublic,
+                RequiresWaiver = entity.RequiresWaiver,
+                IsDeleted = entity.IsDeleted,
+                OrganizationId = entity.OrganizationId
+            });
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] UpdateAppointmentTypeDto dto)
+        // PUT /api/appointmenttype/{id:int}
+        [HttpPut("{id:int}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateAppointmentTypeDto dto, CancellationToken ct)
         {
-            var type = await _dbContext.AppointmentTypes.FindAsync(id);
-            if (type == null || type.IsDeleted) return NotFound();
+            var orgId = OrgId;
 
-            if (dto.Name != null) type.Name = dto.Name;
-            if (dto.Duration.HasValue) type.Duration = dto.Duration.Value;
-            if (dto.Price.HasValue) type.Price = dto.Price.Value;
-            if (dto.Description != null) type.Description = dto.Description;
-            if (dto.IsPublic.HasValue) type.IsPublic = dto.IsPublic.Value;
-            if (dto.RequiresWaiver.HasValue) type.RequiresWaiver = dto.RequiresWaiver.Value;
-            if (dto.AssignedLocationId != null) type.AssignedLocationId = dto.AssignedLocationId;
+            
+            if (dto.Id != id) return BadRequest("Mismatched id.");
 
-            await _dbContext.SaveChangesAsync();
+            var entity = await _db.AppointmentTypes
+                .FirstOrDefaultAsync(a => a.Id == id && a.OrganizationId == orgId && !a.IsDeleted, ct);
+
+            if (entity is null) return NotFound();
+
+            entity.Name = dto.Name ?? entity.Name;
+            if (dto.Duration.HasValue) entity.Duration = dto.Duration.Value;
+            if (dto.Price.HasValue) entity.Price = dto.Price.Value;
+            entity.Description = dto.Description ?? entity.Description;
+            if (dto.IsPublic.HasValue) entity.IsPublic = dto.IsPublic.Value;
+            if (dto.RequiresWaiver.HasValue) entity.RequiresWaiver = dto.RequiresWaiver.Value;
+            if (dto.AssignedLocationId.HasValue) entity.AssignedLocationId = dto.AssignedLocationId;
+
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> SoftDelete(int id)
+        // DELETE /api/appointmenttype/{id:int}
+        [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var type = await _dbContext.AppointmentTypes.FindAsync(id);
-            if (type == null || type.IsDeleted) return NotFound();
+            var orgId = OrgId;
 
-            type.IsDeleted = true;
-            await _dbContext.SaveChangesAsync();
+            var entity = await _db.AppointmentTypes
+                .FirstOrDefaultAsync(a => a.Id == id && a.OrganizationId == orgId && !a.IsDeleted, ct);
+
+            if (entity is null) return NotFound();
+
+            entity.IsDeleted = true;
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
-
-        private static AppointmentTypeDto ToDto(AppointmentType t) => new AppointmentTypeDto
-        {
-            Id = t.Id,
-            Name = t.Name,
-            Duration = t.Duration,
-            Price = t.Price,
-            Description = t.Description,
-            CreatedByUserId = t.CreatedByUserId,
-            CreatedByUserName = t.CreatedByUser?.UserName, 
-            AssignedLocationId = t.AssignedLocationId,
-            AssignedLocationName = t.AssignedLocation?.Name, 
-            IsPublic = t.IsPublic,
-            RequiresWaiver = t.RequiresWaiver,
-            IsDeleted = t.IsDeleted,
-            OrganizationId = t.OrganizationId
-        };
     }
 }

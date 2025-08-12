@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Collections.Generic;
 
-namespace BetterSchedule.Server.Models
+namespace BetterSchedule.Server.Models.Scheduling
 {
     public class CalendarResource
     {
@@ -14,9 +14,11 @@ namespace BetterSchedule.Server.Models
         public string? BackColor { get; set; } = "#d0d0d0";
 
         [Required]
-        public string OrganizationId { get; set; }
-        public Organization Organization { get; set; }
+        public string OrganizationId { get; set; } = default!;
+        public Organization Organization { get; set; } = default!;
 
         public ICollection<BlockedTime> BlockedTimes { get; set; } = new List<BlockedTime>();
+
+        public bool IsDeleted { get; set; } = false;
     }
 }

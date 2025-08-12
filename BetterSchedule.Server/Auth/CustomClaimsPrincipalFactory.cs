@@ -1,5 +1,6 @@
 ﻿using BetterSchedule.Server.Database;
 using Microsoft.AspNetCore.Identity;
+using BetterSchedule.Server.Models.Identity;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
 using System.Threading.Tasks;

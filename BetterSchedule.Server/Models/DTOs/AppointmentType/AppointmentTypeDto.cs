@@ -8,7 +8,7 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
         public int Id { get; init; }
 
         [Required]
-        public string Name { get; init; }
+        public string Name { get; init; } = string.Empty;
 
         [Required]
         public TimeSpan Duration { get; init; }
@@ -17,7 +17,7 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
         public string? Description { get; init; }
 
         [Required]
-        public string CreatedByUserId { get; init; }
+        public string CreatedByUserId { get; init; } = default!;
         public string? CreatedByUserName { get; init; } 
 
         public int? AssignedLocationId { get; init; }
@@ -28,6 +28,6 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
         public bool IsDeleted { get; init; }
 
         [Required]
-        public string OrganizationId { get; init; }
+        public string OrganizationId { get; init; } = default!;
     }
 }

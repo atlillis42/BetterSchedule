@@ -1,7 +1,7 @@
 ﻿using BetterSchedule.Server.Models.Tenant;
 using System.ComponentModel.DataAnnotations;
 
-namespace BetterSchedule.Server.Models
+namespace BetterSchedule.Server.Models.Scheduling
 {
     public class BlockedTime
     {
@@ -17,7 +17,7 @@ namespace BetterSchedule.Server.Models
         public string? BackColor { get; set; } = "#3a87ad";
         public bool IsDeleted { get; set; } = false;
         [Required]
-        public string OrganizationId { get; set; }
-        public Organization Organization { get; set; }
+        public string OrganizationId { get; set; } = default!;
+        public Organization Organization { get; set; } = default!;
     }
 }

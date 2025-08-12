@@ -1,6 +1,7 @@
 ﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models;
 using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Models.Identity;
 using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Models.Scheduling
@@ -10,16 +11,16 @@ namespace BetterSchedule.Server.Models.Scheduling
         public int Id { get; set; }
 
         [Required]
-        public string ClientId { get; set; }    // FK to ApplicationUser
-        public ApplicationUser Client { get; set; }
+        public string ClientId { get; set; } = default!;    // FK to ApplicationUser
+        public ApplicationUser Client { get; set; } = default!;
 
         [Required]
-        public string ServiceProviderId { get; set; }    // FK to ApplicationUser
-        public ApplicationUser ServiceProvider { get; set; }
+        public string ServiceProviderId { get; set; } = default!;   // FK to ApplicationUser
+        public ApplicationUser ServiceProvider { get; set; } = default!;
 
         [Required]
         public int AppointmentTypeId { get; set; }    // FK to AppointmentType
-        public AppointmentType AppointmentType { get; set; }
+        public AppointmentType AppointmentType { get; set; } = default!;
 
         [Required]
         public DateTimeOffset StartTime { get; set; }
@@ -39,8 +40,8 @@ namespace BetterSchedule.Server.Models.Scheduling
         public DateTimeOffset? UpdatedAt { get; set; }
 
         [Required]
-        public string OrganizationId { get; set; }
-        public Organization Organization { get; set; }
+        public string OrganizationId { get; set; } = default!;
+        public Organization Organization { get; set; } = default!;
 
         public bool IsDeleted { get; set; } = false; // Soft delete
 

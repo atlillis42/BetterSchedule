@@ -1,7 +1,7 @@
 ﻿using BetterSchedule.Server.Models.Tenant;
 using Microsoft.AspNetCore.Identity;
 
-namespace BetterSchedule.Server.Database
+namespace BetterSchedule.Server.Models.Identity
 {
     public class ApplicationUser : IdentityUser
     {
