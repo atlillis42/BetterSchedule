@@ -59,6 +59,13 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey(bt => bt.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // BlockedTime → CreatedByUser
+            builder.Entity<BlockedTime>()
+                .HasOne(bt => bt.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(bt => bt.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             // BlockedTime → CalendarResource
             builder.Entity<BlockedTime>()
                 .HasOne(bt => bt.Resource)
@@ -156,13 +163,30 @@ namespace BetterSchedule.Server.Database
                 .Property(a => a.Price)
                 .HasColumnType("decimal(18,2)");
 
-            // (Optional) Map TimeSpan to 'time' automatically (SQL Server does this implicitly).
-            // If you ever need it explicit:
-            // builder.Entity<AppointmentType>()
-            //     .Property(a => a.Duration)
-            //     .HasConversion(
-            //         v => v,          // TimeSpan to TimeSpan (SQL 'time')
-            //         v => v);
+
+            // -------------------------------
+            // Indexes (query speed + constraints)
+            // -------------------------------
+
+            // BlockedTime → fast provider/org views & overlap lookups
+            builder.Entity<BlockedTime>()
+                .HasIndex(bt => new { bt.OrganizationId, bt.CreatedByUserId }); // provider-owned lists
+            builder.Entity<BlockedTime>()
+                .HasIndex(bt => new { bt.OrganizationId, bt.ResourceId, bt.StartTime, bt.EndTime }); // overlap scans
+
+            // Reservation → fast provider calendars & overlap scans
+            builder.Entity<Reservation>()
+                .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });
+
+            // AppointmentType → provider-owned and org-wide lists
+            builder.Entity<AppointmentType>()
+                .HasIndex(a => new { a.OrganizationId, a.CreatedByUserId });
+
+            // CalendarResource → optional: unique name per org
+            builder.Entity<CalendarResource>()
+                .HasIndex(r => new { r.OrganizationId, r.Name })
+                .IsUnique();
+
         }
     }
 }

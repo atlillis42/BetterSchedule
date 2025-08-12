@@ -1,5 +1,4 @@
-﻿// BetterSchedule.Server/DevTools/DbInitializer.cs
-using BetterSchedule.Server.Database;
+﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
@@ -17,7 +16,7 @@ namespace BetterSchedule.Server.DevTools
             bool reset = false)
         {
             // -------------------------------
-            // Roles
+            // Roles → Manager / ServiceProvider / Client
             // -------------------------------
             var roles = new[] { "Manager", "ServiceProvider", "Client" };
             foreach (var role in roles)
@@ -41,7 +40,7 @@ namespace BetterSchedule.Server.DevTools
             }
 
             // -------------------------------
-            // Organizations (two orgs to test tenant isolation)
+            // Organizations → two orgs to test tenant isolation
             // -------------------------------
             var org1 = await EnsureOrganizationAsync(db, id: "demo-org-1", name: "Demo Organization");
             var org2 = await EnsureOrganizationAsync(db, id: "demo-org-2", name: "Second Demo Org");
@@ -49,10 +48,10 @@ namespace BetterSchedule.Server.DevTools
             // -------------------------------
             // Dev login users (by email) in org1
             // -------------------------------
-            await EnsureDevUserAsync("admin@dev.local", org1.Id, roles: new[] { "Manager", "ServiceProvider", "Client" });
-            await EnsureDevUserAsync("provider@dev.local", org1.Id, roles: new[] { "ServiceProvider" });
-            await EnsureDevUserAsync("client@dev.local", org1.Id, roles: new[] { "Client" });
-            await EnsureDevUserAsync("hybrid@dev.local", org1.Id, roles: new[] { "ServiceProvider", "Client" });
+            var devAdmin = await EnsureDevUserAsync("admin@dev.local", org1.Id, new[] { "Manager", "ServiceProvider", "Client" });
+            var devProvider = await EnsureDevUserAsync("provider@dev.local", org1.Id, new[] { "ServiceProvider" });
+            var devClient = await EnsureDevUserAsync("client@dev.local", org1.Id, new[] { "Client" });
+            var devHybrid = await EnsureDevUserAsync("hybrid@dev.local", org1.Id, new[] { "ServiceProvider", "Client" });
 
             // -------------------------------
             // Demo users (usernames) per org
@@ -74,7 +73,7 @@ namespace BetterSchedule.Server.DevTools
 
             var yogaType = await EnsureAppointmentTypeAsync(db, org1.Id, "Yoga Class", TimeSpan.FromMinutes(60), 18.50m, "Group yoga for all levels.", createdByUserId: alice.Id, assignedLocationId: arena.Id, isPublic: true, requiresWaiver: true);
             var massageType = await EnsureAppointmentTypeAsync(db, org1.Id, "Therapeutic Massage", TimeSpan.FromMinutes(90), 65.00m, "Full-body massage.", createdByUserId: bob.Id, assignedLocationId: studio2.Id, isPublic: true, requiresWaiver: false);
-            var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", createdByUserId: carla.Id, assignedLocationId: outdoor.Id, isPublic: true, requiresWaiver: false);
+            var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", createdByUserId: alice.Id, assignedLocationId: outdoor.Id, isPublic: true, requiresWaiver: false);
             var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", createdByUserId: alice.Id, assignedLocationId: arena.Id, isPublic: false, requiresWaiver: false);
 
             await EnsureReservationAsync(db, org1.Id, clientId: bob.Id, providerId: alice.Id, typeId: yogaType.Id,
@@ -97,11 +96,14 @@ namespace BetterSchedule.Server.DevTools
                 start: UtcToday().AddDays(10).AddHours(16), end: UtcToday().AddDays(10).AddHours(16).AddMinutes(45),
                 locationId: arena.Id.ToString(), status: ReservationStatus.Canceled, notes: "Cancelled by client.");
 
+            // BlockedTimes → NOW with CreatedByUserId
             await EnsureBlockedTimeAsync(db, org1.Id, arena.Id,
-                reason: "Floor waxing", start: UtcToday().AddDays(1).AddHours(12), end: UtcToday().AddDays(1).AddHours(15), backColor: "#cccccc");
+                reason: "Floor waxing", start: UtcToday().AddDays(1).AddHours(12), end: UtcToday().AddDays(1).AddHours(15),
+                backColor: "#cccccc", createdByUserId: alice.Id);   // Manager-owned
 
             await EnsureBlockedTimeAsync(db, org1.Id, arena.Id,
-                reason: "Private booking", start: UtcToday().AddDays(5).AddHours(18), end: UtcToday().AddDays(5).AddHours(21), backColor: "#fcba03");
+                reason: "Private booking", start: UtcToday().AddDays(5).AddHours(18), end: UtcToday().AddDays(5).AddHours(21),
+                backColor: "#fcba03", createdByUserId: bob.Id);     // Provider-owned
 
             // -------------------------------
             // Seed org2 domain data (smaller set, good for cross-org tests)
@@ -109,16 +111,17 @@ namespace BetterSchedule.Server.DevTools
             var studioA = await EnsureResourceAsync(db, org2.Id, "Studio A", "#a0c4ff");
             var turfField = await EnsureResourceAsync(db, org2.Id, "Turf Field", "#caffbf");
 
-            var pilates = await EnsureAppointmentTypeAsync(db, org2.Id, "Pilates", TimeSpan.FromMinutes(50), 22.00m, "Mat pilates.", createdByUserId: dana.Id, assignedLocationId: studioA.Id, isPublic: true, requiresWaiver: false);
+            var pilates = await EnsureAppointmentTypeAsync(db, org2.Id, "Pilates", TimeSpan.FromMinutes(50), 22.00m, "Mat pilates.",
+                createdByUserId: dana.Id, assignedLocationId: studioA.Id, isPublic: true, requiresWaiver: false);
 
             await EnsureReservationAsync(db, org2.Id, clientId: frank.Id, providerId: eric.Id, typeId: pilates.Id,
                 start: UtcToday().AddDays(1).AddHours(9), end: UtcToday().AddDays(1).AddHours(10),
                 locationId: studioA.Id.ToString(), status: ReservationStatus.Booked, notes: "Org2 pilates.");
 
             await EnsureBlockedTimeAsync(db, org2.Id, turfField.Id,
-                reason: "Maintenance", start: UtcToday().AddDays(3).AddHours(8), end: UtcToday().AddDays(3).AddHours(12), backColor: "#dddddd");
-
-            // ✅ done
+                reason: "Maintenance", start: UtcToday().AddDays(3).AddHours(8), end: UtcToday().AddDays(3).AddHours(12),
+                backColor: "#dddddd", createdByUserId: eric.Id);    // Provider-owned
+     
             return;
 
             // ----------------------------------------------------------------
@@ -215,7 +218,6 @@ namespace BetterSchedule.Server.DevTools
                 }
                 else
                 {
-                    // keep it fresh but stable
                     if (res.BackColor != backColor)
                     {
                         res.BackColor = backColor;
@@ -258,7 +260,7 @@ namespace BetterSchedule.Server.DevTools
                 }
                 else
                 {
-                    // Update key fields if they drift 
+                    // Update key fields if they drift
                     var changed = false;
                     if (type.Duration != duration) { type.Duration = duration; changed = true; }
                     if (type.Price != price) { type.Price = price; changed = true; }
@@ -283,7 +285,7 @@ namespace BetterSchedule.Server.DevTools
                 ReservationStatus status,
                 string? notes)
             {
-                // Idempotency check: same org + type + client + provider + start/end
+                // Idempotency → same org + type + client + provider + start/end
                 var exists = await db.Reservations.AnyAsync(r =>
                     r.OrganizationId == organizationId &&
                     r.ClientId == clientId &&
@@ -318,9 +320,10 @@ namespace BetterSchedule.Server.DevTools
                 string reason,
                 DateTimeOffset start,
                 DateTimeOffset end,
-                string? backColor)
+                string? backColor,
+                string createdByUserId)
             {
-                // Idempotency: same org + resource + reason + window
+                // Idempotency → same org + resource + reason + window
                 var exists = await db.BlockedTimes.AnyAsync(b =>
                     b.OrganizationId == organizationId &&
                     b.ResourceId == resourceId &&
@@ -338,6 +341,7 @@ namespace BetterSchedule.Server.DevTools
                     StartTime = start,
                     EndTime = end,
                     BackColor = backColor,
+                    CreatedByUserId = createdByUserId,   // ← stamp owner
                     IsDeleted = false
                 });
                 await db.SaveChangesAsync();

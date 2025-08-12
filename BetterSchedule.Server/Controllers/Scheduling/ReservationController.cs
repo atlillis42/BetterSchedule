@@ -1,44 +1,35 @@
 ﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Controllers;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
+using static BetterSchedule.Server.Auth.ReservationScopes;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public sealed class ReservationController : ControllerBase
+    public sealed class ReservationController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
         public ReservationController(ApplicationDbContext db) => _db = db;
 
-        private string OrgId => User.GetOrgIdOrThrow();
-
         // GET /api/reservation?start=yyyy-MM-dd&end=yyyy-MM-dd
+        // Returns only what the caller is allowed to see (org + role).
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end,
             CancellationToken ct)
         {
-            var orgId = OrgId;
-
-            var q = _db.Reservations
-                .AsNoTracking()
-                .Where(r => r.OrganizationId == orgId && !r.IsDeleted);
-
-            if (start.HasValue && end.HasValue)
-            {
-                q = q.Where(r => r.StartTime < end.Value && r.EndTime > start.Value);
-            }
-
-            var items = await q
+            var items = await _db.Reservations
+                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .Overlapping(start, end)
                 .OrderBy(r => r.StartTime)
                 .Select(ToDto())
                 .ToListAsync(ct);
@@ -47,14 +38,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         // GET /api/reservation/{id:int}
+        // 404 if caller can't see it 
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
-            var orgId = OrgId;
-
             var dto = await _db.Reservations
-                .AsNoTracking()
-                .Where(r => r.OrganizationId == orgId && !r.IsDeleted && r.Id == id)
+                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .Where(r => r.Id == id)
                 .Select(ToDto())
                 .FirstOrDefaultAsync(ct);
 
@@ -62,18 +52,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         // POST /api/reservation
+        // Manager/Provider only 
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
-
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest("EndTime must be after StartTime.");
 
             var entity = new Reservation
             {
-                OrganizationId = orgId, 
+                OrganizationId = OrganizationId,
                 ClientId = dto.ClientId,
                 ServiceProviderId = dto.ServiceProviderId,
                 AppointmentTypeId = dto.AppointmentTypeId,
@@ -101,16 +90,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         // PUT /api/reservation/{id:int}
+        // Manager/Provider only. Owner checks are optional here since role is already restricted.
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
-
             var reservation = await _db.Reservations
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (reservation is null) return NotFound();
+
+            // To enforce "Provider can only modify their own," uncomment:
+            // if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
             if (dto.Notes is not null) reservation.Notes = dto.Notes;
             if (dto.LocationId is not null) reservation.LocationId = dto.LocationId;
@@ -141,10 +132,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var orgId = OrgId;
-
             var entity = await _db.Reservations
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (entity is null) return NotFound();
 
@@ -153,7 +142,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // Map entity -> your ReservationDto (status as string)
+        // Map entity -> ReservationDto (status as string)
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,

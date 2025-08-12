@@ -145,6 +145,8 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("CreatedByUserId");
 
+                    b.HasIndex("OrganizationId", "CreatedByUserId");
+
                     b.HasIndex("OrganizationId", "Name")
                         .IsUnique();
 
@@ -161,6 +163,10 @@ namespace BetterSchedule.Server.Migrations
 
                     b.Property<string>("BackColor")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTimeOffset>("EndTime")
                         .HasColumnType("datetimeoffset");
@@ -184,9 +190,13 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationId");
+                    b.HasIndex("CreatedByUserId");
 
                     b.HasIndex("ResourceId");
+
+                    b.HasIndex("OrganizationId", "CreatedByUserId");
+
+                    b.HasIndex("OrganizationId", "ResourceId", "StartTime", "EndTime");
 
                     b.ToTable("BlockedTimes");
                 });
@@ -277,9 +287,9 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("ClientId");
 
-                    b.HasIndex("OrganizationId");
-
                     b.HasIndex("ServiceProviderId");
+
+                    b.HasIndex("OrganizationId", "ServiceProviderId", "StartTime", "EndTime");
 
                     b.ToTable("Reservations");
                 });
@@ -538,6 +548,12 @@ namespace BetterSchedule.Server.Migrations
 
             modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.BlockedTime", b =>
                 {
+                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("BetterSchedule.Server.Models.Tenant.Organization", "Organization")
                         .WithMany()
                         .HasForeignKey("OrganizationId")
@@ -548,6 +564,8 @@ namespace BetterSchedule.Server.Migrations
                         .WithMany("BlockedTimes")
                         .HasForeignKey("ResourceId")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("CreatedByUser");
 
                     b.Navigation("Organization");
 

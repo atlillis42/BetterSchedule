@@ -1,49 +1,41 @@
 ﻿using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models;
 using BetterSchedule.Server.Models.DTOs.AppointmentType;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using static BetterSchedule.Server.Auth.AppointmentTypeScopes;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize] // reads for any signed-in user; writes are role-gated
-    public sealed class AppointmentTypeController : ControllerBase
+    [Authorize]
+    public sealed class AppointmentTypeController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
         public AppointmentTypeController(ApplicationDbContext db) => _db = db;
 
-        private string OrgId => User.GetOrgIdOrThrow();
-
         // GET /api/appointmenttype
+        // Visibility: Manager → all; Provider → public + own; Client → public only.
         [HttpGet]
         public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> List(CancellationToken ct)
         {
-            var orgId = OrgId;
-
-            
             var items = await _db.AppointmentTypes
-                .AsNoTracking()
-                .Where(a => a.OrganizationId == orgId && !a.IsDeleted)
+                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
                 .OrderBy(a => a.Name)
                 .Select(a => new AppointmentTypeDto
                 {
                     Id = a.Id,
                     Name = a.Name,
-                    Duration = a.Duration,                  // TimeSpan
+                    Duration = a.Duration,
                     Price = a.Price,
                     Description = a.Description,
-                    CreatedByUserId = a.CreatedByUserId,    // stored on entity
-                    CreatedByUserName = _db.Users
-                        .Where(u => u.Id == a.CreatedByUserId)
-                        .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
-                        .FirstOrDefault(),
+                    CreatedByUserId = a.CreatedByUserId,
+                    CreatedByUserName = null,           // add Include if you want this
                     AssignedLocationId = a.AssignedLocationId,
-                    AssignedLocationName = null,            
+                    AssignedLocationName = null,        // add join if you want this
                     IsPublic = a.IsPublic,
                     RequiresWaiver = a.RequiresWaiver,
                     IsDeleted = a.IsDeleted,
@@ -54,55 +46,53 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/appointmenttype/{id:int}
+        // GET /api/appointmenttype/{id}
+        // Same visibility rules as List().
         [HttpGet("{id:int}")]
         public async Task<ActionResult<AppointmentTypeDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
-            var orgId = OrgId;
+            var a = await _db.AppointmentTypes
+                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
 
-            var dto = await _db.AppointmentTypes
-                .AsNoTracking()
-                .Where(a => a.OrganizationId == orgId && !a.IsDeleted && a.Id == id)
-                .Select(a => new AppointmentTypeDto
-                {
-                    Id = a.Id,
-                    Name = a.Name,
-                    Duration = a.Duration,
-                    Price = a.Price,
-                    Description = a.Description,
-                    CreatedByUserId = a.CreatedByUserId,
-                    CreatedByUserName = _db.Users
-                        .Where(u => u.Id == a.CreatedByUserId)
-                        .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
-                        .FirstOrDefault(),
-                    AssignedLocationId = a.AssignedLocationId,
-                    AssignedLocationName = null,
-                    IsPublic = a.IsPublic,
-                    RequiresWaiver = a.RequiresWaiver,
-                    IsDeleted = a.IsDeleted,
-                    OrganizationId = a.OrganizationId
-                })
-                .FirstOrDefaultAsync(ct);
+            if (a is null) return NotFound();
 
-            return dto is null ? NotFound() : Ok(dto);
+            return Ok(new AppointmentTypeDto
+            {
+                Id = a.Id,
+                Name = a.Name,
+                Duration = a.Duration,
+                Price = a.Price,
+                Description = a.Description,
+                CreatedByUserId = a.CreatedByUserId,
+                CreatedByUserName = null,
+                AssignedLocationId = a.AssignedLocationId,
+                AssignedLocationName = null,
+                IsPublic = a.IsPublic,
+                RequiresWaiver = a.RequiresWaiver,
+                IsDeleted = a.IsDeleted,
+                OrganizationId = a.OrganizationId
+            });
         }
 
         // POST /api/appointmenttype
+        // Manager: can create for org; Provider: can create for themselves (owns the type).
+        // NOTE: We ignore any incoming CreatedByUserId/OrganizationId and set from claims.
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
+            if (dto.Duration <= TimeSpan.Zero)
+                return BadRequest("Duration must be greater than zero.");
 
-            
             var entity = new AppointmentType
             {
-                OrganizationId = orgId,
+                OrganizationId = OrganizationId,       // stamp org
                 Name = dto.Name,
                 Duration = dto.Duration,
                 Price = dto.Price,
                 Description = dto.Description,
-                CreatedByUserId = dto.CreatedByUserId,   // keep as provided; optionally override with current user if desired
+                CreatedByUserId = UserId!,             // owner = caller
                 AssignedLocationId = dto.AssignedLocationId,
                 IsPublic = dto.IsPublic,
                 RequiresWaiver = dto.RequiresWaiver,
@@ -112,8 +102,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _db.AppointmentTypes.Add(entity);
             await _db.SaveChangesAsync(ct);
 
-            // Return full read DTO
-            return CreatedAtAction(nameof(GetById), new { id = entity.Id }, new AppointmentTypeDto
+            var read = new AppointmentTypeDto
             {
                 Id = entity.Id,
                 Name = entity.Name,
@@ -121,59 +110,59 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Price = entity.Price,
                 Description = entity.Description,
                 CreatedByUserId = entity.CreatedByUserId,
-                CreatedByUserName = await _db.Users
-                    .Where(u => u.Id == entity.CreatedByUserId)
-                    .Select(u => string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName)
-                    .FirstOrDefaultAsync(ct),
+                CreatedByUserName = null,
                 AssignedLocationId = entity.AssignedLocationId,
                 AssignedLocationName = null,
                 IsPublic = entity.IsPublic,
                 RequiresWaiver = entity.RequiresWaiver,
                 IsDeleted = entity.IsDeleted,
                 OrganizationId = entity.OrganizationId
-            });
+            };
+
+            return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/appointmenttype/{id:int}
+        // PUT /api/appointmenttype/{id}
+        // Manager: can update any; Provider: only if they own it (CreatedByUserId == caller).
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateAppointmentTypeDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
+            var a = await _db.AppointmentTypes
+                .FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == OrganizationId && !x.IsDeleted, ct);
 
-            
-            if (dto.Id != id) return BadRequest("Mismatched id.");
+            if (a is null) return NotFound();
+            if (!AppointmentTypeScopes.CanModify(a, UserId, IsManager, IsProvider, IsClient)) return Forbid();
 
-            var entity = await _db.AppointmentTypes
-                .FirstOrDefaultAsync(a => a.Id == id && a.OrganizationId == orgId && !a.IsDeleted, ct);
-
-            if (entity is null) return NotFound();
-
-            entity.Name = dto.Name ?? entity.Name;
-            if (dto.Duration.HasValue) entity.Duration = dto.Duration.Value;
-            if (dto.Price.HasValue) entity.Price = dto.Price.Value;
-            entity.Description = dto.Description ?? entity.Description;
-            if (dto.IsPublic.HasValue) entity.IsPublic = dto.IsPublic.Value;
-            if (dto.RequiresWaiver.HasValue) entity.RequiresWaiver = dto.RequiresWaiver.Value;
-            if (dto.AssignedLocationId.HasValue) entity.AssignedLocationId = dto.AssignedLocationId;
+            if (dto.Name is not null) a.Name = dto.Name;
+            if (dto.Duration.HasValue)
+            {
+                if (dto.Duration.Value <= TimeSpan.Zero) return BadRequest("Duration must be greater than zero.");
+                a.Duration = dto.Duration.Value;
+            }
+            if (dto.Price.HasValue) a.Price = dto.Price.Value;
+            if (dto.Description is not null) a.Description = dto.Description;
+            if (dto.IsPublic.HasValue) a.IsPublic = dto.IsPublic.Value;
+            if (dto.RequiresWaiver.HasValue) a.RequiresWaiver = dto.RequiresWaiver.Value;
+            if (dto.AssignedLocationId.HasValue) a.AssignedLocationId = dto.AssignedLocationId;
 
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        // DELETE /api/appointmenttype/{id:int}
+        // DELETE /api/appointmenttype/{id}
+        // Manager: can delete any; Provider: only if they own it.
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var orgId = OrgId;
+            var a = await _db.AppointmentTypes
+                .FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == OrganizationId && !x.IsDeleted, ct);
 
-            var entity = await _db.AppointmentTypes
-                .FirstOrDefaultAsync(a => a.Id == id && a.OrganizationId == orgId && !a.IsDeleted, ct);
+            if (a is null) return NotFound();
+            if (!AppointmentTypeScopes.CanModify(a, UserId, IsManager, IsProvider, IsClient)) return Forbid();
 
-            if (entity is null) return NotFound();
-
-            entity.IsDeleted = true;
+            a.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
