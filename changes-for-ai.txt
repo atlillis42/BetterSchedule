@@ -1,0 +1,48 @@
+﻿### GIT STATUS (porcelain)
+ M BetterSchedule.Server/Auth/CustomClaimsPrincipalFactory.cs
+ D BetterSchedule.Server/Controllers/Calendar/CalendarController.cs
+ M BetterSchedule.Server/Controllers/Scheduling/AppointmentTypeController.cs
+ M BetterSchedule.Server/Controllers/Scheduling/ClientsController.cs
+ M BetterSchedule.Server/Controllers/Scheduling/ReservationController.cs
+ M BetterSchedule.Server/Database/ApplicationDbContext.cs
+ D BetterSchedule.Server/Database/User.cs
+ M BetterSchedule.Server/DevTools/DbInitializer.cs
+ M BetterSchedule.Server/DevTools/DevToolsController.cs
+ D BetterSchedule.Server/DevTools/IdentitySeeder.cs
+ D BetterSchedule.Server/Models/BlockedTime.cs
+ D BetterSchedule.Server/Models/CalendarResource.cs
+ M BetterSchedule.Server/Models/DTOs/AppointmentType/AppointmentTypeDto.cs
+ M BetterSchedule.Server/Models/DTOs/AppointmentType/CreateAppointmentTypeDto.cs
+ D BetterSchedule.Server/Models/DTOs/Calendar/BlockedTimeCreateDto.cs
+ D BetterSchedule.Server/Models/DTOs/Calendar/BlockedTimeDto.cs
+ D BetterSchedule.Server/Models/DTOs/Calendar/BlockedTimeUpdateDto.cs
+ D BetterSchedule.Server/Models/DTOs/Calendar/CalendarResourceDto.cs
+ M BetterSchedule.Server/Models/DTOs/Reservation/CreateReservationDto.cs
+ M BetterSchedule.Server/Models/DTOs/Reservation/ReservationDto.cs
+ M BetterSchedule.Server/Models/Scheduling/AppointmentType.cs
+ M BetterSchedule.Server/Models/Scheduling/Reservation.cs
+ M BetterSchedule.Server/Models/Scheduling/ReservationParticipant.cs
+ M BetterSchedule.Server/Models/Tenant/ClientOrganization.cs
+ M BetterSchedule.Server/Models/Tenant/Organization.cs
+ M BetterSchedule.Server/Program.cs
+ M betterschedule.client/src/api/appointmenttype-api.ts
+ M betterschedule.client/src/api/blockedtime-api.ts
+ M betterschedule.client/src/api/calendar-resource-api.ts
+ M betterschedule.client/src/api/client-api.ts
+ M betterschedule.client/src/api/reservation-api.ts
+ M betterschedule.client/src/components/auth/axios.ts
+?? BetterSchedule.Server/Controllers/Scheduling/BlockedTimeController.cs
+?? BetterSchedule.Server/Controllers/Scheduling/CalendarResourceController.cs
+?? BetterSchedule.Server/Migrations/20250811234444_Initial_SchemaSplit.Designer.cs
+?? BetterSchedule.Server/Migrations/20250811234444_Initial_SchemaSplit.cs
+?? BetterSchedule.Server/Migrations/ApplicationDbContextModelSnapshot.cs
+?? BetterSchedule.Server/Models/DTOs/BlockedTime/BlockedTimeDto.cs
+?? BetterSchedule.Server/Models/DTOs/BlockedTime/CreateBlockedTimeDto.cs
+?? BetterSchedule.Server/Models/DTOs/BlockedTime/UpdateBlockedTimeDto.cs
+?? BetterSchedule.Server/Models/DTOs/CalendarResource/CalendarResourceDto.cs
+?? BetterSchedule.Server/Models/DTOs/CalendarResource/CreateCalendarResourceDto.cs
+?? BetterSchedule.Server/Models/DTOs/CalendarResource/UpdateCalendarResourceDto.cs
+?? BetterSchedule.Server/Models/Identity/ApplicationUser.cs
+?? BetterSchedule.Server/Models/Scheduling/BlockedTime.cs
+?? BetterSchedule.Server/Models/Scheduling/CalendarResource.cs
+?? changes-for-ai.txt

@@ -1,5 +1,6 @@
-using BetterSchedule.Server.Data;
+using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
+using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
 using Microsoft.AspNetCore.Identity;
@@ -7,33 +8,52 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Controllers & Swagger
 builder.Services.AddControllers();
-
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// AuthN/Z
 builder.Services.AddAuthorization();
-builder.Services.AddAuthentication().AddCookie(IdentityConstants.ApplicationScheme);
-
-builder.Services.AddIdentityCore<ApplicationUser>()
-        .AddRoles<IdentityRole>()
-        .AddEntityFrameworkStores<ApplicationDbContext>()
-        .AddDefaultTokenProviders()
-        .AddApiEndpoints();
-
-builder.Services.AddCors(options =>
+builder.Services.AddAuthentication(options =>
 {
-    options.AddDefaultPolicy(policy =>
-    {
-        policy
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials(); // Allow cookies for authentication
-    });
+    options.DefaultScheme = IdentityConstants.ApplicationScheme;
+    options.DefaultAuthenticateScheme = IdentityConstants.ApplicationScheme;
+    options.DefaultSignInScheme = IdentityConstants.ApplicationScheme;
+    options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+})
+.AddCookie(IdentityConstants.ApplicationScheme, options =>
+{
+    options.SlidingExpiration = true;
+    options.LoginPath = "/login";
+    options.Cookie.Name = ".BetterSchedule.Identity";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.None; // SPA cross-site in dev
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 
+builder.Services
+    .AddIdentityCore<ApplicationUser>()
+    .AddRoles<IdentityRole>()
+    .AddSignInManager()
+    .AddEntityFrameworkStores<ApplicationDbContext>()
+    .AddDefaultTokenProviders()
+    .AddApiEndpoints();
+
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
+
+// CORS (credentials require explicit origins)
+builder.Services.AddCors(options =>
+{
+    var clientUrl = builder.Configuration["App:ClientUrl"] ?? "http://localhost:5173";
+    options.AddDefaultPolicy(policy =>
+        policy.WithOrigins(clientUrl)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
+});
+
+// EF Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -42,106 +62,64 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-
 if (app.Environment.IsDevelopment())
 {
-    using var scope = app.Services.CreateScope(); // Create Development scope so dev-only tasks share DI lifetime
+    using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
-    
-    app.ApplyMigrations(); // Apply Migrations in development mode
-  
 
-    await IdentitySeeder.SeedDataAsync(services); // Seed dev identity & roles
+    app.ApplyMigrations();
 
     var db = services.GetRequiredService<ApplicationDbContext>();
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-    await DbInitializer.SeedAsync(db, userManager, roleManager, reset: false); //Seed Demo Data
+    await DbInitializer.SeedAsync(db, userManager, roleManager);
 
-    #region Dev Login Points
-    // Universal dev login (all roles)
-    app.MapPost("/api/dev/login", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    // Dev login endpoints
+    app.MapPost("/api/dev/login", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
     {
-        var user = await userManager.FindByEmailAsync("admin@dev.local");
-        if (user == null)
-        {
-            return Results.NotFound("Developer user not found.");
-        }
-
-        await signInManager.SignInAsync(user, isPersistent: false);
+        var user = await um.FindByEmailAsync("admin@dev.local");
+        if (user is null) return Results.NotFound("Developer user not found.");
+        await sm.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as dev user with all roles");
     });
-
-    // Login as ServiceProvider only
-    app.MapPost("/api/dev/login/serviceprovider", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/serviceprovider", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
     {
-        var email = "provider@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
-        if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "ServiceProvider");
-        }
-
-        await signInManager.SignInAsync(user, isPersistent: false);
+        var user = await um.FindByEmailAsync("provider@dev.local");
+        if (user is null) return Results.NotFound("Developer ServiceProvider not found.");
+        await sm.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Service Provider");
     });
-
-    // Login as Client only
-    app.MapPost("/api/dev/login/client", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/client", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
     {
-        var email = "client@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
-        if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "Client");
-        }
-
-        await signInManager.SignInAsync(user, isPersistent: false);
+        var user = await um.FindByEmailAsync("client@dev.local");
+        if (user is null) return Results.NotFound("Developer Client not found.");
+        await sm.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Client");
     });
-
-    // Hybrid login: ServiceProvider + Client
-    app.MapPost("/api/dev/login/hybrid", async (HttpContext context, UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) =>
+    app.MapPost("/api/dev/login/hybrid", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
     {
-        var email = "hybrid@dev.local";
-        var user = await userManager.FindByEmailAsync(email);
-        if (user == null)
-        {
-            user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
-            await userManager.CreateAsync(user, "Devpass123!");
-            await userManager.AddToRoleAsync(user, "ServiceProvider");
-            await userManager.AddToRoleAsync(user, "Client");
-        }
-
-        await signInManager.SignInAsync(user, isPersistent: false);
+        var user = await um.FindByEmailAsync("hybrid@dev.local");
+        if (user is null) return Results.NotFound("Developer hybrid user not found.");
+        await sm.SignInAsync(user, isPersistent: false);
         return Results.Ok("Signed in as Hybrid (ServiceProvider + Client)");
     });
-    #endregion
 
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 app.UseHttpsRedirection();
-
-app.MapIdentityApi<ApplicationUser>();
-
-app.UseCors(); // Use CORS policy defined above
-app.UseAuthentication(); // Authentication before Authorization
+app.UseCors();
+app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapIdentityApi<ApplicationUser>();
 app.MapControllers();
-
 app.MapFallbackToFile("/index.html");
 
 app.Run();
 
-
-namespace BetterSchedule.Server // Adds dummy namespace to avoid compilation issues with ASP.NET tests
+namespace BetterSchedule.Server
 {
     public partial class Program { }
 }

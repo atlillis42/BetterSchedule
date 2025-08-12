@@ -1,105 +1,79 @@
-﻿using BetterSchedule.Server.Data;
+﻿using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models.Common;
-using BetterSchedule.Server.Models.DTOs;
-using BetterSchedule.Server.Models.DTOs.AppointmentType;
+using BetterSchedule.Server.Models;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
-using System.Threading.Tasks;
+using System.Linq.Expressions;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class ReservationController : ControllerBase
+    public sealed class ReservationController : ControllerBase
     {
-        private readonly ApplicationDbContext _dbContext;
+        private readonly ApplicationDbContext _db;
+        public ReservationController(ApplicationDbContext db) => _db = db;
 
-        public ReservationController(ApplicationDbContext dbContext)
-        {
-            _dbContext = dbContext;
-        }
+        private string OrgId => User.GetOrgIdOrThrow();
 
-        /// <summary>
-        /// Get reservations filtered by client/provider, date range, appointment type, status.
-        /// Example: /api/reservation?clientId=...&providerId=...&start=2025-07-01&end=2025-07-31&status=Booked
-        /// </summary>
+        // GET /api/reservation?start=yyyy-MM-dd&end=yyyy-MM-dd
         [HttpGet]
-        public async Task<ActionResult<PagedResult<ReservationDto>>> GetFiltered(
-            [FromQuery] string? clientId,
-            [FromQuery] string? providerId,
-            [FromQuery] int? appointmentTypeId,
-            [FromQuery] string? status,
-            [FromQuery] DateTime? start,
-            [FromQuery] DateTime? end,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20
-        )
+        public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
+            [FromQuery] DateTimeOffset? start,
+            [FromQuery] DateTimeOffset? end,
+            CancellationToken ct)
         {
-            var query = _dbContext.Reservations
+            var orgId = OrgId;
+
+            var q = _db.Reservations
                 .AsNoTracking()
-                .Where(r => !r.IsDeleted);
+                .Where(r => r.OrganizationId == orgId && !r.IsDeleted);
 
-            if (!string.IsNullOrWhiteSpace(clientId))
-                query = query.Where(r => r.ClientId == clientId);
+            if (start.HasValue && end.HasValue)
+            {
+                q = q.Where(r => r.StartTime < end.Value && r.EndTime > start.Value);
+            }
 
-            if (!string.IsNullOrWhiteSpace(providerId))
-                query = query.Where(r => r.ServiceProviderId == providerId);
-
-            if (appointmentTypeId.HasValue)
-                query = query.Where(r => r.AppointmentTypeId == appointmentTypeId);
-
-            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ReservationStatus>(status, true, out var parsedStatus))
-                query = query.Where(r => r.Status == parsedStatus);
-
-            if (start.HasValue)
-                query = query.Where(r => r.EndTime >= start.Value);
-
-            if (end.HasValue)
-                query = query.Where(r => r.StartTime <= end.Value);
-
-            var totalCount = await query.CountAsync();
-            var items = await query
+            var items = await q
                 .OrderBy(r => r.StartTime)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Include(r => r.Participants)
-                .ToListAsync();
+                .Select(ToDto())
+                .ToListAsync(ct);
 
-            return Ok(new PagedResult<ReservationDto>
-            {
-                Items = items.Select(ToDto).ToList(),
-                Page = page,
-                PageSize = pageSize,
-                TotalCount = totalCount
-            });
+            return Ok(items);
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<ReservationDto>> GetById(int id)
+        // GET /api/reservation/{id:int}
+        [HttpGet("{id:int}")]
+        public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
-            var r = await _dbContext.Reservations
-                .Include(res => res.Participants)
-                .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            var orgId = OrgId;
 
-            if (r == null) return NotFound();
-            return Ok(ToDto(r));
+            var dto = await _db.Reservations
+                .AsNoTracking()
+                .Where(r => r.OrganizationId == orgId && !r.IsDeleted && r.Id == id)
+                .Select(ToDto())
+                .FirstOrDefaultAsync(ct);
+
+            return dto is null ? NotFound() : Ok(dto);
         }
 
+        // POST /api/reservation
         [HttpPost]
-        public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto)
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto, CancellationToken ct)
         {
-            if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+            var orgId = OrgId;
 
-            var reservation = new Reservation
+            if (dto.StartTime >= dto.EndTime)
+                return BadRequest("EndTime must be after StartTime.");
+
+            var entity = new Reservation
             {
+                OrganizationId = orgId, 
                 ClientId = dto.ClientId,
                 ServiceProviderId = dto.ServiceProviderId,
                 AppointmentTypeId = dto.AppointmentTypeId,
@@ -109,58 +83,90 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 PackageAssignmentId = dto.PackageAssignmentId,
                 Notes = dto.Notes,
                 Status = ReservationStatus.Booked,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = null,
+                IsDeleted = false
             };
 
-            _dbContext.Reservations.Add(reservation);
-            await _dbContext.SaveChangesAsync();
+            _db.Reservations.Add(entity);
+            await _db.SaveChangesAsync(ct);
 
-            return CreatedAtAction(nameof(GetById), new { id = reservation.Id }, ToDto(reservation));
+            var read = await _db.Reservations
+                .AsNoTracking()
+                .Where(r => r.Id == entity.Id)
+                .Select(ToDto())
+                .FirstAsync(ct);
+
+            return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] UpdateReservationDto dto)
+        // PUT /api/reservation/{id:int}
+        [HttpPut("{id:int}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, CancellationToken ct)
         {
-            var reservation = await _dbContext.Reservations.FindAsync(id);
-            if (reservation == null || reservation.IsDeleted) return NotFound();
+            var orgId = OrgId;
 
-            if (dto.Notes != null) reservation.Notes = dto.Notes;
+            var reservation = await _db.Reservations
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+
+            if (reservation is null) return NotFound();
+
+            if (dto.Notes is not null) reservation.Notes = dto.Notes;
+            if (dto.LocationId is not null) reservation.LocationId = dto.LocationId;
+            if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
+
+            if (!string.IsNullOrWhiteSpace(dto.Status))
+            {
+                if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var parsed))
+                    return BadRequest($"Unknown status '{dto.Status}'.");
+                reservation.Status = parsed;
+            }
+
+            var newStart = dto.StartTime ?? reservation.StartTime;
+            var newEnd = dto.EndTime ?? reservation.EndTime;
+            if (newEnd <= newStart) return BadRequest("EndTime must be after StartTime.");
+
             if (dto.StartTime.HasValue) reservation.StartTime = dto.StartTime.Value;
             if (dto.EndTime.HasValue) reservation.EndTime = dto.EndTime.Value;
-            if (dto.Status != null && Enum.TryParse<ReservationStatus>(dto.Status, out var status))
-                reservation.Status = status;
-            if (dto.LocationId != null) reservation.LocationId = dto.LocationId;
-            if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId.Value;
 
-            reservation.UpdatedAt = DateTime.UtcNow;
-            await _dbContext.SaveChangesAsync();
+            reservation.UpdatedAt = DateTimeOffset.UtcNow;
 
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> SoftDelete(int id)
+        // DELETE /api/reservation/{id:int}
+        [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var reservation = await _dbContext.Reservations.FindAsync(id);
-            if (reservation == null || reservation.IsDeleted) return NotFound();
+            var orgId = OrgId;
 
-            reservation.IsDeleted = true;
-            await _dbContext.SaveChangesAsync();
+            var entity = await _db.Reservations
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+
+            if (entity is null) return NotFound();
+
+            entity.IsDeleted = true;
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        private static ReservationDto ToDto(Reservation r) => new ReservationDto
+        // Map entity -> your ReservationDto (status as string)
+        private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,
+            OrganizationId = r.OrganizationId,
             ClientId = r.ClientId,
             ServiceProviderId = r.ServiceProviderId,
             AppointmentTypeId = r.AppointmentTypeId,
             StartTime = r.StartTime,
             EndTime = r.EndTime,
-            LocationId = r.LocationId,
-            PackageAssignmentId = r.PackageAssignmentId,
             Status = r.Status.ToString(),
             Notes = r.Notes,
+            LocationId = r.LocationId,
+            PackageAssignmentId = r.PackageAssignmentId,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
             IsDeleted = r.IsDeleted

@@ -1,40 +1,38 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Models.Identity;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
-using BetterSchedule.Server.Database;
+using Microsoft.AspNetCore.Mvc;
 
-[Route("api/[controller]")]
-[ApiController]
-public class ClientsController : ControllerBase
+namespace BetterSchedule.Server.Controllers.Scheduling
 {
-    private readonly UserManager<ApplicationUser> _userManager;
-
-    public ClientsController(UserManager<ApplicationUser> userManager)
+    [ApiController]
+    [Route("api/[controller]")]
+    public sealed class ClientsController : ControllerBase
     {
-        _userManager = userManager;
-    }
+        private readonly UserManager<ApplicationUser> _userManager;
+        public ClientsController(UserManager<ApplicationUser> userManager) => _userManager = userManager;
 
-    // GET: /api/clients?search=abc
-    [HttpGet]
-    [Authorize(Roles = "Admin,Provider")] //TODO: Adjust as needed
-    public async Task<IActionResult> GetClients([FromQuery] string? search = null)
-    {
-        var allClients = await _userManager.GetUsersInRoleAsync("Client");
-        var filtered = string.IsNullOrWhiteSpace(search)
-            ? allClients
-            : allClients.Where(u =>
-                (!string.IsNullOrEmpty(u.FullName) && u.FullName.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
-                (!string.IsNullOrEmpty(u.Email) && u.Email.Contains(search, StringComparison.OrdinalIgnoreCase))
-            ).ToList();
+        // GET /api/clients?search=ann
+        [HttpGet]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        public async Task<IActionResult> Search([FromQuery] string? search = null)
+        {
+            var orgId = User.GetOrgIdOrThrow();
+            var q = (search ?? string.Empty).Trim();
 
-        // Return only needed fields (for dropdown)
-        var result = filtered
-            .OrderBy(u => u.FullName ?? u.Email)
-            .Select(u => new {
-                id = u.Id,
-                name = u.FullName ?? u.Email
-            }).ToList();
+            var roleUsers = await _userManager.GetUsersInRoleAsync("Client");
+            var results = roleUsers
+                .Where(u => u.OrganizationId == orgId)
+                .Where(u =>
+                    string.IsNullOrWhiteSpace(q) ||
+                    (!string.IsNullOrWhiteSpace(u.FullName) && u.FullName.Contains(q, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(u.Email) && u.Email.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(u => u.FullName ?? u.Email)
+                .Select(u => new { id = u.Id, name = string.IsNullOrWhiteSpace(u.FullName) ? u.Email : u.FullName })
+                .ToList();
 
-        return Ok(result);
+            return Ok(results);
+        }
     }
 }
