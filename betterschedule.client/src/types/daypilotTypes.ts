@@ -1,40 +1,34 @@
 import { DayPilot } from "@daypilot/daypilot-lite-react";
 
-// Shared by selection handlers
+// --- Base: Shared by most handlers
 export interface DayPilotTimeRangeArgs {
+    /** Start of selected time range (DayPilot.Date) */
     start: DayPilot.Date;
+    /** End of selected time range (DayPilot.Date) */
     end: DayPilot.Date;
 }
 
+/** DayPilot control object (allows actions like clearSelection) */
 export interface DayPilotControl {
     clearSelection: () => void;
 }
 
-// Calendar/Scheduler selection (week/day/resource view)
+// --- Calendar/Scheduler: time range selection (week/day/resource view)
 export interface CalendarTimeRangeSelectedArgs extends DayPilotTimeRangeArgs {
     control: DayPilotControl;
+    /** Resource id (may be number or string, depending on your data) */
     resource?: number | string;
 }
 
-// DayPilot can expose event fields as properties OR getters (e.id vs e.id()).
-// This captures both without losing too much type safety.
-type ValueOrGetter<T> = T | (() => T);
-
-export interface DayPilotEventLike {
-    id: ValueOrGetter<number | string>;
-    text?: ValueOrGetter<string>;
-    start?: ValueOrGetter<string>;
-    end?: ValueOrGetter<string>;
-    resource?: ValueOrGetter<number | string>;
-    backColor?: string;
-    data?: Record<string, unknown>;
-
-    // Custom fields you attach to events
-    type?: "reservation" | "blockedTime";
-    createdByUserId?: string;
-    createdByUserName?: string;
-}
 
 export interface DayPilotEventArgs {
-    e: DayPilotEventLike;
+    e: {
+        id: () => number | string;
+        text: () => string;
+        start: () => string;
+        end: () => string;
+        resource: () => number | string;
+        backColor: string;
+    };
 }
+

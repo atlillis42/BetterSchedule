@@ -11,6 +11,7 @@
   <ItemGroup>
     <Folder Include="src\store\" />
     <Folder Include="src\services\" />
+    <Folder Include="src\pages\" />
     <Folder Include="src\__tests__\__mocks__\" />
   </ItemGroup>
 </Project>

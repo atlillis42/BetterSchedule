@@ -9,15 +9,9 @@ export interface UiEvent {
     end: DayPilot.Date;
     resource?: string | number;
     backColor?: string;
-
-    // calendar mapping
     type?: "reservation" | "blockedTime";
     reservation?: ReservationDto;
     blockedTime?: BlockedTimeDto;
-
-    // ownership (used for provider edit gating on blocked times)
-    createdByUserId?: string;
-    createdByUserName?: string;
 }
 
 export interface CalendarResource {

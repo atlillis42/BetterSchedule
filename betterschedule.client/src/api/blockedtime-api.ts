@@ -5,12 +5,10 @@ export type BlockedTimeDto = {
     id: number;
     organizationId: string;
     reason: string;
-    startTime: string;       // ISO
-    endTime: string;         // ISO
+    startTime: string; // ISO
+    endTime: string;   // ISO
     resourceId: number;
     backColor?: string | null;
-    createdByUserId: string;           // ← owner (read-only)
-    createdByUserName?: string | null; // optional display name
     isDeleted: boolean;
 };
 
@@ -23,10 +21,10 @@ export type CreateBlockedTimeDto = {
 };
 
 export type UpdateBlockedTimeDto = {
-    reason?: string | null;
-    startTime?: string; // ISO
-    endTime?: string;   // ISO
-    resourceId?: number | null;
+    reason: string;
+    startTime: string; // ISO
+    endTime: string;   // ISO
+    resourceId: number;
     backColor?: string | null;
 };
 

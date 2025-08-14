@@ -17,12 +17,12 @@ export type AppointmentTypeDto = {
     organizationId: string;
 };
 
-
 export type CreateAppointmentTypeDto = {
     name: string;
     duration: string; // "hh:mm:ss"
     price?: number;
     description?: string | null;
+    createdByUserId: string;
     assignedLocationId?: number | null;
     isPublic?: boolean;
     requiresWaiver?: boolean;

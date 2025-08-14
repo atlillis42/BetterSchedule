@@ -1,6 +1,4 @@
-// Calendar.tsx
-// Calendar with role gating (create/edit/delete), read-only modal when not allowed.
-
+// #region Imports & Type Setup
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import {
@@ -11,7 +9,9 @@ import {
     DayPilotScheduler
 } from "@daypilot/daypilot-lite-react";
 
-import { getResources } from "@/api/calendar-resource-api";
+import {
+    getResources
+} from "@/api/calendar-resource-api";
 import {
     getBlockedTimes,
     createBlockedTime,
@@ -37,9 +37,9 @@ import { validateReservation, validateBlockedTime } from "@/utilities/formFields
 import "@styles/Calendar.css";
 import type { CalendarResource, UiEvent } from "@/types/calendarDataTypes";
 import type { CalendarTimeRangeSelectedArgs } from "@/types/daypilotTypes";
-import { useAuth } from "@auth/AuthContext";
-import { isManager, isProvider } from "@auth/roles";
+// #endregion
 
+// #region Fetch All Events
 async function fetchAllEvents(
     startDate: DayPilot.Date,
     endDate: DayPilot.Date
@@ -52,14 +52,10 @@ async function fetchAllEvents(
     const reservationEvents = reservations.map(reservationToUiEvent);
     return [...blockedEvents, ...reservationEvents];
 }
+// #endregion
 
 const Calendar = () => {
-    // Roles
-    const { roles, userId } = useAuth();
-    const canManageReservations = isManager(roles) || isProvider(roles);
-    const canManageBlocks = isManager(roles) || isProvider(roles);
-
-    // State
+    // #region State
     const [view, setView] = useState<"Day" | "Week" | "Month" | "Resources">("Week");
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
     const [events, setEvents] = useState<UiEvent[]>([]);
@@ -71,12 +67,10 @@ const Calendar = () => {
     const [modalType, setModalType] = useState<"reservation" | "blockedTime">("reservation");
     const [modalValues, setModalValues] = useState<any>({});
     const [modalFormError, setModalFormError] = useState<string | null>(null);
+    // #endregion
 
-    // Create (selection)
+    // #region onTimeRangeSelected (Create)
     const onTimeRangeSelected = (args: CalendarTimeRangeSelectedArgs) => {
-        // Only managers/providers can create
-        if (!canManageReservations) return;
-
         setModalType("reservation");
         setModalMode("create");
         setModalValues({
@@ -91,121 +85,97 @@ const Calendar = () => {
         setShowModal(true);
         setModalFormError(null);
     };
+    // #endregion
 
-    // Edit / Details
+    // #region onEventClick (Edit/Delete)
     const onEventClick = (args: any) => {
-        const type = args.e.type || args.e?.data?.type || "reservation";
-        const createdByUserId = args.e?.createdByUserId || args.e?.data?.createdByUserId;
-
-        const isOwnBlockedTime =
-            type === "blockedTime" && (!createdByUserId || createdByUserId === userId);
-
-        const canEdit =
-            (type === "reservation" && canManageReservations) ||
-            (type === "blockedTime" && (isManager(roles) || isOwnBlockedTime));
-
-        setModalMode(canEdit ? "edit" : "create"); // We’ll gate Save/Delete via handlers too
-        setModalType(type);
+        setModalMode("edit");
+        setModalType(args.e.type || "reservation");
         setModalValues({
             ...extractEventFields(args.e),
             id: args.e.id,
-            type
+            type: args.e.type || "reservation",
         });
         setShowModal(true);
         setModalFormError(null);
     };
+    // #endregion
 
-    // Save
+    // #region Modal Submission Handler
     const handleModalSubmit = async () => {
-        if (modalType === "reservation" && !canManageReservations) {
-            toast.info("You don’t have permission to save reservations.");
-            return;
+        // Validate before API call
+        let validationError: string | null = null;
+        if (modalType === "reservation") {
+            validationError = validateReservation(modalValues);
+        } else {
+            validationError = validateBlockedTime(modalValues);
         }
-        if (modalType === "blockedTime" && !canManageBlocks) {
-            toast.info("You don’t have permission to save blocked times.");
-            return;
-        }
-
-        const validationError =
-            modalType === "reservation" ? validateReservation(modalValues) : validateBlockedTime(modalValues);
         if (validationError) {
             setModalFormError(validationError);
             return;
         }
 
+        // Guarantee start/end as strings
         const start = combineDateTime(modalValues.startDate, modalValues.startTime).iso as string;
         const end = combineDateTime(modalValues.endDate, modalValues.endTime).iso as string;
 
-        try {
-            if (modalMode === "edit") {
-                if (modalType === "reservation") {
-                    // UpdateReservationDto fields only:
-                    await updateReservation(modalValues.id, {
-                        notes: modalValues.notes ?? undefined,
-                        startTime: start,
-                        endTime: end,
-                        // Optional later:
-                        // status: modalValues.status ?? undefined,
-                        // locationId: modalValues.locationId ?? undefined,
-                        // packageAssignmentId: modalValues.packageAssignmentId ?? undefined,
-                    });
+            try {
+                if (modalMode === "edit") {
+                    if (modalType === "reservation") {
+                        await updateReservation(modalValues.id, {
+                            clientId: modalValues.clientId,
+                            serviceProviderId: modalValues.serviceProviderId,
+                            appointmentTypeId: Number(modalValues.appointmentTypeId) || 1,
+                            startTime: start,
+                            endTime: end,
+                            notes: modalValues.notes ?? "",
+                        });
+                        toast.success("Reservation updated!");
+                    } else {
+                        await updateBlockedTime(modalValues.id, {
+                            resourceId: modalValues.resourceId,
+                            startTime: start,
+                            endTime: end,
+                            reason: modalValues.reason ?? "",
+                        });
+                        toast.success("Blocked time updated!");
+                    }
                 } else {
-                    await updateBlockedTime(modalValues.id, {
-                        reason: modalValues.reason ?? undefined,
-                        resourceId: modalValues.resourceId ?? undefined,
-                        startTime: start,
-                        endTime: end,
-                        backColor: modalValues.backColor ?? undefined,
-                    });
+                    if (modalType === "reservation") {
+                        await createReservation({
+                            clientId: modalValues.clientId,
+                            serviceProviderId: modalValues.serviceProviderId,
+                            appointmentTypeId: Number(modalValues.appointmentTypeId) || 1,
+                            startTime: start,
+                            endTime: end,
+                            notes: modalValues.notes ?? "",
+                        });
+                        toast.success("Reservation created!");
+                    } else {
+                        await createBlockedTime({
+                            resourceId: modalValues.resourceId,
+                            startTime: start,
+                            endTime: end,
+                            reason: modalValues.reason ?? "",
+                        });
+                        toast.success("Blocked time created!");
+                    }
                 }
-            } else {
-                if (modalType === "reservation") {
-                    await createReservation({
-                        clientId: modalValues.clientId,
-                        serviceProviderId: modalValues.serviceProviderId,
-                        appointmentTypeId: Number(modalValues.appointmentTypeId) || 1,
-                        startTime: start,
-                        endTime: end,
-                        notes: modalValues.notes ?? "",
-                    });
-                } else {
-                    await createBlockedTime({
-                        reason: modalValues.reason ?? "",
-                        resourceId: Number(modalValues.resourceId),
-                        startTime: start,
-                        endTime: end,
-                        backColor: modalValues.backColor ?? undefined,
-                    });
-                }
-            }
+                setShowModal(false);
 
-            setShowModal(false);
+                // Refetch events
+                const { start: fetchStart, end: fetchEnd } = getVisibleRange(new DayPilot.Date(modalValues.startDate), view);
+                const allEvents = await fetchAllEvents(fetchStart, fetchEnd);
+                setEvents(allEvents);
 
-            const { start: fetchStart, end: fetchEnd } = getVisibleRange(new DayPilot.Date(modalValues.startDate), view);
-            const allEvents = await fetchAllEvents(fetchStart, fetchEnd);
-            setEvents(allEvents);
-        } catch (err: any) {
-            if (err?.response?.status === 403) {
-                toast.error("You don’t have permission to perform this action.");
-            } else if (err?.response?.data) {
-                toast.error(String(err.response.data));
-            } else {
+            } catch {
+                // fallback error toast
                 toast.error("Something went wrong. Please try again.");
             }
-        }
-    };
+        };
+    
 
-    // Delete
     const handleModalDelete = async () => {
-        if (modalType === "reservation" && !canManageReservations) {
-            toast.info("You don’t have permission to delete reservations.");
-            return;
-        }
-        if (modalType === "blockedTime" && !canManageBlocks) {
-            toast.info("You don’t have permission to delete blocked times.");
-            return;
-        }
-
         if (modalType === "reservation") {
             await deleteReservation(modalValues.id);
         } else {
@@ -213,12 +183,14 @@ const Calendar = () => {
         }
         setShowModal(false);
 
+        // Refetch events after delete
         const { start: fetchStart, end: fetchEnd } = getVisibleRange(new DayPilot.Date(modalValues.startDate), view);
         const allEvents = await fetchAllEvents(fetchStart, fetchEnd);
         setEvents(allEvents);
     };
+    // #endregion
 
-    // Initial load
+    // #region Effect: Initial Load
     useEffect(() => {
         (async () => {
             try {
@@ -230,16 +202,13 @@ const Calendar = () => {
                 if (realResources.length) setResources(realResources);
                 setEvents(allEvents);
             } catch (err) {
-                console.error("⛔ Calendar API fetch failed", err);
+                console.error("⛔ Calendar API fetch failed – falling back to demo data", err);
             }
         })();
     }, [startDate, view]);
+    // #endregion
 
-    // Read-only modal logic (disables save/delete)
-    const readOnly =
-        (modalType === "reservation" && !canManageReservations) ||
-        (modalType === "blockedTime" && modalValues?.createdByUserId && modalValues.createdByUserId !== userId && !isManager(roles));
-
+    // #region Render
     return (
         <>
             <EventModal
@@ -249,8 +218,8 @@ const Calendar = () => {
                 setType={setModalType}
                 values={modalValues}
                 setValues={setModalValues}
-                onSubmit={readOnly ? undefined : handleModalSubmit}
-                onDelete={!readOnly && modalMode === "edit" ? handleModalDelete : undefined}
+                onSubmit={handleModalSubmit}
+                onDelete={modalMode === "edit" ? handleModalDelete : undefined}
                 onCancel={() => setShowModal(false)}
                 error={modalFormError}
                 resources={resources}
@@ -268,11 +237,21 @@ const Calendar = () => {
                 </div>
                 <div className="calendar-main flex flex-col flex-1 min-w-0">
                     <div className="calendar-toolbar flex gap-2 p-2 border-b bg-gray-100">
-                        <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>Day</button>
-                        <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>Week</button>
-                        <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>Month</button>
-                        <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>Resources</button>
-                        <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">Today</button>
+                        <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>
+                            Day
+                        </button>
+                        <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>
+                            Week
+                        </button>
+                        <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>
+                            Month
+                        </button>
+                        <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>
+                            Resources
+                        </button>
+                        <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">
+                            Today
+                        </button>
                     </div>
                     <div className="calendar-body flex-1 overflow-auto">
                         {view === "Day" && (
@@ -288,10 +267,10 @@ const Calendar = () => {
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
                                     args.header.html = `
-                    <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                      <span style="font-weight:600">${weekday}</span>
-                      <span style="font-size:12px">${short}</span>
-                    </div>`;
+                                        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                                            <span style="font-weight:600">${weekday}</span>
+                                            <span style="font-size:12px">${short}</span>
+                                        </div>`;
                                 }}
                             />
                         )}
@@ -308,10 +287,10 @@ const Calendar = () => {
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
                                     args.header.html = `
-                    <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                      <span style="font-weight:600">${weekday}</span>
-                      <span style="font-size:12px">${short}</span>
-                    </div>`;
+                                        <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
+                                            <span style="font-weight:600">${weekday}</span>
+                                            <span style="font-size:12px">${short}</span>
+                                        </div>`;
                                 }}
                             />
                         )}
@@ -350,6 +329,7 @@ const Calendar = () => {
             </div>
         </>
     );
+    // #endregion
 };
 
 export default Calendar;

@@ -10,7 +10,7 @@ using static BetterSchedule.Server.Auth.BlockedTimeScopes;
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
-    [Route("api/blocked-times")]
+    [Route("api/[controller]")]
     [Authorize]
     public sealed class BlockedTimeController : OrgControllerBase
     {

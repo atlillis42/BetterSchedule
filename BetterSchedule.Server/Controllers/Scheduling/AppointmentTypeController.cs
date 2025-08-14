@@ -10,7 +10,7 @@ using static BetterSchedule.Server.Auth.AppointmentTypeScopes;
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
-    [Route("api/appointmenttype")]
+    [Route("api/[controller]")]
     [Authorize]
     public sealed class AppointmentTypeController : OrgControllerBase
     {

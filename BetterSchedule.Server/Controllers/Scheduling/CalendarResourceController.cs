@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
-    [Route("api/calendar-resources")]
+    [Route("api/[controller]")]
     [Authorize]
     public sealed class CalendarResourceController : OrgControllerBase
     {
