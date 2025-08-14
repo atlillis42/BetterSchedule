@@ -12,7 +12,7 @@ using static BetterSchedule.Server.Auth.ReservationScopes;
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/reservation")]
     [Authorize]
     public sealed class ReservationController : OrgControllerBase
     {
