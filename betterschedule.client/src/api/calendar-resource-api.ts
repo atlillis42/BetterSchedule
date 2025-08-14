@@ -1,23 +1,13 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
-
-export type BlockedTimeDto = {
-    id: number;
-    organizationId: string;
-    reason: string;
-    startTime: string; // ISO
-    endTime: string;   // ISO
-    resourceId?: number | null;
-    backColor?: string | null;
-    isDeleted: boolean;
-};
+import type { BlockedTimeDto as BlockedTime } from "@api/blockedtime-api";
 
 export type CalendarResourceDto = {
     id: number;
     organizationId: string;
     name: string;
     backColor?: string | null;
-    blockedTimes: BlockedTimeDto[]; // list = [], detail can include items
+    blockedTimes: BlockedTime[]; // enriched GET returns items when requested
     isDeleted: boolean;
 };
 
@@ -36,7 +26,7 @@ export async function getResources(): Promise<CalendarResourceDto[]> {
     return data;
 }
 
-// Enriched GET (includes BlockedTimes for a single resource)
+// Enriched GET (optionally filter blocked times by overlap)
 export async function getResourceById(
     id: number,
     opts?: { start?: string; end?: string }
