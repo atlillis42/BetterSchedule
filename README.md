@@ -1,4 +1,4 @@
-# **BetterSchedule**
+# BetterSchedule
 
 A flexible, role-based scheduling platform for service businesses and teams, built with **React (SPA)** and **ASP.NET Core 8**.  
 BetterSchedule supports managers, service providers, and clients in booking, managing, and tracking appointments — with the flexibility to extend features over time for payments, multi-location support, notifications, and more.
@@ -7,144 +7,84 @@ Designed for both **web and mobile**, the platform focuses on **clean architectu
 
 ---
 
-## **Core Value**
+## Core Value
+
 - **Managers**: Manage users, services, bookings, and system settings  
 - **Service Providers**: Set availability, define services, manage clients and bookings  
-- **Clients**: Self-register, view, and manage their own appointments  
+- **Clients**: Self-register, view, and manage their own appointments
 
 ---
 
-## **Live Status (August 2025)**
+## Live Status
 
-✅ **Authentication & Roles**  
-- Cookie-based ASP.NET Core Identity with seeded roles  
-- Developer login endpoints for local testing  
-- Role-based access control for Manager, Service Provider, and Client  
+**Last updated:** August 15, 2025  
+**Legend:** ✅ implemented ⏳ foundation present (not surfaced end-to-end) ❌ not implemented
 
-✅ **Calendar Core**  
-- Reservations and blocked times with full CRUD APIs  
-- Role-aware filtering in API and UI  
-- Day/Week/Month/Resource views via DayPilot  
-
-✅ **Frontend Auth Context**  
-- Tracks authentication state, roles, and organization ID  
-- Login/logout helpers and toast notifications for feedback  
-
-✅ **Developer Utilities**  
-- Database seeding for demo data  
-- Multiple “dev login” endpoints for rapid resets and testing  
-
-✅ **Reservations & Booking**  
-- Reservation and AppointmentType models, APIs, and React modals  
-- Async client search in booking modals  
-- End-to-end booking and cancellation flows  
-
-✅ **API/Validation Refactor**  
-- Centralized Axios instance with global error handling  
-- Form helpers for reservation validation before submission  
-
-✅ **UI/UX Enhancements**  
-- Modernized event modals and toolbar controls  
-- Role-aware editing flows  
-- Mobile-responsive layout improvements  
-
-❌ **Not Yet Implemented** *(Future Work)*  
-- Availability management  
-- Package/session tracking  
-- Payments  
-- Document and notification handling  
-- Admin UI for user/resource management  
-- Advanced reporting & analytics  
+| Feature Category | Status | Notes |
+|---|:---:|---|
+| Authentication & Roles | ✅ | ASP.NET Identity with role seeding; cookie auth. |
+| Multi-Tenant Organization Scope | ✅ | Controllers derive `org_id` from claims; entities carry `OrganizationId`; per-org uniqueness/indexing; soft-delete patterns respected. |
+| Frontend Auth Context | ✅ | SPA role context; login/logout helpers; org awareness. |
+| Calendar Core (Day/Week/Month/Resource) | ✅ | DayPilot views; CRUD for reservations and blocked times. |
+| Reservations & Booking | ✅ | Appointment types (duration, price, waiver flag, optional default resource); role-aware visibility and editing rules. |
+| Client & Provider Search | ✅ | Async client lookup for modals; provider lists. |
+| Calendar Resource Management | ✅ | Manager UI for CRUD, color coding, per-resource blocked times; role-aware filtering; integrates with DayPilot Resources view. |
+| Conflict Detection & Double-Booking Alerts | ✅ | Central `SchedulingConflictService` checks overlaps against reservations/blocked times; controllers surface errors and warning headers for provider double-booking. |
+| Reservation Status & Soft Deletes | ✅ | Lifecycle: Booked/Completed/Canceled/NoShow; reversible archival with `IsDeleted` across reservations, blocked times, appointment types, resources, users. |
+| API/Validation & Axios Refactor | ✅ | Central Axios instance; server-side validation; conflict checks; standardized error handling. |
+| UI/UX Enhancements | ✅ | Event modal, toolbar controls, responsive layout. |
+| Developer Utilities & Swagger | ✅ | Dev endpoints (`whoami`, `reset-db`, blocked-time dumps); Swagger/OpenAPI UI in development. |
+| Automated Tests | ✅ | xUnit tests for dev login endpoints; base for further backend automation. |
+| Group/Participant Support | ⏳ | `ReservationParticipant` model supports multi-client/guest/secondary provider; UI flows not implemented. |
+| Availability Setup | ❌ | No provider availability editor/enforcement. |
+| Package/Session Tracking | ❌ | `PackageAssignmentId` hook present; no business logic. |
+| Admin UI & Role Management | ❌ | Only basic resource/appointment-type managers; no user/role admin panel. |
+| Payment / Docs / Notifications | ❌ | Waiver flag exists; no uploads/e-sign, payments, or email/SMS. |
+| Advanced Reporting / Analytics | ❌ | Not started. |
 
 ---
 
-## **Feature Breakdown**
+## MVP-Adjacent (Next Up)
 
-### **Minimum Viable Product (MVP)**
-A deployable scheduling platform where authenticated users can manage a calendar and book services.
-
-**Core MVP Features**
-1. **Authentication & Authorization**
-   - Login with cookie-based ASP.NET Core Identity
-   - Roles: Manager, Service Provider, Client
-   - Role assignment UI for managers
-
-2. **Calendar**
-   - Day/Week/Month/Resource views
-   - CRUD for reservations and blocked times
-   - Conflict detection and validation
-   - Event color-coding by type/resource
-   - Protected routes and role-aware views
-
-3. **Reservations & Appointment Types**
-   - Create/manage AppointmentTypes (Managers & Providers)
-   - Book, view, and cancel reservations
-   - Validation: required fields, date/time logic, availability rules
-
-4. **Availability Management**
-   - Provider-set availability slots
-   - Enforce booking within availability
-
-5. **Client Experience**
-   - Clients view their own bookings
-   - Client self-registration
-
-6. **Developer Tools**
-   - Demo data seeding
-   - DB reset endpoints
+- **Availability Editor & Enforcement**: UI/APIs for recurring provider availability; prevent bookings outside working hours.  
+- **Participant UX**: Surface `ReservationParticipant` for group appointments, multi-provider/guest scenarios.  
+- **Reservation Status Controls**: Quick actions to mark **Completed**/**Canceled**/**No-Show** (with reason).  
+- **Organization Admin Panel**: Manage users/roles, organization settings, resource ownership.  
+- **Lead/Cancel Windows**: `MinLeadMinutes`, `CancelWindowHours` — server-enforced guardrails on create/reschedule/cancel.
 
 ---
 
-### **Post-MVP / Future Enhancements**
-**Core Extensions**
-- **Packages & Session Tracking**
-  - Auto-decrementing packages tied to AppointmentTypes
-  - Session restoration on early cancel
+## Post-MVP / Roadmap
 
-- **Payments**
-  - Stripe or similar integration
-  - Transaction history & refunds
-
-- **Documents & Waivers**
-  - Upload, storage, and versioning
-  - Link signed waivers to reservations
-
-- **Notifications**
-  - Email/SMS reminders, confirmations, and updates
-  - Manager-controlled notification rules
-
-- **Reporting & Analytics**
-  - Provider & Manager dashboards
-  - Exportable history and audit logs
-
-- **Admin UI**
-  - Role & user management
-  - Resource/location assignment
-
-**Advanced Features**
-- Multi-location and resource capacity management
-- External calendar sync (Google, iCal, Apple)
-- Soft deletes & audit trail UI
-- Schedule templates
-- Tagging system for clients/reservations
-- Dark mode & theming
-- PWA/mobile app support
-- Waitlists & promo codes
-- AI-assisted scheduling recommendations
+- **Recurring Reservations & Templates**: Series support (`RecurrenceId`), schedule templates per provider/resource.  
+- **Waivers & Documents**: Uploads, e-sign, attachment storage; enforce `RequiresWaiver`.  
+- **Packages / Sessions**: Auto-decrement bundles via `PackageAssignmentId`; promo codes.  
+- **Payments**: Stripe (or similar) for deposits, payments, refunds.  
+- **Notifications**: Email/SMS confirmations, reminders, configurable rules.  
+- **Timezone & Calendar Sync**: Per-user/org TZ/locale; Google/Outlook/ICS two-way sync; DST handling.  
+- **Capacity & Overbooking Controls**: Resource capacity (e.g., class size) and waitlists; **AppointmentType capacity (class size limit)**.  
+- **Audit & History**: UI for soft-deleted items and change history/restore.  
+- **Security & Integrations**: 2FA/SSO, API tokens, suspicious-login alerts.  
+- **Internationalization & Theming**: Multi-language, dark mode.  
+- **Admin & Reporting**: Dashboards for usage, cancellations, upcoming appointments.  
+- **Mobile/PWA**: Offline mode, push notifications.  
+- **Auth Flows**: OAuth providers, password recovery.
 
 ---
 
-## **Tech Stack**
-**Frontend**: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS, react-toastify  
-**Backend**: ASP.NET Core 8, Entity Framework Core, ASP.NET Identity  
-**Database**: SQL Server (LocalDB for dev)  
-**Testing**: Vitest, React Testing Library (frontend), xUnit (backend)  
-**Dev Tools**: DB reset endpoints, demo logins
+## Tech Stack
+
+**Frontend:** React (Vite), DayPilot Lite, TypeScript, Tailwind CSS, `react-toastify`  
+**Backend:** ASP.NET Core 8, Entity Framework Core, ASP.NET Identity  
+**Database:** SQL Server (LocalDB for dev)  
+**Testing:** Vitest, React Testing Library (frontend), xUnit (backend)  
+**Dev Tools:** DB reset endpoints, demo logins
 
 ---
 
-## **Setup & Development**
-\`\`\`bash
+## Setup & Development
+
+```bash
 # Apply migrations and seed dev data
 dotnet ef database update
 
@@ -154,29 +94,33 @@ dotnet run
 # Start frontend
 npm install
 npm run dev
-\`\`\`
-- Demo logins available for manager, provider, and client roles  
-- Use \`/api/devtools/reset-db\` to reset database in dev
+```
+
+- Demo logins available for manager, provider, and client roles.  
+- Use `/api/devtools/reset-db` to reset the database in development.
 
 ---
 
-## **Testing**
-\`\`\`bash
+## Testing
+
+```bash
 # Frontend
 npm run test
 
 # Backend
 dotnet test
-\`\`\`
+```
 
 ---
 
-## **Contributing**
+## Contributing
+
 Pull requests and issues are welcome.  
 The roadmap is visible in this README — please open issues for bugs or feature requests.  
-See \`/docs\` for API and data model plans.
+See `/docs` for API and data model plans.
 
 ---
 
-## **License**
-MIT License
+## License
+
+MIT License.
