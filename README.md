@@ -1,199 +1,182 @@
-BetterSchedule
+# **BetterSchedule**
+
+A flexible, role-based scheduling platform for service businesses and teams, built with **React (SPA)** and **ASP.NET Core 8**.  
+BetterSchedule supports managers, service providers, and clients in booking, managing, and tracking appointments — with the flexibility to extend features over time for payments, multi-location support, notifications, and more.
 
-A flexible, role-based scheduling platform for service businesses and teams, built with React (SPA) & ASP.NET Core 8.
-Project Goals
+Designed for both **web and mobile**, the platform focuses on **clean architecture, modular APIs, and scalable role-based access control**.
+
+---
 
-BetterSchedule aims to provide a powerful scheduling and booking system with multi-role access, customizable services, and extensible features for both web and mobile.
+## **Core Value**
+- **Managers**: Manage users, services, bookings, and system settings  
+- **Service Providers**: Set availability, define services, manage clients and bookings  
+- **Clients**: Self-register, view, and manage their own appointments  
+
+---
 
-    Managers: Manage users, services, bookings, and system settings.
-
-    Service Providers: Define their own availability, appointment types, and client bookings.
-
-    Clients: Self-register, view, and manage their own appointments.
-
-Live Status (August 2025)
-
-✅ Authentication & roles:
-
-    ASP.NET Core Identity, cookie-based login
-
-    User roles (Manager, Service Provider, Client)
-
-    Dev DB seeding and front-end protected route logic
-
-✅ Calendar Core:
-
-    Full CRUD for reservations and blocked times, with custom React modals and robust validation
-
-    Multi-view DayPilot calendar (Day/Week/Month/Resource)
-
-    Event mapping, color-coding, and state management overhaul
-
-    Toast notifications for all actions (via react-toastify)
-
-✅ Front-End Auth Context:
-
-    React SPA state for login/logout, role switching, and protected UI
-
-✅ Dev Tools:
-
-    Demo data seeding and DB reset for quick starts
-
-⏳ Reservations & Booking:
-
-    [In Progress] New models and CRUD for Reservations and Appointment Types
-
-    Async client search and dynamic resource selection in modal forms
-
-⏳ API/Validation Refactor:
-
-    Modular API logic (reservation, blocked time, resources, client search)
-
-    Centralized axios instance with global error handling
-
-    Custom validation for each event type
-
-⏳ UI/UX Enhancements:
-
-    Improved modal design, toolbar controls, and mobile-responsiveness
-
-    Role-based routing, MainLayout, and consistent app styling
-
-❌ Availability Setup: Provider hours, open/blocked slot management
-❌ Package/Session Tracking
-❌ Payment, Documents, Notifications
-❌ Admin UI for role/user/resource management
-❌ Advanced Reporting, History, Audit, Analytics
-Screenshots
-
-Coming soon: New calendar UI, modals, toast notifications, and themed layouts!
-Tech Stack
-
-    Frontend: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS, react-toastify
-
-    Backend: ASP.NET Core 8, Entity Framework Core, ASP.NET Identity
-
-    Database: SQL Server (localdb for dev), EF Core Migrations
-
-    Testing: Vitest, React Testing Library, xUnit (backend)
-
-    Dev Tools: DB reset endpoints, demo login/testing helpers
-
-MVP Feature List
-
-User login and role-based access (Manager, Provider, Client)
-
-Calendar with multi-view (Day, Week, Month, Resource)
-
-CRUD for reservations and blocked times via custom modals
-
-Field validation and error handling (required fields, date/time logic)
-
-Protected frontend routes & role context
-
-Toast notifications for all user actions and API errors
-
-    Dev data seeding and DB reset for fast start
-
-Immediate Roadmap / Next Steps
-Short-Term Priorities:
-Reservations & Booking
-
-Add Reservation and AppointmentType models (DB, API, UI)
-
-Booking and cancellation logic for clients
-
-    Link reservations to packages (future)
-
-Availability Management
-
-Allow providers to set/edit available times
-
-    Enforce/validate booking within availability
-
-Role-Based Filtering & Permissions
-
-Restrict calendar/event visibility by role (own vs. all)
-
-    Enforce role-based CRUD permissions in API & UI
-
-Packages & Session Tracking
-
-Implement Packages and auto-decrementing logic
-
-    Connect reservations to packages
-
-Admin & User Management UI
-
-    UI for role assignment, user management, and calendar/resource assignment
-
-Error Handling/Notifications
-
-    Replace browser alerts with toast/snackbar UX for errors and success
-
-API Caching Layer
-
-    Add React Query/SWR for event/resource APIs
-
-Long-Term / Full Feature Goals
-
-    Client self-registration, duplicate account merge
-
-    Custom appointment types (per manager/provider)
-
-    Payments & transaction history (Stripe or similar)
-
-    Document/waiver uploads and versioning
-
-    Location/capacity management
-
-    Reservation/appointment history & reporting
-
-    Mobile responsive UI and PWA
-
-    External calendar sync (Google, Apple, iCal)
-
-    Soft deletes, audit logs, tagging, advanced filtering
-
-    Admin dashboards, user analytics, dark mode
-
-Models (In Progress / Planned)
-
-    ApplicationUser: Auth & profile info, roles
-
-    Reservation: Booked instance of an AppointmentType, linked to user/provider
-
-    AppointmentType: Service definition (duration, location, price, waiver)
-
-    Package: Assignable, auto-decrementing sessions
-
-    Location: Bookable spaces, with capacity/hours
-
-    AvailabilitySlot: Provider-specific open/blocked times
-
-Setup & Development
-
-    Clone repo and run dotnet ef database update to apply migrations and seed dev data
-
-    Start backend (dotnet run) and frontend (npm run dev)
-
-    Access dev login for demo roles (manager, provider, client)
-
-    Use /api/devtools/reset-db to reset DB state in dev
-
-Testing
-
-    Run npm run test (front end) for all UI/API/unit tests
-
-    Backend: dotnet test
-
-Contributing
-
-Pull requests and issue tickets welcome!
-Roadmap is visible in this README—please file issues for bugs or feature requests.
-New contributors: see /docs for API/data model plans.
-License
-
+## **Live Status (August 2025)**
+
+✅ **Authentication & Roles**  
+- Cookie-based ASP.NET Core Identity with seeded roles  
+- Developer login endpoints for local testing  
+- Role-based access control for Manager, Service Provider, and Client  
+
+✅ **Calendar Core**  
+- Reservations and blocked times with full CRUD APIs  
+- Role-aware filtering in API and UI  
+- Day/Week/Month/Resource views via DayPilot  
+
+✅ **Frontend Auth Context**  
+- Tracks authentication state, roles, and organization ID  
+- Login/logout helpers and toast notifications for feedback  
+
+✅ **Developer Utilities**  
+- Database seeding for demo data  
+- Multiple “dev login” endpoints for rapid resets and testing  
+
+✅ **Reservations & Booking**  
+- Reservation and AppointmentType models, APIs, and React modals  
+- Async client search in booking modals  
+- End-to-end booking and cancellation flows  
+
+✅ **API/Validation Refactor**  
+- Centralized Axios instance with global error handling  
+- Form helpers for reservation validation before submission  
+
+✅ **UI/UX Enhancements**  
+- Modernized event modals and toolbar controls  
+- Role-aware editing flows  
+- Mobile-responsive layout improvements  
+
+❌ **Not Yet Implemented** *(Future Work)*  
+- Availability management  
+- Package/session tracking  
+- Payments  
+- Document and notification handling  
+- Admin UI for user/resource management  
+- Advanced reporting & analytics  
+
+---
+
+## **Feature Breakdown**
+
+### **Minimum Viable Product (MVP)**
+A deployable scheduling platform where authenticated users can manage a calendar and book services.
+
+**Core MVP Features**
+1. **Authentication & Authorization**
+   - Login with cookie-based ASP.NET Core Identity
+   - Roles: Manager, Service Provider, Client
+   - Role assignment UI for managers
+
+2. **Calendar**
+   - Day/Week/Month/Resource views
+   - CRUD for reservations and blocked times
+   - Conflict detection and validation
+   - Event color-coding by type/resource
+   - Protected routes and role-aware views
+
+3. **Reservations & Appointment Types**
+   - Create/manage AppointmentTypes (Managers & Providers)
+   - Book, view, and cancel reservations
+   - Validation: required fields, date/time logic, availability rules
+
+4. **Availability Management**
+   - Provider-set availability slots
+   - Enforce booking within availability
+
+5. **Client Experience**
+   - Clients view their own bookings
+   - Client self-registration
+
+6. **Developer Tools**
+   - Demo data seeding
+   - DB reset endpoints
+
+---
+
+### **Post-MVP / Future Enhancements**
+**Core Extensions**
+- **Packages & Session Tracking**
+  - Auto-decrementing packages tied to AppointmentTypes
+  - Session restoration on early cancel
+
+- **Payments**
+  - Stripe or similar integration
+  - Transaction history & refunds
+
+- **Documents & Waivers**
+  - Upload, storage, and versioning
+  - Link signed waivers to reservations
+
+- **Notifications**
+  - Email/SMS reminders, confirmations, and updates
+  - Manager-controlled notification rules
+
+- **Reporting & Analytics**
+  - Provider & Manager dashboards
+  - Exportable history and audit logs
+
+- **Admin UI**
+  - Role & user management
+  - Resource/location assignment
+
+**Advanced Features**
+- Multi-location and resource capacity management
+- External calendar sync (Google, iCal, Apple)
+- Soft deletes & audit trail UI
+- Schedule templates
+- Tagging system for clients/reservations
+- Dark mode & theming
+- PWA/mobile app support
+- Waitlists & promo codes
+- AI-assisted scheduling recommendations
+
+---
+
+## **Tech Stack**
+**Frontend**: React (Vite), DayPilot Lite, TypeScript, Tailwind CSS, react-toastify  
+**Backend**: ASP.NET Core 8, Entity Framework Core, ASP.NET Identity  
+**Database**: SQL Server (LocalDB for dev)  
+**Testing**: Vitest, React Testing Library (frontend), xUnit (backend)  
+**Dev Tools**: DB reset endpoints, demo logins
+
+---
+
+## **Setup & Development**
+\`\`\`bash
+# Apply migrations and seed dev data
+dotnet ef database update
+
+# Start backend
+dotnet run
+
+# Start frontend
+npm install
+npm run dev
+\`\`\`
+- Demo logins available for manager, provider, and client roles  
+- Use \`/api/devtools/reset-db\` to reset database in dev
+
+---
+
+## **Testing**
+\`\`\`bash
+# Frontend
+npm run test
+
+# Backend
+dotnet test
+\`\`\`
+
+---
+
+## **Contributing**
+Pull requests and issues are welcome.  
+The roadmap is visible in this README — please open issues for bugs or feature requests.  
+See \`/docs\` for API and data model plans.
+
+---
+
+## **License**
 MIT License
-
-**Questions, feature requests, or bugs? File an Issue or start a PR—thanks for checking out BetterSchedule
