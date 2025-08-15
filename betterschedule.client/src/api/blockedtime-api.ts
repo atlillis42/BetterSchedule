@@ -1,6 +1,9 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
 
+/**
+ * Blocked time returned from the API.
+ */
 export type BlockedTimeDto = {
     id: number;
     organizationId: string;
@@ -14,6 +17,9 @@ export type BlockedTimeDto = {
     isDeleted: boolean;
 };
 
+/**
+ * Payload for creating a new blocked time.
+ */
 export type CreateBlockedTimeDto = {
     reason: string;
     startTime: string; // ISO
@@ -22,6 +28,9 @@ export type CreateBlockedTimeDto = {
     backColor?: string | null;
 };
 
+/**
+ * Payload for updating an existing blocked time.
+ */
 export type UpdateBlockedTimeDto = {
     reason?: string | null;
     startTime?: string; // ISO
@@ -30,11 +39,22 @@ export type UpdateBlockedTimeDto = {
     backColor?: string | null;
 };
 
+/**
+ * Retrieves blocked times within an optional range.
+ * @param params - Optional start and end ISO timestamps.
+ * @returns List of blocked times.
+ */
 export async function getBlockedTimes(params: { start?: string; end?: string; }): Promise<BlockedTimeDto[]> {
     const { data } = await api.get("/blocked-times", { params });
     return data;
 }
 
+/**
+ * Creates a new blocked time.
+ * @param payload - Blocked time details.
+ * @param opts - Optional behaviour flags.
+ * @returns The created blocked time.
+ */
 export async function createBlockedTime(
     payload: CreateBlockedTimeDto,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
@@ -57,6 +77,12 @@ export async function createBlockedTime(
     }
 }
 
+/**
+ * Updates an existing blocked time.
+ * @param id - Blocked time identifier.
+ * @param payload - Updated fields for the block.
+ * @param opts - Optional behaviour flags.
+ */
 export async function updateBlockedTime(
     id: number,
     payload: UpdateBlockedTimeDto,
@@ -79,6 +105,11 @@ export async function updateBlockedTime(
     }
 }
 
+/**
+ * Deletes a blocked time.
+ * @param id - Blocked time identifier.
+ * @param opts - Optional behaviour flags.
+ */
 export async function deleteBlockedTime(
     id: number,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }

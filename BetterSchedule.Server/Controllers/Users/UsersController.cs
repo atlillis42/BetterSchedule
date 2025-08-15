@@ -13,8 +13,18 @@ namespace BetterSchedule.Server.Controllers.Users
     public sealed class UsersController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="UsersController"/> class.
+        /// </summary>
+        /// <param name="db">Database context used to query users.</param>
         public UsersController(ApplicationDbContext db) => _db = db;
 
+        /// <summary>
+        /// Returns a lightweight list of service providers for selection UIs.
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of provider DTOs.</returns>
         [HttpGet("providers-lite")]
         public async Task<ActionResult<IEnumerable<ProviderLiteDto>>> GetProvidersLite(CancellationToken ct)
         {
@@ -30,6 +40,13 @@ namespace BetterSchedule.Server.Controllers.Users
             return Ok(providers);
         }
        
+        /// <summary>
+        /// Returns detailed provider information with optional search and pagination.
+        /// </summary>
+        /// <param name="q">Optional search term.</param>
+        /// <param name="take">Optional maximum number of records to return.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of provider DTOs.</returns>
         [HttpGet("providers")]
         public async Task<ActionResult<IEnumerable<ProviderDto>>> GetProviders(
             [FromQuery] string? q,
@@ -68,8 +85,12 @@ namespace BetterSchedule.Server.Controllers.Users
         // -----------------------------
         // Internal helpers
         // -----------------------------
+        /// <summary>
+        /// Builds the base query for service providers in the current organization.
+        /// </summary>
+        /// <returns>A queryable of <see cref="ApplicationUser"/> limited to providers.</returns>
         private IQueryable<ApplicationUser> QueryProviders()
-        {           
+        {
             var query =
                 from u in _db.Users
                 join ur in _db.UserRoles on u.Id equals ur.UserId

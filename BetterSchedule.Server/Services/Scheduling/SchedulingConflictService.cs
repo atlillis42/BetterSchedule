@@ -26,6 +26,7 @@ namespace BetterSchedule.Server.Services.Scheduling
         // Public API (thin wrappers) — keeps existing controller calls unchanged
         // --------------------------------------------------------------------
 
+        /// <inheritdoc/>
         public Task<ReservationConflictResult> CheckReservationCreateAsync(
             string organizationId,
             string serviceProviderId,
@@ -42,6 +43,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreReservationId: null,
                 cancellationToken);
 
+        /// <inheritdoc/>
         public Task<ReservationConflictResult> CheckReservationUpdateAsync(
             int reservationId,
             string organizationId,
@@ -59,6 +61,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreReservationId: reservationId,
                 cancellationToken);
 
+        /// <inheritdoc/>
         public Task<BlockedTimeConflictResult> CheckBlockedTimeCreateAsync(
             string organizationId,
             string createdByUserId,
@@ -75,6 +78,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreBlockedTimeId: null,
                 cancellationToken);
 
+        /// <inheritdoc/>
         public Task<BlockedTimeConflictResult> CheckBlockedTimeUpdateAsync(
             int blockedTimeId,
             string organizationId,
@@ -96,6 +100,17 @@ namespace BetterSchedule.Server.Services.Scheduling
         // Single-source overlap logic
         // --------------------------------------------------------------------
 
+        /// <summary>
+        /// Calculates reservation conflicts for a given provider and optional resource.
+        /// </summary>
+        /// <param name="organizationId">Organization identifier.</param>
+        /// <param name="serviceProviderId">Service provider identifier.</param>
+        /// <param name="resourceId">Optional resource identifier.</param>
+        /// <param name="start">Proposed reservation start time.</param>
+        /// <param name="end">Proposed reservation end time.</param>
+        /// <param name="ignoreReservationId">Reservation to exclude from the search (for updates).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Conflict result for the reservation.</returns>
         private async Task<ReservationConflictResult> ComputeReservationConflictsAsync(
             string organizationId,
             string serviceProviderId,
@@ -135,6 +150,17 @@ namespace BetterSchedule.Server.Services.Scheduling
             );
         }
 
+        /// <summary>
+        /// Calculates conflicts for a proposed blocked time window.
+        /// </summary>
+        /// <param name="organizationId">Organization identifier.</param>
+        /// <param name="createdByUserId">Identifier of the user creating the block.</param>
+        /// <param name="resourceId">Optional resource identifier.</param>
+        /// <param name="start">Proposed block start time.</param>
+        /// <param name="end">Proposed block end time.</param>
+        /// <param name="ignoreBlockedTimeId">Block to exclude from the search (for updates).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Conflict result for the block.</returns>
         private async Task<BlockedTimeConflictResult> ComputeBlockedTimeConflictsAsync(
             string organizationId,
             string createdByUserId,
@@ -175,6 +201,15 @@ namespace BetterSchedule.Server.Services.Scheduling
             );
         }
 
+        /// <summary>
+        /// Determines whether a resource is blocked for the specified time window.
+        /// </summary>
+        /// <param name="organizationId">Organization identifier.</param>
+        /// <param name="resourceId">Optional resource identifier.</param>
+        /// <param name="start">Start of the window.</param>
+        /// <param name="end">End of the window.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><c>true</c> if the resource is blocked; otherwise <c>false</c>.</returns>
         private async Task<bool> IsResourceBlockedAsync(
             string organizationId,
             int? resourceId,

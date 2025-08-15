@@ -15,10 +15,19 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class AppointmentTypeController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AppointmentTypeController"/> class.
+        /// </summary>
+        /// <param name="db">Database context used for appointment type queries.</param>
         public AppointmentTypeController(ApplicationDbContext db) => _db = db;
 
-        // GET /api/appointmenttype
-        // Visibility: Manager → all; Provider → public + own; Client → public only.
+        /// <summary>
+        /// Lists appointment types visible to the current caller.
+        /// Manager sees all types, providers see public and their own, and clients see only public types.
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of appointment type DTOs.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> List(CancellationToken ct)
         {
@@ -46,8 +55,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/appointmenttype/{id}
-        // Same visibility rules as List().
+        /// <summary>
+        /// Retrieves a specific appointment type by identifier using the same visibility rules as <see cref="List"/>.
+        /// </summary>
+        /// <param name="id">The appointment type identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The appointment type DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<AppointmentTypeDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
@@ -75,9 +88,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             });
         }
 
-        // POST /api/appointmenttype
-        // Manager: can create for org; Provider: can create for themselves (owns the type).
-        // NOTE: We ignore any incoming CreatedByUserId/OrganizationId and set from claims.
+        /// <summary>
+        /// Creates a new appointment type. Managers can create for the organization and providers can create types for themselves.
+        /// </summary>
+        /// <param name="dto">Values for the new appointment type.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created appointment type DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto, CancellationToken ct)
@@ -122,8 +138,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/appointmenttype/{id}
-        // Manager: can update any; Provider: only if they own it (CreatedByUserId == caller).
+        /// <summary>
+        /// Updates an existing appointment type. Managers may update any type while providers may update types they own.
+        /// </summary>
+        /// <param name="id">The appointment type identifier.</param>
+        /// <param name="dto">Updated values for the appointment type.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateAppointmentTypeDto dto, CancellationToken ct)
@@ -150,8 +171,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // DELETE /api/appointmenttype/{id}
-        // Manager: can delete any; Provider: only if they own it.
+        /// <summary>
+        /// Soft deletes an appointment type. Managers may delete any type while providers may delete types they own.
+        /// </summary>
+        /// <param name="id">The appointment type identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
