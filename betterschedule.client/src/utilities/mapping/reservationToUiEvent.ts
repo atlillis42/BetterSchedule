@@ -1,10 +1,6 @@
 import { utcIsoToDayPilotLocal } from "@/utilities/conversions";
 import type { UiEvent } from "@/types/calendarDataTypes";
 import type { ReservationDto } from "@/api/reservation-api";
-/**
- * Maps ReservationDto (API) → UiEvent (for calendar display)
- */
-
 
 export function reservationToUiEvent(res: ReservationDto): UiEvent {
     return {
@@ -12,10 +8,9 @@ export function reservationToUiEvent(res: ReservationDto): UiEvent {
         text: res.notes ?? "Reservation",
         start: utcIsoToDayPilotLocal(res.startTime),
         end: utcIsoToDayPilotLocal(res.endTime),
-        resource: res.serviceProviderId,
+        resource: typeof res.resourceId === "number" ? res.resourceId : undefined, 
         backColor: "#3b82f6",
         type: "reservation",
         reservation: res,
     };
 }
-

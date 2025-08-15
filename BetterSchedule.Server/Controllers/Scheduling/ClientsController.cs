@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/clients")]
     public sealed class ClientsController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> _userManager;

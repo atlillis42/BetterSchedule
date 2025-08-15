@@ -9,9 +9,9 @@ export type ReservationDto = {
     appointmentTypeId: number;
     startTime: string; // ISO
     endTime: string;   // ISO
-    status: string;    // "Booked" | "Completed" | "Canceled" | "NoShow" ...
+    status: string;    // "Booked" | "Completed" | "Canceled" | "NoShow"
     notes?: string | null;
-    locationId?: string | null;
+    resourceId?: number | null;           
     packageAssignmentId?: number | null;
     createdAt: string;
     updatedAt?: string | null;
@@ -25,7 +25,7 @@ export type CreateReservationDto = {
     startTime: string; // ISO
     endTime: string;   // ISO
     notes?: string | null;
-    locationId?: string | null;
+    resourceId?: number | null;           
     packageAssignmentId?: number | null;
 };
 
@@ -34,14 +34,13 @@ export type UpdateReservationDto = {
     startTime?: string; // ISO
     endTime?: string;   // ISO
     status?: string | null;
-    locationId?: string | null;
+    resourceId?: number | null;           
     packageAssignmentId?: number | null;
+    serviceProviderId?: string | null;
+    appointmentTypeId?: number | null;
 };
 
-export async function getReservations(params: {
-    start?: string;
-    end?: string;
-}): Promise<ReservationDto[]> {
+export async function getReservations(params: { start?: string; end?: string; }): Promise<ReservationDto[]> {
     const { data } = await api.get("/reservation", { params });
     return data;
 }
@@ -50,9 +49,22 @@ export async function createReservation(
     payload: CreateReservationDto,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<ReservationDto> {
-    const { data } = await api.post("/reservation", payload);
-    if (opts.toastSuccess) toast.success("Reservation created.");
-    return data;
+    try {
+        const res = await api.post<ReservationDto>("/reservation", payload);
+        const warned = res.headers?.["x-warned-double-booking"] === "true";
+        if (opts.toastSuccess) {
+            toast.success("Reservation created.");
+            if (warned) toast.info("Heads up: this overlaps another booking.");
+        }
+        return res.data;
+    } catch (err: any) {
+        const code = err?.response?.data?.code;
+        const message = err?.response?.data?.message || "Failed to create reservation.";
+        if (code === "UNAVAILABLE") {
+            throw new Error(message);
+        }
+        throw err;
+    }
 }
 
 export async function updateReservation(
@@ -60,14 +72,24 @@ export async function updateReservation(
     payload: UpdateReservationDto,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
-    await api.put(`/reservation/${id}`, payload);
-    if (opts.toastSuccess) toast.success("Reservation updated.");
+    try {
+        const res = await api.put(`/reservation/${id}`, payload);
+        const warned = res.headers?.["x-warned-double-booking"] === "true";
+        if (opts.toastSuccess) {
+            toast.success("Reservation updated.");
+            if (warned) toast.info("Heads up: this overlaps another booking.");
+        }
+    } catch (err: any) {
+        const code = err?.response?.data?.code;
+        const message = err?.response?.data?.message || "Failed to update reservation.";
+        if (code === "UNAVAILABLE") {
+            throw new Error(message);
+        }
+        throw err;
+    }
 }
 
-export async function deleteReservation(
-    id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
-): Promise<void> {
+export async function deleteReservation(id: number, opts: { toastSuccess?: boolean } = { toastSuccess: true }): Promise<void> {
     await api.delete(`/reservation/${id}`);
     if (opts.toastSuccess) toast.success("Reservation deleted.");
 }

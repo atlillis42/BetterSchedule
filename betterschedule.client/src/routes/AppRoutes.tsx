@@ -3,44 +3,56 @@ import { Routes, Route } from "react-router-dom";
 import Login from "@auth/Login";
 import Calendar from "@calendar/Calendar";
 import MainLayout from "@layout/MainLayout";
-import ProtectedRoute from "@layout/ProtectedRoute";
+import RequireAuth from "@/routes/RequireAuth";
+import RequireAdmin from "@/routes/RequireAdmin";
 import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
-import { ToastContainer } from "react-toastify";
+import CalendarResourcesPage from "@/pages/CalendarResources";
 
-const AppRoutes = () => {
+export default function AppRoutes() {
     return (
-        <>
-            <Routes>
-                {/* Public Login Route */}
-                <Route path="/" element={<Login />} />
+        <Routes>
+            {/* Public */}
+            <Route path="/" element={<Login />} />
 
-                {/* Main Calendar (protected) */}
-                <Route
-                    path="/calendar"
-                    element={
-                        <ProtectedRoute>
-                            <MainLayout>
-                                <Calendar />
-                            </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
+            {/* Calendar */}
+            <Route
+                path="/calendar"
+                element={
+                    <RequireAuth>
+                        <MainLayout>
+                            <Calendar />
+                        </MainLayout>
+                    </RequireAuth>
+                }
+            />
 
-                {/* Appointment Types Admin (protected, inside MainLayout) */}
-                <Route
-                    path="/admin/appointment-types"
-                    element={
-                        <ProtectedRoute>
+            {/* Appointment Types (admin) */}
+            <Route
+                path="/admin/appointment-types"
+                element={
+                    <RequireAuth>
+                        <RequireAdmin>
                             <MainLayout>
                                 <AppointmentTypeManager />
                             </MainLayout>
-                        </ProtectedRoute>
-                    }
-                />
-            </Routes>
-            <ToastContainer />
-        </>
-    );
-};
+                        </RequireAdmin>
+                    </RequireAuth>
+                }
+            />
 
-export default AppRoutes;
+            {/* Resources (admin) */}
+            <Route
+                path="/admin/resources"
+                element={
+                    <RequireAuth>
+                        <RequireAdmin>
+                            <MainLayout>
+                                <CalendarResourcesPage />
+                            </MainLayout>
+                        </RequireAdmin>
+                    </RequireAuth>
+                }
+            />
+        </Routes>
+    );
+}

@@ -1,7 +1,8 @@
 import { combineDateTime } from "@/utilities/conversions";
 
 /**
- * Builds an event DTO for backend from modal values and event.
+ * Legacy helper used by some modals.
+ * For reservations/blocked times, prefer the specific API payloads.
  */
 export function buildEventApiDto({
     baseEvent,
@@ -18,10 +19,8 @@ export function buildEventApiDto({
         backColor?: string;
     };
 }) {
-    // Defensive: combineDateTime for both start and end
     const startCheck = combineDateTime(formValues.startDate, formValues.startTime);
     const endCheck = combineDateTime(formValues.endDate, formValues.endTime);
-
     if (!startCheck.iso || !endCheck.iso) {
         throw new Error("Invalid start or end date/time.");
     }
@@ -53,4 +52,3 @@ export function buildEventApiDto({
         backColor,
     };
 }
-

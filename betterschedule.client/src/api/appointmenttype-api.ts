@@ -9,8 +9,8 @@ export type AppointmentTypeDto = {
     description?: string | null;
     createdByUserId: string;
     createdByUserName?: string | null;
-    assignedLocationId?: number | null;
-    assignedLocationName?: string | null;
+    assignedResourceId?: number | null;   
+    assignedResourceName?: string | null; 
     isPublic: boolean;
     requiresWaiver: boolean;
     isDeleted: boolean;
@@ -22,8 +22,7 @@ export type CreateAppointmentTypeDto = {
     duration: string; // "hh:mm:ss"
     price?: number;
     description?: string | null;
-    createdByUserId: string;
-    assignedLocationId?: number | null;
+    assignedResourceId?: number | null;  
     isPublic?: boolean;
     requiresWaiver?: boolean;
 };
@@ -35,7 +34,7 @@ export type UpdateAppointmentTypeDto = {
     description?: string | null;
     isPublic?: boolean | null;
     requiresWaiver?: boolean | null;
-    assignedLocationId?: number | null;
+    assignedResourceId?: number | null;  
 };
 
 export async function getAppointmentTypes(): Promise<AppointmentTypeDto[]> {
@@ -66,10 +65,7 @@ export async function updateAppointmentType(
     if (opts.toastSuccess) toast.success("Appointment type updated.");
 }
 
-export async function deleteAppointmentType(
-    id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
-): Promise<void> {
+export async function deleteAppointmentType(id: number, opts: { toastSuccess?: boolean } = { toastSuccess: true }): Promise<void> {
     await api.delete(`/appointmenttype/${id}`);
     if (opts.toastSuccess) toast.success("Appointment type deleted.");
 }

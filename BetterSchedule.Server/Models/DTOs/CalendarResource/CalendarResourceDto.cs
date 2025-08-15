@@ -7,7 +7,7 @@ namespace BetterSchedule.Server.Models.DTOs.CalendarResource
     {
         public int Id { get; init; }
         [Required]
-        public string OrganizationId { get; set; } = default!;
+        public string OrganizationId { get; init; } = default!;
         [Required]
         public string Name { get; init; } = default!;
         public string? BackColor { get; init; } = default!;

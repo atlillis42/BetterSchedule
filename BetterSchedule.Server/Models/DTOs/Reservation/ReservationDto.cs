@@ -5,7 +5,7 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
     public class ReservationDto
     {
         [Required]
-        public string OrganizationId { get; set; } = default!;
+        public string OrganizationId { get; init; } = default!;
 
         [Required]
         public int Id { get; init; }
@@ -25,7 +25,7 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
         [Required]
         public DateTimeOffset EndTime { get; init; }
 
-        public string? LocationId { get; init; }
+        public int? ResourceId { get; init; }
         public int? PackageAssignmentId { get; init; }
 
         [Required]

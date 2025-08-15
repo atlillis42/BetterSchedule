@@ -14,6 +14,6 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
         public string? Description { get; init; }
         public bool? IsPublic { get; init; }
         public bool? RequiresWaiver { get; init; }
-        public int? AssignedLocationId { get; init; }
+        public int? AssignedResourceId { get; init; }
     }
 }

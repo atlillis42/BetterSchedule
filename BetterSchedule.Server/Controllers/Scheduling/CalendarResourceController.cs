@@ -1,34 +1,28 @@
-﻿// BetterSchedule.Server/Controllers/Calendar/CalendarResourceController.cs
-using BetterSchedule.Server.Auth;
-using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models.Scheduling;
+﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.BlockedTime;
 using BetterSchedule.Server.Models.DTOs.CalendarResource;
+using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace BetterSchedule.Server.Controllers.Calendar
+namespace BetterSchedule.Server.Controllers.Scheduling
 {
     [ApiController]
     [Route("api/calendar-resources")]
     [Authorize]
-    public class CalendarResourceController : ControllerBase
+    public sealed class CalendarResourceController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
         public CalendarResourceController(ApplicationDbContext db) => _db = db;
 
-        private string OrgId => User.GetOrgIdOrThrow();
-
-        // GET /api/calendar-resources  (lean: no BlockedTimes to keep payload small)
+        // GET /api/calendar-resources
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CalendarResourceDto>>> List(CancellationToken ct)
         {
-            var orgId = OrgId;
-
             var items = await _db.CalendarResources
                 .AsNoTracking()
-                .Where(r => r.OrganizationId == orgId && !r.IsDeleted)
+                .Where(r => r.OrganizationId == OrganizationId && !r.IsDeleted)
                 .OrderBy(r => r.Name)
                 .Select(r => new CalendarResourceDto
                 {
@@ -36,7 +30,7 @@ namespace BetterSchedule.Server.Controllers.Calendar
                     OrganizationId = r.OrganizationId,
                     Name = r.Name,
                     BackColor = r.BackColor,
-                    BlockedTimes = new(), // intentionally empty on the list
+                    BlockedTimes = new List<BlockedTimeDto>(), // keep empty in list
                     IsDeleted = r.IsDeleted
                 })
                 .ToListAsync(ct);
@@ -44,8 +38,7 @@ namespace BetterSchedule.Server.Controllers.Calendar
             return Ok(items);
         }
 
-        // GET /api/calendar-resources/{id}?start=...&end=...
-        // Enriched: includes BlockedTimes for this resource (optionally filtered by overlap with start/end).
+        // GET /api/calendar-resources/{id}?start&end
         [HttpGet("{id:int}")]
         public async Task<ActionResult<CalendarResourceDto>> GetById(
             [FromRoute] int id,
@@ -53,42 +46,20 @@ namespace BetterSchedule.Server.Controllers.Calendar
             [FromQuery] DateTimeOffset? end,
             CancellationToken ct)
         {
-            var orgId = OrgId;
-
-            // Fetch the resource first (scoped to org)
             var resource = await _db.CalendarResources
                 .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (resource is null) return NotFound();
 
-            // Pull this resource's blocked times (scoped to org)
             var btQuery = _db.BlockedTimes
                 .AsNoTracking()
-                .Where(b => b.OrganizationId == orgId &&
+                .Where(b => b.OrganizationId == OrganizationId &&
                             b.ResourceId == resource.Id &&
                             !b.IsDeleted);
 
             if (start.HasValue && end.HasValue)
-            {
-                // Overlap: Start < end && End > start
                 btQuery = btQuery.Where(b => b.StartTime < end.Value && b.EndTime > start.Value);
-            }
-
-            var blockedTimes = await btQuery
-                .OrderBy(b => b.StartTime)
-                .Select(b => new BlockedTimeDto
-                {
-                    Id = b.Id,
-                    OrganizationId = b.OrganizationId,
-                    Reason = b.Reason!,
-                    StartTime = b.StartTime,
-                    EndTime = b.EndTime,
-                    ResourceId = b.ResourceId,
-                    BackColor = b.BackColor,
-                    IsDeleted = b.IsDeleted
-                })
-                .ToListAsync(ct);
 
             var dto = new CalendarResourceDto
             {
@@ -96,23 +67,34 @@ namespace BetterSchedule.Server.Controllers.Calendar
                 OrganizationId = resource.OrganizationId,
                 Name = resource.Name,
                 BackColor = resource.BackColor,
-                BlockedTimes = blockedTimes,
+                BlockedTimes = await btQuery
+                    .OrderBy(b => b.StartTime)
+                    .Select(b => new BlockedTimeDto
+                    {
+                        Id = b.Id,
+                        OrganizationId = b.OrganizationId,
+                        Reason = b.Reason!,
+                        StartTime = b.StartTime,
+                        EndTime = b.EndTime,
+                        ResourceId = b.ResourceId,
+                        BackColor = b.BackColor,
+                        IsDeleted = b.IsDeleted
+                    })
+                    .ToListAsync(ct),
                 IsDeleted = resource.IsDeleted
             };
 
             return Ok(dto);
         }
 
-        // POST /api/calendar-resources
+        // POST /api/calendar-resources  (Manager only)
         [HttpPost]
-        [Authorize(Roles = "Manager,ServiceProvider")]
+        [Authorize(Roles = "Manager")]
         public async Task<ActionResult<CalendarResourceDto>> Create([FromBody] CreateCalendarResourceDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
-
             var entity = new CalendarResource
             {
-                OrganizationId = orgId, // stamp from claim
+                OrganizationId = OrganizationId,
                 Name = dto.Name,
                 BackColor = dto.BackColor,
                 IsDeleted = false
@@ -127,45 +109,41 @@ namespace BetterSchedule.Server.Controllers.Calendar
                 OrganizationId = entity.OrganizationId,
                 Name = entity.Name,
                 BackColor = entity.BackColor,
-                BlockedTimes = new(),
+                BlockedTimes = new List<BlockedTimeDto>(),
                 IsDeleted = entity.IsDeleted
             };
 
-            return CreatedAtAction(nameof(GetById), new { id = entity.Id }, read);
+            return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/calendar-resources/{id}
+        // PUT /api/calendar-resources/{id}  (Manager only)
         [HttpPut("{id:int}")]
-        [Authorize(Roles = "Manager,ServiceProvider")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateCalendarResourceDto dto, CancellationToken ct)
         {
-            var orgId = OrgId;
+            var r = await _db.CalendarResources
+                .FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == OrganizationId && !x.IsDeleted, ct);
 
-            var entity = await _db.CalendarResources
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+            if (r is null) return NotFound();
 
-            if (entity is null) return NotFound();
-
-            if (dto.Name is not null) entity.Name = dto.Name;
-            if (dto.BackColor is not null) entity.BackColor = dto.BackColor;
+            if (dto.Name is not null) r.Name = dto.Name;
+            if (dto.BackColor is not null) r.BackColor = dto.BackColor;
 
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        // DELETE /api/calendar-resources/{id}
+        // DELETE /api/calendar-resources/{id}  (Manager only)
         [HttpDelete("{id:int}")]
-        [Authorize(Roles = "Manager,ServiceProvider")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var orgId = OrgId;
+            var r = await _db.CalendarResources
+                .FirstOrDefaultAsync(x => x.Id == id && x.OrganizationId == OrganizationId && !x.IsDeleted, ct);
 
-            var entity = await _db.CalendarResources
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == orgId && !r.IsDeleted, ct);
+            if (r is null) return NotFound();
 
-            if (entity is null) return NotFound();
-
-            entity.IsDeleted = true; // soft delete
+            r.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
