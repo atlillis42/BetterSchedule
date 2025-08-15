@@ -19,14 +19,24 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         private readonly ApplicationDbContext _db;
         private readonly ISchedulingConflictService _conflicts;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ReservationController"/> class.
+        /// </summary>
+        /// <param name="db">Database context for reservation operations.</param>
+        /// <param name="conflicts">Service for checking scheduling conflicts.</param>
         public ReservationController(ApplicationDbContext db, ISchedulingConflictService conflicts)
         {
             _db = db;
             _conflicts = conflicts;
         }
 
-        // GET /api/reservation?start=yyyy-MM-dd&end=yyyy-MM-dd
-        // Returns only what the caller is allowed to see (org + role).
+        /// <summary>
+        /// Lists reservations overlapping the optional time range and visible to the caller.
+        /// </summary>
+        /// <param name="start">Optional start of the range to filter.</param>
+        /// <param name="end">Optional end of the range to filter.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of reservation DTOs.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
@@ -43,8 +53,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/reservation/{id:int}
-        // 404 if caller can't see it.
+        /// <summary>
+        /// Retrieves a reservation by identifier if visible to the caller.
+        /// </summary>
+        /// <param name="id">The reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The reservation DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
@@ -57,8 +71,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return dto is null ? NotFound() : Ok(dto);
         }
 
-        // POST /api/reservation
-        // Manager/ServiceProvider only.
+        /// <summary>
+        /// Creates a new reservation. Allowed for managers and service providers.
+        /// </summary>
+        /// <param name="dto">Reservation details.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created reservation DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto, CancellationToken ct)
@@ -108,8 +126,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/reservation/{id:int}
-        // Manager/ServiceProvider only. Owner checks are optional here since role is already restricted.
+        /// <summary>
+        /// Updates an existing reservation. Allowed for managers and service providers.
+        /// </summary>
+        /// <param name="id">The reservation identifier.</param>
+        /// <param name="dto">Updated reservation values.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, CancellationToken ct)
@@ -168,7 +191,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // DELETE /api/reservation/{id:int}
+        /// <summary>
+        /// Soft deletes a reservation.
+        /// </summary>
+        /// <param name="id">The reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)

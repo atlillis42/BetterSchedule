@@ -11,9 +11,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ClientsController : ControllerBase
     {
         private readonly UserManager<ApplicationUser> _userManager;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ClientsController"/> class.
+        /// </summary>
+        /// <param name="userManager">User manager used to query client accounts.</param>
         public ClientsController(UserManager<ApplicationUser> userManager) => _userManager = userManager;
 
-        // GET /api/clients?search=ann
+        /// <summary>
+        /// Searches for client accounts within the caller's organization.
+        /// </summary>
+        /// <param name="search">Optional search term to match against client name or email.</param>
+        /// <returns>A list of matching clients.</returns>
         [HttpGet]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Search([FromQuery] string? search = null)

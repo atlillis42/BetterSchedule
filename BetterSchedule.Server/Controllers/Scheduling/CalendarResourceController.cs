@@ -14,9 +14,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class CalendarResourceController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="CalendarResourceController"/> class.
+        /// </summary>
+        /// <param name="db">Database context for resource operations.</param>
         public CalendarResourceController(ApplicationDbContext db) => _db = db;
 
-        // GET /api/calendar-resources
+        /// <summary>
+        /// Lists all calendar resources in the current organization.
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of calendar resource DTOs.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<CalendarResourceDto>>> List(CancellationToken ct)
         {
@@ -38,7 +47,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/calendar-resources/{id}?start&end
+        /// <summary>
+        /// Retrieves a calendar resource by identifier and optionally loads blocked times in a range.
+        /// </summary>
+        /// <param name="id">The resource identifier.</param>
+        /// <param name="start">Optional start of the blocked time window.</param>
+        /// <param name="end">Optional end of the blocked time window.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The resource DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<CalendarResourceDto>> GetById(
             [FromRoute] int id,
@@ -87,7 +103,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(dto);
         }
 
-        // POST /api/calendar-resources  (Manager only)
+        /// <summary>
+        /// Creates a new calendar resource. Only managers may perform this action.
+        /// </summary>
+        /// <param name="dto">Values for the new resource.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created resource DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager")]
         public async Task<ActionResult<CalendarResourceDto>> Create([FromBody] CreateCalendarResourceDto dto, CancellationToken ct)
@@ -116,7 +137,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/calendar-resources/{id}  (Manager only)
+        /// <summary>
+        /// Updates an existing calendar resource. Only managers may perform this action.
+        /// </summary>
+        /// <param name="id">The resource identifier.</param>
+        /// <param name="dto">Updated values for the resource.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateCalendarResourceDto dto, CancellationToken ct)
@@ -133,7 +160,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // DELETE /api/calendar-resources/{id}  (Manager only)
+        /// <summary>
+        /// Soft deletes a calendar resource. Only managers may perform this action.
+        /// </summary>
+        /// <param name="id">The resource identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)

@@ -15,9 +15,20 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class BlockedTimeController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="BlockedTimeController"/> class.
+        /// </summary>
+        /// <param name="db">Database context for blocked time operations.</param>
         public BlockedTimeController(ApplicationDbContext db) => _db = db;
 
-        // GET /api/blocked-times?start=...&end=...
+        /// <summary>
+        /// Lists blocked time windows overlapping the optional range.
+        /// </summary>
+        /// <param name="start">Optional start of the range to filter.</param>
+        /// <param name="end">Optional end of the range to filter.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of blocked time DTOs.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<BlockedTimeDto>>> List(
             [FromQuery] DateTimeOffset? start,
@@ -46,7 +57,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/blocked-times/{id}
+        /// <summary>
+        /// Retrieves a single blocked time by identifier.
+        /// </summary>
+        /// <param name="id">The blocked time identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The blocked time DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<BlockedTimeDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
@@ -69,7 +85,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             });
         }
 
-        // POST /api/blocked-times
+        /// <summary>
+        /// Creates a new blocked time window.
+        /// </summary>
+        /// <param name="dto">Values describing the block.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created blocked time DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<BlockedTimeDto>> Create([FromBody] CreateBlockedTimeDto dto, CancellationToken ct)
@@ -111,7 +132,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/blocked-times/{id}
+        /// <summary>
+        /// Updates an existing blocked time window.
+        /// </summary>
+        /// <param name="id">The blocked time identifier.</param>
+        /// <param name="dto">Updated values for the block.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateBlockedTimeDto dto, CancellationToken ct)
@@ -135,7 +162,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // DELETE /api/blocked-times/{id}
+        /// <summary>
+        /// Soft deletes a blocked time entry.
+        /// </summary>
+        /// <param name="id">The blocked time identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)

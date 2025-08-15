@@ -9,12 +9,17 @@ using System.Security.Claims;
 
 namespace BetterSchedule.Server.Controllers.Auth
 {
+    /// <summary>
+    /// Provides endpoints for authentication and session management.
+    /// </summary>
     [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
     {
-        // GET /api/auth/status
-        // Anonymous is fine; returns identity info if signed in.
+        /// <summary>
+        /// Gets the current authentication status including user information and roles.
+        /// </summary>
+        /// <returns>Information about the current user or anonymous status.</returns>
         [HttpGet("status")]
         [AllowAnonymous]
         public IActionResult Status()
@@ -31,7 +36,10 @@ namespace BetterSchedule.Server.Controllers.Auth
             });
         }
 
-        // POST /api/auth/logout
+        /// <summary>
+        /// Signs the current user out of the application.
+        /// </summary>
+        /// <returns>A confirmation that the user has been logged out.</returns>
         [HttpPost("logout")]
         [Authorize]
         public async Task<IActionResult> Logout()
@@ -41,11 +49,14 @@ namespace BetterSchedule.Server.Controllers.Auth
             return Ok(new { message = "Logged out succesfully" });
         }
 
-        // POST /api/auth/refresh
+        /// <summary>
+        /// Refreshes the authentication ticket and returns the current user claims.
+        /// </summary>
+        /// <returns>The refreshed user information.</returns>
         [HttpPost("refresh")]
         [Authorize]
         public IActionResult Refresh()
-        {            
+        {
             var orgId = User.GetOrgIdOrThrow();
 
             return Ok(new
