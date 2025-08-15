@@ -1,13 +1,14 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
 import type { BlockedTimeDto as BlockedTime } from "@api/blockedtime-api";
+import type { CalendarResource } from "@/types/calendarDataTypes";
 
 export type CalendarResourceDto = {
     id: number;
     organizationId: string;
     name: string;
     backColor?: string | null;
-    blockedTimes: BlockedTime[]; // enriched GET returns items when requested
+    blockedTimes: BlockedTime[];
     isDeleted: boolean;
 };
 
@@ -21,17 +22,24 @@ export type UpdateCalendarResourceDto = {
     backColor?: string | null;
 };
 
-export async function getResources(): Promise<CalendarResourceDto[]> {
-    const { data } = await api.get("/calendar-resources");
-    return data;
+function dtoToUi(r: CalendarResourceDto): CalendarResource {
+    return {
+        id: r.id,
+        name: r.name,
+        backColor: r.backColor ?? undefined,
+    };
 }
 
-// Enriched GET (optionally filter blocked times by overlap)
+export async function getResources(): Promise<CalendarResource[]> {
+    const { data } = await api.get<CalendarResourceDto[]>("/calendar-resources");
+    return data.map(dtoToUi);
+}
+
 export async function getResourceById(
     id: number,
     opts?: { start?: string; end?: string }
 ): Promise<CalendarResourceDto> {
-    const { data } = await api.get(`/calendar-resources/${id}`, { params: opts });
+    const { data } = await api.get<CalendarResourceDto>(`/calendar-resources/${id}`, { params: opts });
     return data;
 }
 
@@ -39,7 +47,7 @@ export async function createResource(
     payload: CreateCalendarResourceDto,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<CalendarResourceDto> {
-    const { data } = await api.post("/calendar-resources", payload);
+    const { data } = await api.post<CalendarResourceDto>("/calendar-resources", payload);
     if (opts.toastSuccess) toast.success("Resource created.");
     return data;
 }

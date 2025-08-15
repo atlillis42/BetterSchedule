@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial_SchemaSplit : Migration
+    public partial class Initial_Create : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -257,7 +257,7 @@ namespace BetterSchedule.Server.Migrations
                     Price = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
                     Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     CreatedByUserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    AssignedLocationId = table.Column<int>(type: "int", nullable: true),
+                    AssignedResourceId = table.Column<int>(type: "int", nullable: true),
                     IsPublic = table.Column<bool>(type: "bit", nullable: false),
                     RequiresWaiver = table.Column<bool>(type: "bit", nullable: false),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
@@ -274,8 +274,8 @@ namespace BetterSchedule.Server.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "FK_AppointmentTypes_CalendarResources_AssignedLocationId",
-                        column: x => x.AssignedLocationId,
+                        name: "FK_AppointmentTypes_CalendarResources_AssignedResourceId",
+                        column: x => x.AssignedResourceId,
                         principalTable: "CalendarResources",
                         principalColumn: "Id");
                     table.ForeignKey(
@@ -295,6 +295,7 @@ namespace BetterSchedule.Server.Migrations
                     Reason = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     StartTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     EndTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    CreatedByUserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     ResourceId = table.Column<int>(type: "int", nullable: true),
                     BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
@@ -303,6 +304,13 @@ namespace BetterSchedule.Server.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_BlockedTimes", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_BlockedTimes_AspNetUsers_CreatedByUserId",
+                        column: x => x.CreatedByUserId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_BlockedTimes_CalendarResources_ResourceId",
                         column: x => x.ResourceId,
@@ -328,7 +336,7 @@ namespace BetterSchedule.Server.Migrations
                     AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
                     StartTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     EndTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
-                    LocationId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    ResourceId = table.Column<int>(type: "int", nullable: true),
                     PackageAssignmentId = table.Column<int>(type: "int", nullable: true),
                     Status = table.Column<int>(type: "int", nullable: false),
                     Notes = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -397,14 +405,19 @@ namespace BetterSchedule.Server.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_AppointmentTypes_AssignedLocationId",
+                name: "IX_AppointmentTypes_AssignedResourceId",
                 table: "AppointmentTypes",
-                column: "AssignedLocationId");
+                column: "AssignedResourceId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AppointmentTypes_CreatedByUserId",
                 table: "AppointmentTypes",
                 column: "CreatedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypes_OrganizationId_CreatedByUserId",
+                table: "AppointmentTypes",
+                columns: new[] { "OrganizationId", "CreatedByUserId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_AppointmentTypes_OrganizationId_Name",
@@ -465,9 +478,19 @@ namespace BetterSchedule.Server.Migrations
                 filter: "[NormalizedUserName] IS NOT NULL");
 
             migrationBuilder.CreateIndex(
-                name: "IX_BlockedTimes_OrganizationId",
+                name: "IX_BlockedTimes_CreatedByUserId",
                 table: "BlockedTimes",
-                column: "OrganizationId");
+                column: "CreatedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BlockedTimes_OrganizationId_CreatedByUserId",
+                table: "BlockedTimes",
+                columns: new[] { "OrganizationId", "CreatedByUserId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BlockedTimes_OrganizationId_ResourceId_StartTime_EndTime",
+                table: "BlockedTimes",
+                columns: new[] { "OrganizationId", "ResourceId", "StartTime", "EndTime" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_BlockedTimes_ResourceId",
@@ -512,9 +535,9 @@ namespace BetterSchedule.Server.Migrations
                 column: "ClientId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_Reservations_OrganizationId",
+                name: "IX_Reservations_OrganizationId_ServiceProviderId_StartTime_EndTime",
                 table: "Reservations",
-                column: "OrganizationId");
+                columns: new[] { "OrganizationId", "ServiceProviderId", "StartTime", "EndTime" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reservations_ServiceProviderId",

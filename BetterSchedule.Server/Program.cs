@@ -1,8 +1,9 @@
 using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
+using BetterSchedule.Server.Models.Identity;
+using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -41,6 +42,7 @@ builder.Services
     .AddApiEndpoints();
 
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
+builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
 // CORS (credentials require explicit origins)
 builder.Services.AddCors(options =>

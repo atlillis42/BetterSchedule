@@ -1,0 +1,9 @@
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "@auth/AuthContext";
+
+export default function RequireAuth({ children }: { children: JSX.Element }) {
+    const { isAuthenticated, loading } = useAuth();
+    if (loading) return <div className="text-center mt-20">🔄 Loading...</div>;
+    return isAuthenticated ? children : <Navigate to="/" replace />;
+}

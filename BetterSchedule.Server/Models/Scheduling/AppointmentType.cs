@@ -21,8 +21,8 @@ namespace BetterSchedule.Server.Models.Scheduling
         public string CreatedByUserId { get; set; } = default!; // FK to ApplicationUser
         public ApplicationUser CreatedByUser { get; set; } = default!;
 
-        public int? AssignedLocationId { get; set; }
-        public CalendarResource? AssignedLocation { get; set; }
+        public int? AssignedResourceId { get; set; }
+        public CalendarResource? AssignedResource { get; set; }
 
         public bool IsPublic { get; set; } = true;
         public bool RequiresWaiver { get; set; } = false;

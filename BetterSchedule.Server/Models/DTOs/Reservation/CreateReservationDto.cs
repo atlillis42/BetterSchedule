@@ -20,7 +20,7 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
         [Required]
         public DateTimeOffset EndTime { get; init; }
 
-        public string? LocationId { get; init; }
+        public int? ResourceId { get; init; }
         public int? PackageAssignmentId { get; init; }
         public string? Notes { get; init; }
     }

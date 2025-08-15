@@ -1,6 +1,8 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@auth/AuthContext";
+import { isManager, isProvider } from "@auth/roles";
+import { ToastContainer } from "react-toastify";
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -8,7 +10,9 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     const navigate = useNavigate();
-    const { logout } = useAuth();
+    const { logout, roles } = useAuth();
+
+    const canAdmin = isManager(roles) || isProvider(roles);
 
     const handleDevReset = async () => {
         if (!window.confirm("Are you sure you want to reset all demo data?")) return;
@@ -28,21 +32,40 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     return (
         <div className="min-h-screen flex flex-col">
             <header className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center shadow-md">
-                <h1
-                    className="text-xl font-bold cursor-pointer"
-                    onClick={() => navigate("/calendar")}
-                >
-                    BetterSchedule
-                </h1>
-                <div className="flex items-center gap-2">
-                    {/* Admin: Manage Appointment Types */}
-                    <button
-                        onClick={() => navigate("/admin/appointment-types")}
-                        className="bg-blue-800 text-white px-4 py-2 rounded hover:bg-blue-900 transition mr-2"
-                        style={{ fontWeight: "bold" }}
+                <div className="flex items-center gap-6">
+                    <h1
+                        className="text-xl font-bold cursor-pointer"
+                        onClick={() => navigate("/calendar")}
                     >
-                        Manage Appointment Types
-                    </button>
+                        BetterSchedule
+                    </h1>
+                    <nav className="flex items-center gap-4 text-sm">
+                        <NavLink
+                            to="/calendar"
+                            className={({ isActive }) => (isActive ? "font-semibold" : "")}
+                        >
+                            Calendar
+                        </NavLink>
+                        {canAdmin && (
+                            <>
+                                <NavLink
+                                    to="/admin/appointment-types"
+                                    className={({ isActive }) => (isActive ? "font-semibold" : "")}
+                                >
+                                    Appointment Types
+                                </NavLink>
+                                <NavLink
+                                    to="/admin/resources"
+                                    className={({ isActive }) => (isActive ? "font-semibold" : "")}
+                                >
+                                    Resources
+                                </NavLink>
+                            </>
+                        )}
+                    </nav>
+                </div>
+
+                <div className="flex items-center gap-2">
                     {import.meta.env.DEV && (
                         <button
                             onClick={handleDevReset}
@@ -64,6 +87,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <main className="flex-1 bg-blue-50 h-[calc(100vh-4rem)] overflow-hidden">
                 {children}
             </main>
+
+            <ToastContainer position="top-right" />
         </div>
     );
 };

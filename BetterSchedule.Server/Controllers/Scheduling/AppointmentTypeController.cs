@@ -34,8 +34,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     Description = a.Description,
                     CreatedByUserId = a.CreatedByUserId,
                     CreatedByUserName = null,           // add Include if you want this
-                    AssignedLocationId = a.AssignedLocationId,
-                    AssignedLocationName = null,        // add join if you want this
+                    AssignedResourceId = a.AssignedResourceId,
+                    AssignedResourceName = null,        // add join if you want this
                     IsPublic = a.IsPublic,
                     RequiresWaiver = a.RequiresWaiver,
                     IsDeleted = a.IsDeleted,
@@ -66,8 +66,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Description = a.Description,
                 CreatedByUserId = a.CreatedByUserId,
                 CreatedByUserName = null,
-                AssignedLocationId = a.AssignedLocationId,
-                AssignedLocationName = null,
+                AssignedResourceId = a.AssignedResourceId,
+                AssignedResourceName = null,
                 IsPublic = a.IsPublic,
                 RequiresWaiver = a.RequiresWaiver,
                 IsDeleted = a.IsDeleted,
@@ -93,7 +93,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Price = dto.Price,
                 Description = dto.Description,
                 CreatedByUserId = UserId!,             // owner = caller
-                AssignedLocationId = dto.AssignedLocationId,
+                AssignedResourceId = dto.AssignedResourceId,
                 IsPublic = dto.IsPublic,
                 RequiresWaiver = dto.RequiresWaiver,
                 IsDeleted = false
@@ -111,8 +111,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Description = entity.Description,
                 CreatedByUserId = entity.CreatedByUserId,
                 CreatedByUserName = null,
-                AssignedLocationId = entity.AssignedLocationId,
-                AssignedLocationName = null,
+                AssignedResourceId = entity.AssignedResourceId,
+                AssignedResourceName = null,
                 IsPublic = entity.IsPublic,
                 RequiresWaiver = entity.RequiresWaiver,
                 IsDeleted = entity.IsDeleted,
@@ -144,7 +144,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.Description is not null) a.Description = dto.Description;
             if (dto.IsPublic.HasValue) a.IsPublic = dto.IsPublic.Value;
             if (dto.RequiresWaiver.HasValue) a.RequiresWaiver = dto.RequiresWaiver.Value;
-            if (dto.AssignedLocationId.HasValue) a.AssignedLocationId = dto.AssignedLocationId;
+            if (dto.AssignedResourceId.HasValue) a.AssignedResourceId = dto.AssignedResourceId;
 
             await _db.SaveChangesAsync(ct);
             return NoContent();

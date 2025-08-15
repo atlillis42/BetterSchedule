@@ -2,12 +2,18 @@
 {
     public class UpdateReservationDto
     {
-        public string? Notes { get; init; }
+        public string? ServiceProviderId { get; init; }
+        public int? AppointmentTypeId { get; init; }
+
         public DateTimeOffset? StartTime { get; init; }
         public DateTimeOffset? EndTime { get; init; }
-        public string? Status { get; init; }
-        public string? LocationId { get; init; }
+        
+        public int? ResourceId { get; init; }
         public int? PackageAssignmentId { get; init; }
+        public string? Notes { get; init; }
+
+        // "Booked" | "Completed" | "Canceled" | "NoShow"
+        public string? Status { get; init; }
 
     }
 }

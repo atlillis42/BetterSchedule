@@ -28,7 +28,7 @@ namespace BetterSchedule.Server.Models.Scheduling
         [Required]
         public DateTimeOffset EndTime { get; set; }
 
-        public string? LocationId { get; set; }
+        public int? ResourceId { get; set; }
 
         public int? PackageAssignmentId { get; set; }
 

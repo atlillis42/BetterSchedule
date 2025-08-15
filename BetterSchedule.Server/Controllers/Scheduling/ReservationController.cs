@@ -1,5 +1,5 @@
 ﻿using BetterSchedule.Server.Auth;
-using BetterSchedule.Server.Controllers;
+using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.Scheduling;
@@ -17,7 +17,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ReservationController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public ReservationController(ApplicationDbContext db) => _db = db;
+        private readonly ISchedulingConflictService _conflicts;
+
+        public ReservationController(ApplicationDbContext db, ISchedulingConflictService conflicts)
+        {
+            _db = db;
+            _conflicts = conflicts;
+        }
 
         // GET /api/reservation?start=yyyy-MM-dd&end=yyyy-MM-dd
         // Returns only what the caller is allowed to see (org + role).
@@ -38,7 +44,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         // GET /api/reservation/{id:int}
-        // 404 if caller can't see it 
+        // 404 if caller can't see it.
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
@@ -52,13 +58,26 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         // POST /api/reservation
-        // Manager/Provider only 
+        // Manager/ServiceProvider only.
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto, CancellationToken ct)
         {
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest("EndTime must be after StartTime.");
+
+            var c = await _conflicts.CheckReservationCreateAsync(
+                OrganizationId,
+                dto.ServiceProviderId,
+                dto.StartTime,
+                dto.EndTime,
+                dto.ResourceId,
+                ct);
+
+            if (c.ProviderBlocked || c.ResourceBlocked)
+                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked for the provider or resource." });
+
+            var warnDoubleBook = c.ReservationOverlap && IsProvider;
 
             var entity = new Reservation
             {
@@ -68,7 +87,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 AppointmentTypeId = dto.AppointmentTypeId,
                 StartTime = dto.StartTime,
                 EndTime = dto.EndTime,
-                LocationId = dto.LocationId,
+                ResourceId = dto.ResourceId,
                 PackageAssignmentId = dto.PackageAssignmentId,
                 Notes = dto.Notes,
                 Status = ReservationStatus.Booked,
@@ -80,31 +99,54 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _db.Reservations.Add(entity);
             await _db.SaveChangesAsync(ct);
 
-            var read = await _db.Reservations
-                .AsNoTracking()
+            var read = await _db.Reservations.AsNoTracking()
                 .Where(r => r.Id == entity.Id)
                 .Select(ToDto())
                 .FirstAsync(ct);
 
+            if (warnDoubleBook) Response.Headers["X-Warned-Double-Booking"] = "true";
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
         // PUT /api/reservation/{id:int}
-        // Manager/Provider only. Owner checks are optional here since role is already restricted.
+        // Manager/ServiceProvider only. Owner checks are optional here since role is already restricted.
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, CancellationToken ct)
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-
             if (reservation is null) return NotFound();
 
             // To enforce "Provider can only modify their own," uncomment:
             // if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
+            // Proposed values (client is immutable here by design).
+            var newProviderId = dto.ServiceProviderId ?? reservation.ServiceProviderId;
+            var newAppointmentTypeId = dto.AppointmentTypeId ?? reservation.AppointmentTypeId;
+            var newStart = dto.StartTime ?? reservation.StartTime;
+            var newEnd = dto.EndTime ?? reservation.EndTime;
+            var newResourceId = dto.ResourceId ?? reservation.ResourceId;
+
+            if (newEnd <= newStart)
+                return BadRequest("EndTime must be after StartTime.");
+
+            var c = await _conflicts.CheckReservationUpdateAsync(
+                id,
+                OrganizationId,
+                newProviderId,
+                newStart,
+                newEnd,
+                newResourceId,
+                ct);
+
+            if (c.ProviderBlocked || c.ResourceBlocked)
+                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked for the provider or resource." });
+
+            var warnDoubleBook = c.ReservationOverlap && IsProvider;
+
             if (dto.Notes is not null) reservation.Notes = dto.Notes;
-            if (dto.LocationId is not null) reservation.LocationId = dto.LocationId;
+            if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
             if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
 
             if (!string.IsNullOrWhiteSpace(dto.Status))
@@ -114,16 +156,15 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 reservation.Status = parsed;
             }
 
-            var newStart = dto.StartTime ?? reservation.StartTime;
-            var newEnd = dto.EndTime ?? reservation.EndTime;
-            if (newEnd <= newStart) return BadRequest("EndTime must be after StartTime.");
-
-            if (dto.StartTime.HasValue) reservation.StartTime = dto.StartTime.Value;
-            if (dto.EndTime.HasValue) reservation.EndTime = dto.EndTime.Value;
-
+            reservation.ServiceProviderId = newProviderId;
+            reservation.AppointmentTypeId = newAppointmentTypeId;
+            reservation.StartTime = newStart;
+            reservation.EndTime = newEnd;
             reservation.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _db.SaveChangesAsync(ct);
+
+            if (warnDoubleBook) Response.Headers["X-Warned-Double-Booking"] = "true";
             return NoContent();
         }
 
@@ -142,7 +183,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // Map entity -> ReservationDto (status as string)
+        // Map entity -> ReservationDto (status as string).
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,
@@ -152,10 +193,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             AppointmentTypeId = r.AppointmentTypeId,
             StartTime = r.StartTime,
             EndTime = r.EndTime,
+            ResourceId = r.ResourceId,
+            PackageAssignmentId = r.PackageAssignmentId,
             Status = r.Status.ToString(),
             Notes = r.Notes,
-            LocationId = r.LocationId,
-            PackageAssignmentId = r.PackageAssignmentId,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
             IsDeleted = r.IsDeleted

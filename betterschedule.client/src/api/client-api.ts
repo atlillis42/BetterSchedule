@@ -1,4 +1,3 @@
-// Purpose: lightweight search for the client picker (id + name only).
 import { api } from "@auth/axios";
 
 export type ClientSearchItem = { id: string; name: string };
