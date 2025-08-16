@@ -1,11 +1,13 @@
 ﻿using BetterSchedule.Server.Auth;
-using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Reservation;
+using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
 using BetterSchedule.Server.Models.Scheduling;
+using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Linq.Expressions;
 using static BetterSchedule.Server.Auth.ReservationScopes;
 
@@ -227,7 +229,21 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             Notes = r.Notes,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
-            IsDeleted = r.IsDeleted
+            IsDeleted = r.IsDeleted,            
+            Participants = r.Participants
+                .Where(p => !p.IsDeleted)
+                .Select(p => new ReservationParticipantDto
+                {
+                    Id = p.Id,
+                    ReservationId = p.ReservationId,
+                    UserId = p.UserId ?? string.Empty,
+                    GuestName = p.GuestName,
+                    GuestPhone = p.GuestPhone,
+                    Role = p.Role.ToString(),
+                    OrganizationId = p.OrganizationId,
+                    IsDeleted = p.IsDeleted
+                })
+                .ToList()
         };
     }
 }

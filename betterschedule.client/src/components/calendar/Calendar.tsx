@@ -78,6 +78,7 @@ const Calendar = () => {
             // Preselect provider for providers themselves; managers choose explicitly
             serviceProviderId: isProvider(roles) ? userId : "",
             type: "reservation",
+            participants: [],
         });
         setShowModal(true);
         setModalFormError(null);
@@ -96,10 +97,17 @@ const Calendar = () => {
 
         setModalMode(canEdit ? "edit" : "create");
         setModalType(type);
+        const res = args.e?.data?.reservation;
         setModalValues({
             ...extractEventFields(args.e),
             id: args.e.id,
             type,
+            clientId: res?.clientId || "",
+            serviceProviderId: res?.serviceProviderId || "",
+            appointmentTypeId: res?.appointmentTypeId,
+            notes: res?.notes || "",
+            resourceId: res?.resourceId ?? undefined,
+            participants: res?.participants || [],
         });
         setShowModal(true);
         setModalFormError(null);

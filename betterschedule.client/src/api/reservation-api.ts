@@ -11,13 +11,29 @@ export type ReservationDto = {
     serviceProviderId: string;
     appointmentTypeId: number;
     startTime: string; // ISO
-    endTime: string;   // ISO
-    status: string;    // "Booked" | "Completed" | "Canceled" | "NoShow"
+    endTime: string; // ISO
+    status: string; // "Booked" | "Completed" | "Canceled" | "NoShow"
     notes?: string | null;
-    resourceId?: number | null;           
+    resourceId?: number | null;
     packageAssignmentId?: number | null;
+    participants?: ReservationParticipantDto[];
     createdAt: string;
     updatedAt?: string | null;
+    isDeleted: boolean;
+};
+
+
+/**
+ * Participant information on a reservation.
+ */
+export type ReservationParticipantDto = {
+    id: number;
+    reservationId: number;
+    userId: string;
+    guestName?: string | null;
+    guestPhone?: string | null;
+    role: string;
+    organizationId: string;
     isDeleted: boolean;
 };
 
