@@ -114,10 +114,9 @@ dotnet test
 ---
 
 ## Contributing
-
-Pull requests and issues are welcome.  
-The roadmap is visible in this README — please open issues for bugs or feature requests.  
-See `/docs` for API and data model plans.
+Pull requests and issues are welcome.
+The roadmap is visible in this README — please open issues for bugs or feature requests.
+See [API docs](docs/api) and [domain models](docs/models/overview.md) for more details., and read the [contributing guide](CONTRIBUTING.md) for branching, commit, and code style conventions.
 
 ---
 
