@@ -63,7 +63,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <param name="ct">Cancellation token.</param>
         /// <returns>The reservation DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
-        public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
+        public async Task<ActionResult<ReservationDto>> GetById(
+            [FromRoute] int id, CancellationToken ct)
         {
             var dto = await _db.Reservations
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
@@ -82,7 +83,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <returns>The created reservation DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<ActionResult<ReservationDto>> Create([FromBody] CreateReservationDto dto, CancellationToken ct)
+        public async Task<ActionResult<ReservationDto>> Create(
+            [FromBody] CreateReservationDto dto, CancellationToken ct)
         {
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest("EndTime must be after StartTime.");
@@ -148,8 +150,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, 
-            [FromQuery] bool managerOverride = false, CancellationToken ct)
+        public async Task<IActionResult> Update(
+            [FromRoute] int id, 
+            [FromBody] UpdateReservationDto dto,CancellationToken ct, 
+            [FromQuery] bool managerOverride = false)
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
@@ -227,7 +231,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Delete([FromRoute] int id, [FromQuery] bool managerOverride = false, CancellationToken ct)
+        public async Task<IActionResult> Delete(
+            [FromRoute] int id, CancellationToken ct,
+            [FromQuery] bool managerOverride = false)
         {
             var entity = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);

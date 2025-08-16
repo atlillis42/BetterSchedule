@@ -6,7 +6,6 @@ using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
