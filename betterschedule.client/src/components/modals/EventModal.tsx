@@ -218,6 +218,18 @@ export function EventModal({
                                 disabled={readOnly}
                             />
                         </div>
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium mb-1">Participants</label>
+                            {(!values.participants || values.participants.length === 0) ? (
+                                <div className="text-sm text-gray-500">None</div>
+                            ) : (
+                                <ul className="list-disc list-inside text-sm">
+                                    {values.participants.map((p: any) => (
+                                        <li key={p.id}>{p.role}: {p.userId || p.guestName}</li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
 
                         <textarea
                             className="mb-2 w-full border rounded p-2"

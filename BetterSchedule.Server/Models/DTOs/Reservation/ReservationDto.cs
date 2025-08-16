@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
+using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Models.DTOs.Reservation
 {
@@ -40,6 +41,9 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
 
         [Required]
         public bool IsDeleted { get; init; }
+
+        public IEnumerable<ReservationParticipantDto> Participants { get; init; } = Array
+            .Empty<ReservationParticipantDto>();
     }
 
 }

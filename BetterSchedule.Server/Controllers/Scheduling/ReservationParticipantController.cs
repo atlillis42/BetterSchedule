@@ -1,8 +1,13 @@
 ﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Controllers.Organization;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
+using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
+using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +19,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ReservationParticipantController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public ReservationParticipantController(ApplicationDbContext db) => _db = db;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly ISchedulingConflictService _conflicts;
+
+        public ReservationParticipantController(
+            ApplicationDbContext db,
+            UserManager<ApplicationUser> userManager,
+            ISchedulingConflictService conflicts)
+        {
+            _db = db;
+            _userManager = userManager;
+            _conflicts = conflicts;
+        }
 
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationParticipantDto>>> List(
@@ -53,9 +69,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             CancellationToken ct)
         {
             var reservation = await _db.Reservations
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
-                .FirstOrDefaultAsync(r => r.Id == reservationId, ct);
+               .FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
             if (!Enum.TryParse<ReservationParticipantRole>(dto.Role, true, out var role))
                 return BadRequest($"Unknown role '{dto.Role}'.");
@@ -77,9 +93,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     u => u.Id == dto.UserId && u.OrganizationId == reservation.OrganizationId, ct);
                 if (user is null) return BadRequest("User must belong to reservation organization.");
 
-                // Optional: enforce application role for ServiceProvider
-                // if (role == ReservationParticipantRole.ServiceProvider && !await _roles.UserIsInRoleAsync(dto.UserId, "ServiceProvider", ct))
-                //     return BadRequest("User is not a ServiceProvider.");
+                // Enforce application role based on participant role
+                if (!await _userManager.IsInRoleAsync(user, role.ToString()))
+                    return BadRequest($"User is not a {role}.");
 
                 var exists = await _db.ReservationParticipants.AnyAsync(
                     rp => rp.ReservationId == reservationId &&
@@ -107,12 +123,22 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
             _db.ReservationParticipants.Add(entity);
 
-            // Optional: warn on provider overlap (reuses your header pattern)
+            // Conflict checks for service provider participants
             if (role == ReservationParticipantRole.ServiceProvider)
             {
-                // You likely have _conflicts injected; if not, wire it like in ReservationController.
-                // var c = await _conflicts.CheckProviderAsync(OrganizationId, dto.UserId!, reservation.StartTime, reservation.EndTime, reservation.ResourceId, ct);
-                // if (c.ReservationOverlap) Response.Headers["X-Warned-Double-Booking"] = "true";
+                var c = await _conflicts.CheckReservationCreateAsync(
+                    OrganizationId,
+                    dto.UserId!,
+                    reservation.StartTime,
+                    reservation.EndTime,
+                    reservation.ResourceId,
+                    ct);
+
+                if (c.ProviderBlocked || c.ResourceBlocked)
+                    return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked for the provider or resource." });
+
+                if (c.ReservationOverlap)
+                    Response.Headers["X-Warned-Double-Booking"] = "true";
             }
 
             await _db.SaveChangesAsync(ct);
@@ -140,9 +166,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             CancellationToken ct)
         {
             var reservation = await _db.Reservations
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
-                .FirstOrDefaultAsync(r => r.Id == reservationId, ct);
+                .FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
             var participant = await _db.ReservationParticipants
                 .FirstOrDefaultAsync(rp => rp.Id == id &&

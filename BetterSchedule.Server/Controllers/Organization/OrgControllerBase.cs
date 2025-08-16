@@ -1,7 +1,7 @@
 ﻿using BetterSchedule.Server.Auth;
 using Microsoft.AspNetCore.Mvc;
 
-namespace BetterSchedule.Server.Controllers
+namespace BetterSchedule.Server.Controllers.Organization
 {
     /// <summary>
     /// Base controller that exposes convenience accessors for organization- and role-based claims.

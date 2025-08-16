@@ -1,6 +1,6 @@
 import type { DayPilot } from "@daypilot/daypilot-lite-react";
 import type { BlockedTimeDto } from "@/api/blockedtime-api";
-import type { ReservationDto } from "@/api/reservation-api";
+import type { ReservationDto, ReservationParticipantDto } from "@/api/reservation-api";
 
 export interface UiEvent {
     id: string | number;
@@ -14,6 +14,7 @@ export interface UiEvent {
     type?: "reservation" | "blockedTime";
     reservation?: ReservationDto;
     blockedTime?: BlockedTimeDto;
+    participants?: ReservationParticipantDto[];
 
     // ownership (used for provider edit gating on blocked times)
     createdByUserId?: string;

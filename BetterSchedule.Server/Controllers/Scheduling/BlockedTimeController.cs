@@ -1,4 +1,5 @@
 ﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Controllers.Organization;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.BlockedTime;
 using BetterSchedule.Server.Models.Scheduling;

@@ -12,5 +12,6 @@ export function reservationToUiEvent(res: ReservationDto): UiEvent {
         backColor: "#3b82f6",
         type: "reservation",
         reservation: res,
+        participants: res.participants,
     };
 }
