@@ -8,6 +8,7 @@ import RequireAdmin from "@/routes/RequireAdmin";
 import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 import OrgSettingsPage from "@/pages/OrgSettings";
+import ProviderAvailabilityPage from "@/pages/ProviderAvailability";
 
 export default function AppRoutes() {
     return (
@@ -49,6 +50,20 @@ export default function AppRoutes() {
                         <RequireAdmin>
                             <MainLayout>
                                 <CalendarResourcesPage />
+                            </MainLayout>
+                        </RequireAdmin>
+                    </RequireAuth>
+                }
+            />
+
+            {/* Provider Availability (admin) */}
+            <Route
+                path="/admin/provider-availability"
+                element={
+                    <RequireAuth>
+                        <RequireAdmin>
+                            <MainLayout>
+                                <ProviderAvailabilityPage />
                             </MainLayout>
                         </RequireAdmin>
                     </RequireAuth>
