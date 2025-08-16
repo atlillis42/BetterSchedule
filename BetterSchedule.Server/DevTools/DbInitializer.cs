@@ -15,15 +15,13 @@ namespace BetterSchedule.Server.DevTools
             RoleManager<IdentityRole> roleManager,
             bool reset = false)
         {
-            // Roles → Manager / ServiceProvider / Client
+            // Roles
             var roles = new[] { "Manager", "ServiceProvider", "Client" };
             foreach (var role in roles)
-            {
                 if (!await roleManager.RoleExistsAsync(role))
                     await roleManager.CreateAsync(new IdentityRole(role));
-            }
 
-            // Optional reset (domain data only; keep Identity users). Order matters due to FK restrictions.
+            // Optional reset (domain data only)
             if (reset)
             {
                 db.ReservationParticipants.RemoveRange(db.ReservationParticipants);
@@ -34,93 +32,123 @@ namespace BetterSchedule.Server.DevTools
                 await db.SaveChangesAsync();
             }
 
-            // Organizations → two orgs to test tenant isolation
-            var org1 = await EnsureOrganizationAsync(db, id: "demo-org-1", name: "Demo Organization");
-            var org2 = await EnsureOrganizationAsync(db, id: "demo-org-2", name: "Second Demo Org");
+            // Orgs
+            var org1 = await EnsureOrganizationAsync(db, "demo-org-1", "Demo Organization");
+            var org2 = await EnsureOrganizationAsync(db, "demo-org-2", "Second Demo Org");
 
-            // Dev login users (by email) in org1
+            // Dev users in org1
             var devAdmin = await EnsureDevUserAsync("admin@dev.local", org1.Id, new[] { "Manager", "ServiceProvider", "Client" });
             var devProvider = await EnsureDevUserAsync("provider@dev.local", org1.Id, new[] { "ServiceProvider" });
             var devClient = await EnsureDevUserAsync("client@dev.local", org1.Id, new[] { "Client" });
             var devHybrid = await EnsureDevUserAsync("hybrid@dev.local", org1.Id, new[] { "ServiceProvider", "Client" });
 
-            // Demo users (usernames) per org
-            var alice = await EnsureDemoUserAsync(username: "alice", email: "alice@example.com", fullName: "Alice Anderson", role: "Manager", organizationId: org1.Id);
-            var bob = await EnsureDemoUserAsync(username: "bob", email: "bob@example.com", fullName: "Bob Brown", role: "ServiceProvider", organizationId: org1.Id);
-            var carla = await EnsureDemoUserAsync(username: "carla", email: "carla@example.com", fullName: "Carla Chen", role: "Client", organizationId: org1.Id);
+            // Demo users per org
+            var alice = await EnsureDemoUserAsync("alice", "alice@example.com", "Alice Anderson", "Manager", org1.Id);
+            var bob = await EnsureDemoUserAsync("bob", "bob@example.com", "Bob Brown", "ServiceProvider", org1.Id);
+            var carla = await EnsureDemoUserAsync("carla", "carla@example.com", "Carla Chen", "Client", org1.Id);
 
-            var dana = await EnsureDemoUserAsync(username: "dana", email: "dana@example.com", fullName: "Dana Diaz", role: "Manager", organizationId: org2.Id);
-            var eric = await EnsureDemoUserAsync(username: "eric", email: "eric@example.com", fullName: "Eric Evans", role: "ServiceProvider", organizationId: org2.Id);
-            var frank = await EnsureDemoUserAsync(username: "frank", email: "frank@example.com", fullName: "Frank Fox", role: "Client", organizationId: org2.Id);
+            var dana = await EnsureDemoUserAsync("dana", "dana@example.com", "Dana Diaz", "Manager", org2.Id);
+            var eric = await EnsureDemoUserAsync("eric", "eric@example.com", "Eric Evans", "ServiceProvider", org2.Id);
+            var frank = await EnsureDemoUserAsync("frank", "frank@example.com", "Frank Fox", "Client", org2.Id);
 
-            // Seed org1 resources
+            // Resources org1
             var arena = await EnsureResourceAsync(db, org1.Id, "Main Arena", "#ff7373");
             var studio2 = await EnsureResourceAsync(db, org1.Id, "Studio 2", "#73cfff");
             var outdoor = await EnsureResourceAsync(db, org1.Id, "Outdoor Field", "#b5e48c");
 
-            // Seed org1 appointment types (AssignedResourceId used as default resource for that type)
-            var yogaType = await EnsureAppointmentTypeAsync(db, org1.Id, "Yoga Class", TimeSpan.FromMinutes(60), 18.50m, "Group yoga for all levels.", createdByUserId: alice.Id, assignedResourceId: arena.Id, isPublic: true, requiresWaiver: true);
-            var massageType = await EnsureAppointmentTypeAsync(db, org1.Id, "Therapeutic Massage", TimeSpan.FromMinutes(90), 65.00m, "Full-body massage.", createdByUserId: bob.Id, assignedResourceId: studio2.Id, isPublic: true, requiresWaiver: false);
-            var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", createdByUserId: alice.Id, assignedResourceId: outdoor.Id, isPublic: true, requiresWaiver: false);
-            var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", createdByUserId: alice.Id, assignedResourceId: arena.Id, isPublic: false, requiresWaiver: false);
+            // Appointment types org1
+            var yogaType = await EnsureAppointmentTypeAsync(db, org1.Id, "Yoga Class", TimeSpan.FromMinutes(60), 18.50m, "Group yoga for all levels.", alice.Id, arena.Id, true, true);
+            var massageType = await EnsureAppointmentTypeAsync(db, org1.Id, "Therapeutic Massage", TimeSpan.FromMinutes(90), 65.00m, "Full-body massage.", bob.Id, studio2.Id, true, false);
+            var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", alice.Id, outdoor.Id, true, false);
+            var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", alice.Id, arena.Id, false, false);
 
-            // Seed org1 reservations (mix of past, present, future; varied statuses)
-            await EnsureReservationAsync(db, org1.Id, clientId: bob.Id, providerId: alice.Id, typeId: yogaType.Id,
-                start: UtcToday().AddDays(-7).AddHours(9), end: UtcToday().AddDays(-7).AddHours(10),
-                resourceId: arena.Id, status: ReservationStatus.Completed, notes: "Completed past yoga session.");
+            // Reservations org1
+            await EnsureReservationAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id,
+                UtcToday().AddDays(-7).AddHours(9), UtcToday().AddDays(-7).AddHours(10),
+                arena.Id, ReservationStatus.Completed, "Completed past yoga session.");
 
-            await EnsureReservationAsync(db, org1.Id, clientId: carla.Id, providerId: bob.Id, typeId: massageType.Id,
-                start: UtcToday().AddDays(-3).AddHours(14), end: UtcToday().AddDays(-3).AddHours(15).AddMinutes(30),
-                resourceId: studio2.Id, status: ReservationStatus.NoShow, notes: "Missed massage, client didn't show.");
+            await EnsureReservationAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
+                UtcToday().AddDays(-3).AddHours(14), UtcToday().AddDays(-3).AddHours(15).AddMinutes(30),
+                studio2.Id, ReservationStatus.NoShow, "Missed massage, client didn't show.");
 
-            await EnsureReservationAsync(db, org1.Id, clientId: alice.Id, providerId: carla.Id, typeId: soccerType.Id,
-                start: UtcToday().AddHours(17), end: UtcToday().AddHours(19),
-                resourceId: outdoor.Id, status: ReservationStatus.Booked, notes: "Alice's kids' soccer clinic.");
+            await EnsureReservationAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id,
+                UtcToday().AddHours(17), UtcToday().AddHours(19),
+                outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.");
 
-            await EnsureReservationAsync(db, org1.Id, clientId: bob.Id, providerId: carla.Id, typeId: soccerType.Id,
-                start: UtcToday().AddDays(2).AddHours(10), end: UtcToday().AddDays(2).AddHours(12),
-                resourceId: outdoor.Id, status: ReservationStatus.Booked, notes: "Morning soccer camp, outdoor.");
+            await EnsureReservationAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id,
+                UtcToday().AddDays(2).AddHours(10), UtcToday().AddDays(2).AddHours(12),
+                outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.");
 
-            await EnsureReservationAsync(db, org1.Id, clientId: alice.Id, providerId: bob.Id, typeId: privateType.Id,
-                start: UtcToday().AddDays(10).AddHours(16), end: UtcToday().AddDays(10).AddHours(16).AddMinutes(45),
-                resourceId: arena.Id, status: ReservationStatus.Canceled, notes: "Cancelled by client.");
+            await EnsureReservationAsync(db, org1.Id, alice.Id, bob.Id, privateType.Id,
+                UtcToday().AddDays(10).AddHours(16), UtcToday().AddDays(10).AddHours(16).AddMinutes(45),
+                arena.Id, ReservationStatus.Canceled, "Cancelled by client.");
 
-            // Additional “visual sample” series for the next 7 days to fill the grid
+            // Visual sample series (next 7 days)
             await EnsureReservationSeriesAsync(
                 db, org1.Id,
-                clientId: carla.Id, providerId: bob.Id, typeId: massageType.Id, resourceId: studio2.Id,
+                carla.Id, bob.Id, massageType.Id, studio2.Id,
                 firstDayOffset: 0, days: 7, dailyStartHour: 11, durationMinutes: 60, notes: "Daily massage demo slot.");
 
-            // BlockedTimes (avoid overlapping the seeded reservations)
-            await EnsureBlockedTimeAsync(db, org1.Id, arena.Id,
-                reason: "Floor waxing", start: UtcToday().AddDays(1).AddHours(12), end: UtcToday().AddDays(1).AddHours(15),
-                backColor: "#cccccc", createdByUserId: alice.Id);
+            // BlockedTimes org1
+            await EnsureBlockedTimeAsync(db, org1.Id, arena.Id, "Floor waxing", UtcToday().AddDays(1).AddHours(12), UtcToday().AddDays(1).AddHours(15), "#cccccc", alice.Id);
+            await EnsureBlockedTimeAsync(db, org1.Id, arena.Id, "Private booking", UtcToday().AddDays(5).AddHours(18), UtcToday().AddDays(5).AddHours(21), "#fcba03", bob.Id);
 
-            await EnsureBlockedTimeAsync(db, org1.Id, arena.Id,
-                reason: "Private booking", start: UtcToday().AddDays(5).AddHours(18), end: UtcToday().AddDays(5).AddHours(21),
-                backColor: "#fcba03", createdByUserId: bob.Id);
-
-            // Seed org2 resources/types
+            // Org2 resources/types
             var studioA = await EnsureResourceAsync(db, org2.Id, "Studio A", "#a0c4ff");
             var turfField = await EnsureResourceAsync(db, org2.Id, "Turf Field", "#caffbf");
 
             var pilates = await EnsureAppointmentTypeAsync(db, org2.Id, "Pilates", TimeSpan.FromMinutes(50), 22.00m, "Mat pilates.",
-                createdByUserId: dana.Id, assignedResourceId: studioA.Id, isPublic: true, requiresWaiver: false);
+                dana.Id, studioA.Id, true, false);
 
-            // Seed org2 reservations
-            await EnsureReservationAsync(db, org2.Id, clientId: frank.Id, providerId: eric.Id, typeId: pilates.Id,
-                start: UtcToday().AddDays(1).AddHours(9), end: UtcToday().AddDays(1).AddHours(10),
-                resourceId: studioA.Id, status: ReservationStatus.Booked, notes: "Org2 pilates.");
+            // Org2 reservation
+            await EnsureReservationAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id,
+                UtcToday().AddDays(1).AddHours(9), UtcToday().AddDays(1).AddHours(10),
+                studioA.Id, ReservationStatus.Booked, "Org2 pilates.");
 
-            await EnsureBlockedTimeAsync(db, org2.Id, turfField.Id,
-                reason: "Maintenance", start: UtcToday().AddDays(3).AddHours(8), end: UtcToday().AddDays(3).AddHours(12),
-                backColor: "#dddddd", createdByUserId: eric.Id);
+            // ============================
+            // Participants: extra test cases
+            // ============================
+
+            // 1) Org1 soccer clinic (today 17–19): add second provider + extra clients + a guest
+            var r1Id = await FindReservationIdAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id,
+                UtcToday().AddHours(17), UtcToday().AddHours(19));
+            if (r1Id.HasValue)
+            {
+                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.ServiceProvider, userId: bob.Id);        // second provider
+                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Client, userId: devClient.Id);   // extra client
+                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Client, userId: devHybrid.Id);   // extra client (hybrid)
+                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Parent Chaperone", guestPhone: "555-0101");
+            }
+
+            // 2) Org1 soccer (in 2 days 10–12): add a guest only
+            var r2Id = await FindReservationIdAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id,
+                UtcToday().AddDays(2).AddHours(10), UtcToday().AddDays(2).AddHours(12));
+            if (r2Id.HasValue)
+                await EnsureParticipantAsync(db, r2Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Team Manager", guestPhone: "555-0202");
+
+            // 3) Org1 massage series: add a guest to the first day (11–12 today)
+            var r3Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
+                UtcToday().AddHours(11), UtcToday().AddHours(12));
+            if (r3Id.HasValue)
+                await EnsureParticipantAsync(db, r3Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Support Person", guestPhone: "555-0303");
+
+            // 4) Org1 past completed yoga: add a guest (historical)
+            var r4Id = await FindReservationIdAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id,
+                UtcToday().AddDays(-7).AddHours(9), UtcToday().AddDays(-7).AddHours(10));
+            if (r4Id.HasValue)
+                await EnsureParticipantAsync(db, r4Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Observer", guestPhone: "555-0404");
+
+            // 5) Org2 pilates: add a guest
+            var r5Id = await FindReservationIdAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id,
+                UtcToday().AddDays(1).AddHours(9), UtcToday().AddDays(1).AddHours(10));
+            if (r5Id.HasValue)
+                await EnsureParticipantAsync(db, r5Id.Value, org2.Id, ReservationParticipantRole.Guest, guestName: "Friend", guestPhone: "555-0505");
 
             return;
 
-            // ----------------------------------------------------------------
-            // Local helpers (null-safe + idempotent)
-            // ----------------------------------------------------------------
+            // -----------------------------
+            // Helpers
+            // -----------------------------
 
             static DateTimeOffset UtcToday() => DateTimeOffset.UtcNow.Date;
 
@@ -146,10 +174,8 @@ namespace BetterSchedule.Server.DevTools
                 }
 
                 foreach (var r in roles)
-                {
                     if (!await userManager.IsInRoleAsync(user, r))
                         await userManager.AddToRoleAsync(user, r);
-                }
 
                 return user;
             }
@@ -276,7 +302,6 @@ namespace BetterSchedule.Server.DevTools
                 ReservationStatus status,
                 string? notes)
             {
-                // Idempotency → same org + type + client + provider + start/end
                 var exists = await db.Reservations.AnyAsync(r =>
                     r.OrganizationId == organizationId &&
                     r.ClientId == clientId &&
@@ -360,7 +385,6 @@ namespace BetterSchedule.Server.DevTools
                 string? backColor,
                 string createdByUserId)
             {
-                // Idempotency → same org + resource + reason + window
                 var exists = await db.BlockedTimes.AnyAsync(b =>
                     b.OrganizationId == organizationId &&
                     b.ResourceId == resourceId &&
@@ -379,6 +403,71 @@ namespace BetterSchedule.Server.DevTools
                     EndTime = end,
                     BackColor = backColor,
                     CreatedByUserId = createdByUserId,
+                    IsDeleted = false
+                });
+                await db.SaveChangesAsync();
+            }
+
+            static async Task<int?> FindReservationIdAsync(
+                ApplicationDbContext db,
+                string organizationId,
+                string clientId,
+                string providerId,
+                int typeId,
+                DateTimeOffset start,
+                DateTimeOffset end)
+            {
+                return await db.Reservations
+                    .Where(r => r.OrganizationId == organizationId &&
+                                r.ClientId == clientId &&
+                                r.ServiceProviderId == providerId &&
+                                r.AppointmentTypeId == typeId &&
+                                r.StartTime == start &&
+                                r.EndTime == end)
+                    .Select(r => (int?)r.Id)
+                    .FirstOrDefaultAsync();
+            }
+
+            static async Task EnsureParticipantAsync(
+                ApplicationDbContext db,
+                int reservationId,
+                string organizationId,
+                ReservationParticipantRole role,
+                string? userId = null,
+                string? guestName = null,
+                string? guestPhone = null)
+            {
+                bool exists;
+                if (role == ReservationParticipantRole.Guest)
+                {
+                    exists = await db.ReservationParticipants.AnyAsync(rp =>
+                        rp.ReservationId == reservationId &&
+                        rp.OrganizationId == organizationId &&
+                        rp.Role == ReservationParticipantRole.Guest &&
+                        !rp.IsDeleted &&
+                        rp.GuestName == guestName &&
+                        rp.GuestPhone == guestPhone);
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(userId)) return; // invalid; ignore
+                    exists = await db.ReservationParticipants.AnyAsync(rp =>
+                        rp.ReservationId == reservationId &&
+                        rp.OrganizationId == organizationId &&
+                        rp.UserId == userId &&
+                        !rp.IsDeleted);
+                }
+
+                if (exists) return;
+
+                db.ReservationParticipants.Add(new ReservationParticipant
+                {
+                    ReservationId = reservationId,
+                    OrganizationId = organizationId,
+                    Role = role,
+                    UserId = role == ReservationParticipantRole.Guest ? null : userId,
+                    GuestName = role == ReservationParticipantRole.Guest ? guestName : null,
+                    GuestPhone = role == ReservationParticipantRole.Guest ? guestPhone : null,
                     IsDeleted = false
                 });
                 await db.SaveChangesAsync();
