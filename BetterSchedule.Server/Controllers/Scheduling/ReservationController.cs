@@ -267,7 +267,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             Notes = r.Notes,
             CreatedAt = r.CreatedAt,
             UpdatedAt = r.UpdatedAt,
-            IsDeleted = r.IsDeleted,            
+            IsDeleted = r.IsDeleted,
             Participants = r.Participants
                 .Where(p => !p.IsDeleted)
                 .Select(p => new ReservationParticipantDto

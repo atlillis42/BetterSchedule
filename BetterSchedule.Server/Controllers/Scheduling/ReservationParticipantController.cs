@@ -69,9 +69,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             CancellationToken ct)
         {
             var reservation = await _db.Reservations
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
-                .FirstOrDefaultAsync(r => r.Id == reservationId, ct);
+               .FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
             if (!Enum.TryParse<ReservationParticipantRole>(dto.Role, true, out var role))
                 return BadRequest($"Unknown role '{dto.Role}'.");
@@ -166,9 +166,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             CancellationToken ct)
         {
             var reservation = await _db.Reservations
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
-                .FirstOrDefaultAsync(r => r.Id == reservationId, ct);
+                .FirstOrDefaultAsync(r => r.Id == reservationId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
 
             var participant = await _db.ReservationParticipants
                 .FirstOrDefaultAsync(rp => rp.Id == id &&
