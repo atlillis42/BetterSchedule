@@ -1,4 +1,5 @@
 ﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Controllers.Organization;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
@@ -86,6 +87,16 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest("EndTime must be after StartTime.");
 
+            var settings = await _db.OrganizationSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            if (settings is not null)
+            {
+                var now = DateTimeOffset.UtcNow;
+                if (dto.StartTime < now.AddMinutes(settings.MinLeadMinutes))
+                    return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
+            }
+
             var c = await _conflicts.CheckReservationCreateAsync(
                 OrganizationId,
                 dto.ServiceProviderId,
@@ -137,11 +148,23 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, CancellationToken ct)
+        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateReservationDto dto, 
+            [FromQuery] bool managerOverride = false, CancellationToken ct)
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
+
+            var settings = await _db.OrganizationSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            var now = DateTimeOffset.UtcNow;
+            if (settings is not null)
+            {
+                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
+                if (reservation.StartTime - now < cancelWindow && !(managerOverride && IsManager))
+                    return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager override.");
+            }
 
             // To enforce "Provider can only modify their own," uncomment:
             // if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
@@ -155,6 +178,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
             if (newEnd <= newStart)
                 return BadRequest("EndTime must be after StartTime.");
+
+            if (settings is not null && newStart < now.AddMinutes(settings.MinLeadMinutes))
+                return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
 
             var c = await _conflicts.CheckReservationUpdateAsync(
                 id,
@@ -201,12 +227,24 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
+        public async Task<IActionResult> Delete([FromRoute] int id, [FromQuery] bool managerOverride = false, CancellationToken ct)
         {
             var entity = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (entity is null) return NotFound();
+
+            var settings = await _db.OrganizationSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            if (settings is not null)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
+                if (entity.StartTime - now < cancelWindow && !(managerOverride && IsManager))
+                    return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
+            }
+
 
             entity.IsDeleted = true;
             await _db.SaveChangesAsync(ct);

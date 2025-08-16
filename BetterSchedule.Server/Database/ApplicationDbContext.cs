@@ -19,6 +19,7 @@ namespace BetterSchedule.Server.Database
         public DbSet<ReservationParticipant> ReservationParticipants { get; set; } = default!;
         public DbSet<Organization> Organizations { get; set; } = default!;
         public DbSet<ClientOrganization> ClientOrganizations { get; set; } = default!;
+        public DbSet<OrganizationSettings> OrganizationSettings { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -118,10 +119,24 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey(co => co.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // OrganizationSettings → Organization
+            builder.Entity<OrganizationSettings>()
+                .HasOne(os => os.Organization)
+                .WithOne()
+                .HasForeignKey<OrganizationSettings>(os => os.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+
             // Indexes / constraints
             builder.Entity<ClientOrganization>()
                 .HasIndex(co => new { co.ClientId, co.OrganizationId })
                 .IsUnique();
+
+            // OrganizationSettings → Organization (one-to-one)
+            builder.Entity<OrganizationSettings>()
+                .HasOne(s => s.Organization)
+                .WithOne()
+                .HasForeignKey<OrganizationSettings>(s => s.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             builder.Entity<CalendarResource>()
                 .HasIndex(r => new { r.OrganizationId, r.Name })

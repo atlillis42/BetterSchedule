@@ -17,6 +17,9 @@ namespace BetterSchedule.Server.Models.Tenant
         public string? Phone { get; set; }
         public string? Address { get; set; }
 
+        public TimeSpan? BookingLeadTime { get; set; }
+        public TimeSpan? CancellationWindow { get; set; }
+
         public ICollection<ApplicationUser> Users { get; set; } = new List<ApplicationUser>();
         public ICollection<AppointmentType> AppointmentTypes { get; set; } = new List<AppointmentType>();
     }
