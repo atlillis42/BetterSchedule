@@ -1,4 +1,5 @@
-﻿using BetterSchedule.Server.Models.Tenant;
+﻿using BetterSchedule.Server.Models.Identity;
+using BetterSchedule.Server.Models.Tenant;
 using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Models.Scheduling
@@ -9,14 +10,23 @@ namespace BetterSchedule.Server.Models.Scheduling
 
         [Required]
         public int ReservationId { get; set; }
-
         public Reservation Reservation { get; set; } = default!;
 
-        [Required]
-        public string UserId { get; set; } = default!; // FK to ApplicationUser
+        // For Client/ServiceProvider participants
+        public string? UserId { get; set; }
+        public ApplicationUser? User { get; set; }
+
+        // For Guest participants
+        [MaxLength(200)]
+        public string? GuestName { get; set; }
+
+        [Phone, MaxLength(40)]
+        public string? GuestPhone { get; set; }
 
         [Required]
         public ReservationParticipantRole Role { get; set; } = ReservationParticipantRole.Client;
+
+        public bool IsDeleted { get; set; } = false;
 
         [Required]
         public string OrganizationId { get; set; } = default!;

@@ -1,6 +1,6 @@
 ﻿using BetterSchedule.Server.Models.Identity;
-using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, Packages etc.
-using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization
+using BetterSchedule.Server.Models.Scheduling;
+using BetterSchedule.Server.Models.Tenant;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -24,7 +24,7 @@ namespace BetterSchedule.Server.Database
         {
             base.OnModelCreating(builder);
 
-            // EXPLICIT IDENTITY SCHEMA           
+            // Identity in explicit schema
             builder.Entity<ApplicationUser>().ToTable("AspNetUsers", "identity");
             builder.Entity<IdentityRole>().ToTable("AspNetRoles", "identity");
             builder.Entity<IdentityUserRole<string>>().ToTable("AspNetUserRoles", "identity");
@@ -33,119 +33,96 @@ namespace BetterSchedule.Server.Database
             builder.Entity<IdentityUserToken<string>>().ToTable("AspNetUserTokens", "identity");
             builder.Entity<IdentityRoleClaim<string>>().ToTable("AspNetRoleClaims", "identity");
 
-            // -----------------------------
-            // ORGANIZATION RELATIONSHIPS
-            // -----------------------------
-
-            // ApplicationUser → Organization (each user belongs to one org)
-            // DeleteBehavior.Restrict prevents org delete from cascading into users
+            // Relationships
             builder.Entity<ApplicationUser>()
                 .HasOne(u => u.Organization)
                 .WithMany(o => o.Users)
                 .HasForeignKey(u => u.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // CalendarResource → Organization
             builder.Entity<CalendarResource>()
                 .HasOne(cr => cr.Organization)
-                .WithMany() // Organization may not have a Resources collection
+                .WithMany()
                 .HasForeignKey(cr => cr.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // BlockedTime → Organization
             builder.Entity<BlockedTime>()
                 .HasOne(bt => bt.Organization)
                 .WithMany()
                 .HasForeignKey(bt => bt.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // BlockedTime → CreatedByUser
             builder.Entity<BlockedTime>()
                 .HasOne(bt => bt.CreatedByUser)
                 .WithMany()
                 .HasForeignKey(bt => bt.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // BlockedTime → CalendarResource
             builder.Entity<BlockedTime>()
                 .HasOne(bt => bt.Resource)
                 .WithMany(r => r.BlockedTimes)
                 .HasForeignKey(bt => bt.ResourceId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // AppointmentType → Organization
             builder.Entity<AppointmentType>()
                 .HasOne(at => at.Organization)
                 .WithMany(o => o.AppointmentTypes)
                 .HasForeignKey(at => at.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Reservation → Organization
             builder.Entity<Reservation>()
                 .HasOne(r => r.Organization)
                 .WithMany()
                 .HasForeignKey(r => r.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Reservation → AppointmentType
             builder.Entity<Reservation>()
                 .HasOne(r => r.AppointmentType)
                 .WithMany()
                 .HasForeignKey(r => r.AppointmentTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Reservation → Client (ApplicationUser)
             builder.Entity<Reservation>()
                 .HasOne(r => r.Client)
                 .WithMany()
                 .HasForeignKey(r => r.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Reservation → ServiceProvider (ApplicationUser)
             builder.Entity<Reservation>()
                 .HasOne(r => r.ServiceProvider)
                 .WithMany()
                 .HasForeignKey(r => r.ServiceProviderId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ReservationParticipant → Reservation
             builder.Entity<ReservationParticipant>()
                 .HasOne(rp => rp.Reservation)
                 .WithMany(r => r.Participants)
                 .HasForeignKey(rp => rp.ReservationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ReservationParticipant → Organization
             builder.Entity<ReservationParticipant>()
                 .HasOne(rp => rp.Organization)
                 .WithMany()
                 .HasForeignKey(rp => rp.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ClientOrganization → Client (ApplicationUser)
             builder.Entity<ClientOrganization>()
                 .HasOne(co => co.Client)
                 .WithMany()
                 .HasForeignKey(co => co.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // ClientOrganization → Organization
             builder.Entity<ClientOrganization>()
                 .HasOne(co => co.Organization)
                 .WithMany()
                 .HasForeignKey(co => co.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // -----------------------------
-            // INDEXES / CONSTRAINTS
-            // -----------------------------
-
-            // Unique constraint on client membership per org
+            // Indexes / constraints
             builder.Entity<ClientOrganization>()
                 .HasIndex(co => new { co.ClientId, co.OrganizationId })
                 .IsUnique();
 
-            // Per-org uniqueness for names (great guardrails)
             builder.Entity<CalendarResource>()
                 .HasIndex(r => new { r.OrganizationId, r.Name })
                 .IsUnique();
@@ -154,39 +131,40 @@ namespace BetterSchedule.Server.Database
                 .HasIndex(a => new { a.OrganizationId, a.Name })
                 .IsUnique();
 
-            // -----------------------------
-            // COLUMN TYPES / PRECISION
-            // -----------------------------
+            builder.Entity<ReservationParticipant>(b =>
+            {
+                // Store enum as int (clarifies check constraint semantics)
+                b.Property(x => x.Role).HasConversion<int>();
 
-            // AppointmentType.Price → decimal(18,2)
+                // Unique for real users (guests have null UserId)
+                b.HasIndex(x => new { x.ReservationId, x.UserId })
+                 .IsUnique()
+                 .HasFilter("[IsDeleted] = 0 AND [UserId] IS NOT NULL");
+
+                // Guest must have null UserId; Client/Provider must have non-null
+                b.ToTable(t => t.HasCheckConstraint(
+                    "CK_ReservationParticipant_User_Guest_Role",
+                    "(([Role] = 2 AND [UserId] IS NULL) OR ([Role] IN (0,1) AND [UserId] IS NOT NULL))"
+                // Role enum order: 0=Client,1=ServiceProvider,2=Guest
+                ));
+            });
+
+            // Column types
             builder.Entity<AppointmentType>()
                 .Property(a => a.Price)
                 .HasColumnType("decimal(18,2)");
 
-
-            // -------------------------------
-            // Indexes (query speed + constraints)
-            // -------------------------------
-
-            // BlockedTime → fast provider/org views & overlap lookups
+            // Query-speed indexes
             builder.Entity<BlockedTime>()
-                .HasIndex(bt => new { bt.OrganizationId, bt.CreatedByUserId }); // provider-owned lists
+                .HasIndex(bt => new { bt.OrganizationId, bt.CreatedByUserId });
             builder.Entity<BlockedTime>()
-                .HasIndex(bt => new { bt.OrganizationId, bt.ResourceId, bt.StartTime, bt.EndTime }); // overlap scans
+                .HasIndex(bt => new { bt.OrganizationId, bt.ResourceId, bt.StartTime, bt.EndTime });
 
-            // Reservation → fast provider calendars & overlap scans
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });
 
-            // AppointmentType → provider-owned and org-wide lists
             builder.Entity<AppointmentType>()
                 .HasIndex(a => new { a.OrganizationId, a.CreatedByUserId });
-
-            // CalendarResource → optional: unique name per org
-            builder.Entity<CalendarResource>()
-                .HasIndex(r => new { r.OrganizationId, r.Name })
-                .IsUnique();
-
         }
     }
 }
