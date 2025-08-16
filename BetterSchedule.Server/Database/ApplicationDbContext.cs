@@ -14,6 +14,7 @@ namespace BetterSchedule.Server.Database
         // Domain sets
         public DbSet<CalendarResource> CalendarResources { get; set; } = default!;
         public DbSet<BlockedTime> BlockedTimes { get; set; } = default!;
+        public DbSet<ProviderAvailability> ProviderAvailabilities { get; set; } = default!;
         public DbSet<Reservation> Reservations { get; set; } = default!;
         public DbSet<AppointmentType> AppointmentTypes { get; set; } = default!;
         public DbSet<ReservationParticipant> ReservationParticipants { get; set; } = default!;
@@ -63,6 +64,18 @@ namespace BetterSchedule.Server.Database
                 .HasOne(bt => bt.Resource)
                 .WithMany(r => r.BlockedTimes)
                 .HasForeignKey(bt => bt.ResourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<ProviderAvailability>()
+                .HasOne(pa => pa.Organization)
+                .WithMany()
+                .HasForeignKey(pa => pa.OrganizationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            builder.Entity<ProviderAvailability>()
+                .HasOne(pa => pa.ServiceProvider)
+                .WithMany()
+                .HasForeignKey(pa => pa.ServiceProviderId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<AppointmentType>()
@@ -169,11 +182,28 @@ namespace BetterSchedule.Server.Database
                 .Property(a => a.Price)
                 .HasColumnType("decimal(18,2)");
 
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.StartTime)
+                .HasColumnType("time");
+
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.EndTime)
+                .HasColumnType("time");
+
+
             // Query-speed indexes
             builder.Entity<BlockedTime>()
                 .HasIndex(bt => new { bt.OrganizationId, bt.CreatedByUserId });
+
             builder.Entity<BlockedTime>()
                 .HasIndex(bt => new { bt.OrganizationId, bt.ResourceId, bt.StartTime, bt.EndTime });
+
+            builder.Entity<ProviderAvailability>()
+                .HasIndex(pa => new { pa.OrganizationId, pa.ServiceProviderId, pa.DayOfWeek })
+                .IsUnique();
+
+            builder.Entity<ProviderAvailability>()
+                .HasIndex(pa => new { pa.OrganizationId, pa.ProviderId, pa.DayOfWeek, pa.StartTime, pa.EndTime });
 
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });

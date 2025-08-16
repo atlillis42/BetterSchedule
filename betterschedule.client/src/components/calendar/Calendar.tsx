@@ -6,6 +6,7 @@ import { getResources } from "@/api/calendar-resource-api";
 import { getBlockedTimes, createBlockedTime, updateBlockedTime, deleteBlockedTime } from "@/api/blockedtime-api";
 import { getReservations, createReservation, updateReservation, deleteReservation } from "@/api/reservation-api";
 import { getProvidersLite } from "@/api/user-api";
+import { getProviderAvailability } from "@/api/availability-api";
 
 import EventModal from "@/components/modals/EventModal";
 import { formatWeekHeader } from "@/utilities/calendarDisplay/formatWeekHeader";
@@ -61,6 +62,19 @@ const Calendar = () => {
             return "local time";
         }
     }, []);
+
+    const isRangeAvailable = (start: DayPilot.Date, end: DayPilot.Date) =>
+        availability.some((a) => start >= a.start && end <= a.end);
+
+    const beforeCellRender = (args: any) => {
+        if (!isRangeAvailable(args.cell.start, args.cell.end)) {
+            args.cell.cssClass = "unavailable-cell";
+            args.cell.toolTip = "Unavailable";
+            if (!isManager(roles)) {
+                args.cell.disabled = true;
+            }
+        }
+    };
 
     // Create (selection)
     const onTimeRangeSelected = (args: CalendarTimeRangeSelectedArgs) => {
@@ -132,6 +146,19 @@ const Calendar = () => {
 
         const start = combineDateTime(modalValues.startDate, modalValues.startTime).iso as string;
         const end = combineDateTime(modalValues.endDate, modalValues.endTime).iso as string;
+
+        const startDp = new DayPilot.Date(start);
+        const endDp = new DayPilot.Date(end);
+        if (!isRangeAvailable(startDp, endDp)) {
+            const msg = "Selected time is outside provider availability.";
+            if (!isManager(roles)) {
+                setModalFormError(msg);
+                toast.error(msg);
+                return;
+            }
+            toast.warning(msg);
+        }
+
 
         try {
             if (modalMode === "edit") {
@@ -227,10 +254,15 @@ const Calendar = () => {
             try {
                 const { start, end } = getVisibleRange(startDate, view);
 
-                const [resourceList, eventsList, providersTry] = await Promise.all([
+                const [resourceList, eventsList, providersTry, availabilityList] = await Promise.all([
                     getResources(),
                     fetchAllEvents(start, end),
                     getProvidersLite().catch(() => null),
+                    getProviderAvailability({
+                        start: start.toString("yyyy-MM-dd"),
+                        end: end.toString("yyyy-MM-dd"),
+                        providerId: isProvider(roles) ? userId : undefined,
+                    }).catch(() => []),
                 ]);
 
                 if (cancelled) return;
@@ -258,7 +290,7 @@ const Calendar = () => {
         return () => {
             cancelled = true;
         };
-    }, [startDate, view]);
+    }, [startDate, view, roles, userId]);
 
 
     // Read-only modal logic (disables save/delete)
@@ -322,6 +354,7 @@ const Calendar = () => {
                                 durationBarVisible={false}
                                 onTimeRangeSelected={onTimeRangeSelected}
                                 onEventClick={onEventClick}
+                                onBeforeCellRender={beforeCellRender}
                                 headerHeight={40}
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
@@ -342,6 +375,7 @@ const Calendar = () => {
                                 durationBarVisible={false}
                                 onTimeRangeSelected={onTimeRangeSelected}
                                 onEventClick={onEventClick}
+                                onBeforeCellRender={beforeCellRender}
                                 headerHeight={40}
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
@@ -377,6 +411,7 @@ const Calendar = () => {
                                 resources={resources}
                                 events={events}
                                 onEventClick={onEventClick}
+                                onBeforeCellRender={beforeCellRender}
                                 cellWidth={50}
                                 headerHeight={30}
                                 rowHeaderWidth={150}

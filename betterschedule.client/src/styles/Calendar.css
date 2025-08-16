@@ -102,9 +102,16 @@ Theme Designer Version: 2025.06.18.39140
     --dp-calendar-scroll-bg-color: #f3f3f3;
 }
 
-    .betterschedule_main *, .betterschedule_main *:before, .betterschedule_main *:after {
+.unavailable-cell {
+    background-color: #f5f5f5;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.betterschedule_main *, .betterschedule_main *:before, .betterschedule_main *:after {
         box-sizing: content-box;
-    }
+
+}
 
 .betterschedule_main {
     border: 1px solid var(--dp-calendar-border-color);
