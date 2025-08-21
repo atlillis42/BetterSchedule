@@ -1,14 +1,26 @@
+/**
+ * Summary: Login page.
+ * - DEV mode: "Dev Login" button always signs in as All-Roles user (admin@dev.local / Devpass123!).
+ * - PROD mode: standard email/password login.
+ * - Redirects to /calendar after successful auth.
+ */
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+
+const DEV_DEFAULT = {
+    email: "admin@dev.local",
+    password: "Devpass123!",
+};
 
 const Login: React.FC = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [status, setStatus] = useState("");
     const navigate = useNavigate();
-    const { login } = useAuth();
-    const { isAuthenticated, loading } = useAuth(); 
+
+    // Single read of auth context
+    const { login, isAuthenticated, loading } = useAuth();
 
     useEffect(() => {
         if (!loading && isAuthenticated) {
@@ -17,7 +29,12 @@ const Login: React.FC = () => {
     }, [loading, isAuthenticated, navigate]);
 
     const handleLogin = async () => {
-        const result = await login(email, password);
+        // In DEV, always use the default All-Roles dev account for this button.
+        const isDev = import.meta.env.MODE === "development";
+        const identifier = isDev ? DEV_DEFAULT.email : email;
+        const pwd = isDev ? DEV_DEFAULT.password : password;
+
+        const result = await login(identifier, pwd);
         if (result.success) {
             setStatus(`✅ ${result.message}`);
             navigate("/calendar");
@@ -59,6 +76,7 @@ const Login: React.FC = () => {
                 <button
                     onClick={handleLogin}
                     className="bg-blue-600 text-white w-full py-3 rounded-lg hover:bg-blue-700 transition font-medium text-lg mb-3 shadow-sm"
+                    title={import.meta.env.MODE === "development" ? "Logs in as admin@dev.local (All Roles)" : "Login"}
                 >
                     {import.meta.env.MODE === "development" ? "Dev Login" : "Login"}
                 </button>
@@ -75,6 +93,11 @@ const Login: React.FC = () => {
                     <span className="text-sm font-medium">Sign in with Google</span>
                 </button>
 
+                {status && (
+                    <div className="mt-4 text-sm text-center text-gray-600">
+                        {status}
+                    </div>
+                )}
             </div>
         </div>
     );
