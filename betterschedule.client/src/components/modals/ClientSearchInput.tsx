@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { searchClients, type ClientSearchItem } from "@/api/client-api";
 
 type Props = {
@@ -8,6 +8,9 @@ type Props = {
     placeholder?: string;
     disabled?: boolean;
 };
+
+const DEBOUNCE_MS = 250;
+const MIN_CHARS = 2;
 
 export default function ClientSearchInput({
     selected,
@@ -20,55 +23,113 @@ export default function ClientSearchInput({
     const [results, setResults] = useState<ClientSearchItem[]>([]);
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [activeIndex, setActiveIndex] = useState<number>(-1);
 
-    const abortControllerRef = useRef<AbortController | null>(null);
-    const debounceTimerRef = useRef<number | undefined>(undefined);
+    const abortRef = useRef<AbortController | null>(null);
+    const debounceRef = useRef<number | undefined>(undefined);
+    const cacheRef = useRef<Map<string, ClientSearchItem[]>>(new Map());
 
-    // Keep input text in sync if parent changes the selected client
+    const inputId = useId();
+    const listboxId = `${inputId}-listbox`;
+
+    // Keep input text in sync with external selection
     useEffect(() => {
         setQuery(selected?.name ?? "");
     }, [selected?.id, selected?.name]);
 
+    // Debounced search
     useEffect(() => {
         if (disabled) return;
 
-        window.clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = window.setTimeout(async () => {
-            const trimmed = query.trim();
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = window.setTimeout(async () => {
+            const q = query.trim();
 
-            // Skip searching on empty, or when the visible text already equals the selected label
-            if (!trimmed || trimmed === (selected?.name ?? "")) {
+            // Reset when empty or equals selected label
+            if (!q || q === (selected?.name ?? "")) {
                 setResults([]);
                 setLoading(false);
+                setActiveIndex(-1);
                 return;
             }
 
-            // Cancel the previous in-flight request
-            abortControllerRef.current?.abort();
+            // Min chars guard
+            if (q.length < MIN_CHARS) {
+                setResults([]);
+                setLoading(false);
+                setActiveIndex(-1);
+                return;
+            }
+
+            // Cache hit
+            if (cacheRef.current.has(q)) {
+                setResults(cacheRef.current.get(q)!);
+                setLoading(false);
+                setActiveIndex(0);
+                return;
+            }
+
+            // Cancel in-flight
+            abortRef.current?.abort();
             const controller = new AbortController();
-            abortControllerRef.current = controller;
+            abortRef.current = controller;
 
             try {
                 setLoading(true);
-                const data = await searchClients(trimmed, { signal: controller.signal });
+                const data = await searchClients(q, { signal: controller.signal });
+                cacheRef.current.set(q, data);
                 setResults(data);
+                setActiveIndex(data.length > 0 ? 0 : -1);
             } catch {
-                // ignore (abort or error); global error handlers/toasts will fire
                 setResults([]);
+                setActiveIndex(-1);
             } finally {
                 setLoading(false);
             }
-        }, 250);
+        }, DEBOUNCE_MS) as unknown as number;
 
-        return () => {
-            window.clearTimeout(debounceTimerRef.current);
-        };
+        return () => window.clearTimeout(debounceRef.current);
     }, [query, disabled, selected?.name]);
+
+    // Keyboard interactions
+    const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+            setOpen(true);
+        }
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIndex((i) => (results.length ? (i + 1) % results.length : -1));
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIndex((i) => (results.length ? (i - 1 + results.length) % results.length : -1));
+        } else if (e.key === "Enter") {
+            if (open && activeIndex >= 0 && activeIndex < results.length) {
+                const choice = results[activeIndex];
+                onSelect(choice);
+                setQuery(choice.name);
+                setResults([]);
+                setOpen(false);
+                setActiveIndex(-1);
+            }
+        } else if (e.key === "Escape") {
+            setOpen(false);
+            setActiveIndex(-1);
+        }
+    };
+
+    const handlePick = (client: ClientSearchItem) => {
+        onSelect(client);
+        setQuery(client.name);
+        setResults([]);
+        setOpen(false);
+        setActiveIndex(-1);
+    };
 
     return (
         <div className="relative">
             <div className="flex gap-2">
                 <input
+                    id={inputId}
                     className="w-full border rounded px-3 py-2"
                     placeholder={placeholder}
                     value={query}
@@ -77,10 +138,15 @@ export default function ClientSearchInput({
                         setOpen(true);
                     }}
                     onFocus={() => setOpen(true)}
+                    onKeyDown={onKeyDown}
                     disabled={disabled}
                     aria-autocomplete="list"
                     aria-expanded={open}
-                    aria-controls="client-search-listbox"
+                    aria-controls={listboxId}
+                    aria-activedescendant={
+                        activeIndex >= 0 && results[activeIndex] ? `${listboxId}-opt-${results[activeIndex].id}` : undefined
+                    }
+                    role="combobox"
                 />
 
                 {selected && (
@@ -92,6 +158,7 @@ export default function ClientSearchInput({
                             setQuery("");
                             setResults([]);
                             setOpen(false);
+                            setActiveIndex(-1);
                         }}
                         disabled={disabled}
                         title="Clear"
@@ -102,34 +169,32 @@ export default function ClientSearchInput({
                 )}
             </div>
 
-            {open && (loading || results.length > 0 || (query.trim() && !loading)) && (
+            {open && (loading || results.length > 0 || (query.trim().length >= MIN_CHARS && !loading)) && (
                 <div
-                    id="client-search-listbox"
+                    id={listboxId}
                     role="listbox"
                     className="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-56 overflow-auto"
                     onMouseDown={(e) => e.preventDefault()} // keep input focus
                 >
-                    {loading && (
-                        <div className="p-2 text-sm text-gray-500">Searching…</div>
-                    )}
+                    {loading && <div className="p-2 text-sm text-gray-500">Searching…</div>}
 
-                    {!loading && results.map((client) => (
-                        <div
-                            key={client.id}
-                            role="option"
-                            className="px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                            onMouseDown={() => {
-                                onSelect(client);
-                                setQuery(client.name);
-                                setResults([]);
-                                setOpen(false);
-                            }}
-                        >
-                            {client.name}
-                        </div>
-                    ))}
+                    {!loading &&
+                        results.map((client, idx) => (
+                            <div
+                                key={client.id}
+                                id={`${listboxId}-opt-${client.id}`}
+                                role="option"
+                                aria-selected={idx === activeIndex}
+                                className={`px-3 py-2 cursor-pointer ${idx === activeIndex ? "bg-gray-100" : "hover:bg-gray-50"
+                                    }`}
+                                onMouseEnter={() => setActiveIndex(idx)}
+                                onMouseDown={() => handlePick(client)}
+                            >
+                                {client.name}
+                            </div>
+                        ))}
 
-                    {!loading && results.length === 0 && query.trim() && (
+                    {!loading && results.length === 0 && query.trim().length >= MIN_CHARS && (
                         <div className="p-2 text-sm text-gray-500">No matches</div>
                     )}
                 </div>
