@@ -164,3 +164,27 @@ export async function deleteReservation(
     await api.delete(`/reservation/${id}`);
     if (opts.toastSuccess !== false) toast.success("Reservation deleted.");
 }
+
+export async function setReservationStatus(
+    id: number,
+    status: "Completed" | "Canceled" | "NoShow",
+    opts: {
+        currentNotes?: string | null;
+        reason?: string;
+        managerOverride?: boolean;
+        toastSuccess?: boolean;
+    } = {}
+): Promise<void> {
+    const base = opts.currentNotes ?? "";
+    const trimmed = (opts.reason ?? "").trim();
+
+    // Append a tagged line when a reason is supplied (MVP approach)
+    const tag = trimmed ? `\n[status=${status}] ${trimmed}` : "";
+    const notes = tag ? `${base ?? ""}${tag}` : undefined;
+
+    await updateReservation(
+        id,
+        { status, notes },
+        { managerOverride: !!opts.managerOverride, toastSuccess: opts.toastSuccess }
+    );
+}

@@ -8,7 +8,6 @@ using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
 using System.Linq.Expressions;
 using static BetterSchedule.Server.Auth.ReservationScopes;
 
@@ -36,10 +35,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Lists reservations overlapping the optional time range and visible to the caller.
         /// </summary>
-        /// <param name="start">Optional start of the range to filter.</param>
-        /// <param name="end">Optional end of the range to filter.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Collection of reservation DTOs.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
@@ -59,9 +54,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Retrieves a reservation by identifier if visible to the caller.
         /// </summary>
-        /// <param name="id">The reservation identifier.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>The reservation DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ReservationDto>> GetById(
             [FromRoute] int id, CancellationToken ct)
@@ -78,9 +70,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Creates a new reservation. Allowed for managers and service providers.
         /// </summary>
-        /// <param name="dto">Reservation details.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>The created reservation DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create(
@@ -155,88 +144,162 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-
-
         /// <summary>
         /// Updates an existing reservation. Allowed for managers and service providers.
         /// </summary>
-        /// <param name="id">The reservation identifier.</param>
-        /// <param name="dto">Updated reservation values.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update(
             [FromRoute] int id,
             [FromBody] UpdateReservationDto dto,
             [FromQuery] CancellationToken ct,
-            bool managerOverride = false,       
-            bool overrideAvailability = false  
+            bool managerOverride = false,
+            bool overrideAvailability = false
             )
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
             if (reservation is null) return NotFound();
 
+            // Safeguard: only managers or the owning provider may modify (including cancel).
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false))
+                return Forbid();
+
             var settings = await _db.OrganizationSettings
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+
             var now = DateTimeOffset.UtcNow;
-            if (settings is not null)
+
+            // Determine whether this is a "status-only" change
+            var isStatusProvided = !string.IsNullOrWhiteSpace(dto.Status);
+            ReservationStatus? parsedStatus = null;
+            if (isStatusProvided)
             {
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                if (reservation.StartTime - now < cancelWindow && !(managerOverride && IsManager))
-                    return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
+                if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var sParsed))
+                    return BadRequest($"Unknown status '{dto.Status}'.");
+                parsedStatus = sParsed;
             }
 
+            var isOnlyStatusChange =
+                isStatusProvided &&
+                dto.StartTime is null &&
+                dto.EndTime is null &&
+                dto.ResourceId is null &&
+                dto.ServiceProviderId is null &&
+                dto.AppointmentTypeId is null &&
+                !dto.PackageAssignmentId.HasValue;
+
+            // Idempotent no-op: status already set and no notes change
+            if (isOnlyStatusChange && parsedStatus == reservation.Status && dto.Notes is null)
+                return NoContent();
+
+            // Compute "effective" values for non-status edits
             var newProviderId = dto.ServiceProviderId ?? reservation.ServiceProviderId;
             var newAppointmentTypeId = dto.AppointmentTypeId ?? reservation.AppointmentTypeId;
             var newStart = dto.StartTime ?? reservation.StartTime;
             var newEnd = dto.EndTime ?? reservation.EndTime;
             var newResourceId = dto.ResourceId ?? reservation.ResourceId;
 
-            if (newEnd <= newStart)
-                return BadRequest("EndTime must be after StartTime.");
-
-            if (settings is not null && newStart < now.AddMinutes(settings.MinLeadMinutes))
-                return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
-
-            var c = await _conflicts.CheckReservationUpdateAsync(
-                id,
-                OrganizationId,
-                newProviderId,
-                newStart,
-                newEnd,
-                newResourceId,
-                ct);
-
-            // Enforce availability unless properly overridden
-            if (c.OutsideProviderAvailability)
+            // For non-status edits, enforce temporal guards
+            if (!isOnlyStatusChange)
             {
-                var isOwnProvider = IsProvider && newProviderId == UserId;
-                var canOverride =
-                    (IsManager && overrideAvailability) ||
-                    (isOwnProvider && overrideAvailability);
+                if (newEnd <= newStart)
+                    return BadRequest("EndTime must be after StartTime.");
 
-                if (!canOverride)
-                    return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+                if (settings is not null && newStart < now.AddMinutes(settings.MinLeadMinutes))
+                    return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
             }
 
-            if (c.ProviderBlocked || c.ResourceBlocked)
-                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
+            // Cancel-window handling + provider policy for status-only Canceled
+            if (settings is not null)
+            {
+                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
+                var insideCancelWindow = reservation.StartTime - now < cancelWindow;
 
-            var warnDoubleBook = c.ReservationOverlap && IsProvider;
+                if (isOnlyStatusChange && parsedStatus.HasValue)
+                {
+                    if (parsedStatus == ReservationStatus.Canceled)
+                    {
+                        if (IsManager)
+                        {
+                            // Managers: inside window still require explicit override flag
+                            if (insideCancelWindow && !managerOverride)
+                                return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
+                        }
+                        else if (IsProvider)
+                        {
+                            // Providers: follow ProviderCancelPolicy
+                            var policy = settings.ProviderCancelPolicy;
 
+                            switch (policy)
+                            {
+                                case Models.Tenant.ProviderCancelPolicy.AnyTime:
+                                    // allow regardless of window (most permissive)
+                                    break;
+
+                                case Models.Tenant.ProviderCancelPolicy.RespectWindow:
+                                    // deny inside window unless elevated by a manager (provider cannot elevate)
+                                    if (insideCancelWindow)
+                                        return BadRequest($"Providers cannot cancel within {settings.CancelWindowHours} hours of start time. Ask a manager to override.");
+                                    break;
+
+                                case Models.Tenant.ProviderCancelPolicy.None:
+                                    // no provider cancels at all
+                                    return Forbid();
+                            }
+                        }
+                    }
+                    else if (parsedStatus == ReservationStatus.Completed || parsedStatus == ReservationStatus.NoShow)
+                    {
+                        // After start: allowed for both roles. Before start: manager override required.
+                        if (now < reservation.StartTime && !(managerOverride && IsManager))
+                            return BadRequest("Cannot set Completed/NoShow before the start time without manager override.");
+                    }
+                }
+                else
+                {
+                    // General edits: inside window require manager override
+                    if (reservation.StartTime - now < cancelWindow && !(managerOverride && IsManager))
+                        return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
+                }
+            }
+
+            // Availability/resource conflict checks only when time/provider/resource may change
+            var warnDoubleBook = false;
+            if (!isOnlyStatusChange)
+            {
+                var c = await _conflicts.CheckReservationUpdateAsync(
+                    id,
+                    OrganizationId,
+                    newProviderId,
+                    newStart,
+                    newEnd,
+                    newResourceId,
+                    ct);
+
+                if (c.OutsideProviderAvailability)
+                {
+                    var isOwnProvider = IsProvider && newProviderId == UserId;
+                    var canOverride =
+                        (IsManager && overrideAvailability) ||
+                        (isOwnProvider && overrideAvailability);
+
+                    if (!canOverride)
+                        return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+                }
+
+                if (c.ProviderBlocked || c.ResourceBlocked)
+                    return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
+
+                warnDoubleBook = c.ReservationOverlap && IsProvider;
+            }
+
+            // Apply updates
             if (dto.Notes is not null) reservation.Notes = dto.Notes;
             if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
             if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
-
-            if (!string.IsNullOrWhiteSpace(dto.Status))
-            {
-                if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var parsed))
-                    return BadRequest($"Unknown status '{dto.Status}'.");
-                reservation.Status = parsed;
-            }
+            if (parsedStatus.HasValue) reservation.Status = parsedStatus.Value;
 
             reservation.ServiceProviderId = newProviderId;
             reservation.AppointmentTypeId = newAppointmentTypeId;
@@ -250,14 +313,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-
-
         /// <summary>
         /// Soft deletes a reservation.
         /// </summary>
-        /// <param name="id">The reservation identifier.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete(
@@ -268,6 +326,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (entity is null) return NotFound();
+
+            // Safeguard: only managers or the owning provider may delete.
+            if (!ReservationScopes.CanModify(entity, UserId, IsManager, IsProvider, isClient: false))
+                return Forbid();
 
             var settings = await _db.OrganizationSettings
                 .AsNoTracking()
@@ -280,13 +342,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
             }
 
-
             entity.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
-        // Map entity -> ReservationDto (status as string).
+        /// <summary>
+        /// Maps entity to DTO (status as string).
+        /// </summary>
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,

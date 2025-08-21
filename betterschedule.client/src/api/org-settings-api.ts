@@ -9,6 +9,9 @@ export type AvailabilityEnforcement =
     | "BlockProvidersWarnManagers"
     | "BlockAllRequireOverride";
 
+
+export type ProviderCancelPolicy = "None" | "RespectWindow" | "AnyTime";
+
 /** Read model (matches server OrgSettingsDto) */
 export type OrgSettingsDto = {
     // Booking windows (TimeSpan on server -> string "d.HH:mm:ss" or "HH:mm:ss")
@@ -28,6 +31,9 @@ export type OrgSettingsDto = {
     requireConfirmOnOverrides: boolean;
     availabilityPublic: boolean;
     providersCanEditOwnAvailability: boolean;
+
+    // NEW: provider cancel policy
+    providerCancelPolicy: ProviderCancelPolicy;
 
     // TZ/Locale
     timeZoneId: string;
@@ -54,6 +60,10 @@ export type UpdateOrgSettingsDto = Partial<{
     requireConfirmOnOverrides: boolean;
     availabilityPublic: boolean;
     providersCanEditOwnAvailability: boolean;
+
+    
+    providerCancelPolicy: ProviderCancelPolicy;
+
     timeZoneId: string;
     locale: string;
     emailEnabled: boolean;

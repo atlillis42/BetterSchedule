@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "react-toastify";
 import { useAuth } from "@/components/auth/AuthContext";
 import ReservationParticipantsSection from "@/components/reservations/ReservationParticipantsSection";
 import ClientSearchInput from "@/components/modals/ClientSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
+import { setReservationStatus } from "@/api/reservation-api";
 
 type ProviderLite = { id: string; name: string };
 type CalendarResource = { id: number; name: string };
@@ -20,6 +22,8 @@ type EventModalProps = {
     error: string | null;
     resources: CalendarResource[];
     providers: ProviderLite[];
+    /** Optional: ask parent to refresh calendar after quick-status action */
+    onRefreshRequested?: () => void;
 };
 
 const EventModal: React.FC<EventModalProps> = ({
@@ -35,12 +39,19 @@ const EventModal: React.FC<EventModalProps> = ({
     error,
     resources,
     providers,
+    onRefreshRequested,
 }) => {
     const { isManager, isProvider } = useAuth();
     const canEditParticipants = isManager || isProvider;
 
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeDto[]>([]);
     const reservationId = typeof values?.id === "number" ? values.id : undefined;
+
+    // Optional reason appended to notes on quick-status actions
+    const [statusReason, setStatusReason] = useState("");
+
+    // IMPORTANT: hooks must be before any conditional return
+    const busyRef = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -49,7 +60,9 @@ const EventModal: React.FC<EventModalProps> = ({
             try {
                 const list = await getAppointmentTypes();
                 if (!cancelled) setAppointmentTypes(list);
-            } catch { /* no-op */ }
+            } catch {
+                /* no-op */
+            }
         })();
         return () => {
             cancelled = true;
@@ -72,6 +85,7 @@ const EventModal: React.FC<EventModalProps> = ({
         handleField(key, value ? Number(value) : undefined);
     };
 
+    // Prefill resource from AppointmentType.assignedResourceId if none selected yet
     const handleAppointmentTypeChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
         const idString = e.target.value;
         const id = idString ? Number(idString) : undefined;
@@ -85,17 +99,73 @@ const EventModal: React.FC<EventModalProps> = ({
         });
     };
 
+    // Early return must be after all hooks above
     if (!open) return null;
 
-    // Build a minimal "selected" object for the client picker when clientId is present
+    // Minimal "selected" object for the client picker when clientId is present
     const selectedClient =
         values.clientId && typeof values.clientId === "string"
             ? { id: values.clientId, name: values.clientId }
             : null;
 
+    // Quick status actions
+    const runQuickStatus = async (status: "Completed" | "Canceled" | "NoShow") => {
+        if (!reservationId || busyRef.current) return;
+        busyRef.current = true;
+        try {
+            await setReservationStatus(reservationId, status, {
+                currentNotes: values?.notes ?? "",
+                reason: statusReason.trim() || undefined,
+                toastSuccess: false,
+            });
+            toast.success(`Status set to ${status}.`);
+            onRefreshRequested?.();
+            onCancel(); // close modal after quick action
+        } catch (err: any) {
+            const msg =
+                (err?.response?.data?.message as string | undefined) ||
+                (err instanceof Error ? err.message : undefined) ||
+                "";
+
+            const needsManagerOverride =
+                !!msg &&
+                (msg.toLowerCase().includes("manager approval") ||
+                    msg.toLowerCase().includes("manager override") ||
+                    msg.toLowerCase().includes("within"));
+
+            if (isManager && needsManagerOverride) {
+                const ok = window.confirm("This action may require a manager override. Proceed?");
+                if (ok) {
+                    try {
+                        await setReservationStatus(reservationId, status, {
+                            currentNotes: values?.notes ?? "",
+                            reason: statusReason.trim() || undefined,
+                            managerOverride: true,
+                            toastSuccess: false,
+                        });
+                        toast.success(`Status set to ${status}.`);
+                        onRefreshRequested?.();
+                        onCancel();
+                    } catch (err2: any) {
+                        const m2 =
+                            (err2?.response?.data?.message as string | undefined) ||
+                            (err2 instanceof Error ? err2.message : undefined) ||
+                            "Failed to update status.";
+                        toast.error(m2);
+                    }
+                }
+            } else {
+                toast.error(msg || "Failed to update status.");
+            }
+        } finally {
+            busyRef.current = false;
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
             <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
+                {/* Header */}
                 <div className="flex items-center justify-between border-b px-4 py-3">
                     <div className="flex items-center gap-2">
                         <button
@@ -114,9 +184,52 @@ const EventModal: React.FC<EventModalProps> = ({
                     <div className="text-sm text-gray-500">{mode === "edit" ? "Edit" : "Create"}</div>
                 </div>
 
+                {/* Body */}
                 <div className="px-4 py-4">
                     {type === "reservation" ? (
                         <div className="flex flex-col gap-4">
+                            {/* Quick Status Actions (Edit mode only) */}
+                            {mode === "edit" && reservationId && (
+                                <div className="rounded-lg border bg-gray-50 p-3">
+                                    <div className="flex flex-col md:flex-row md:items-center md:gap-3 gap-2">
+                                        <div className="font-medium text-sm">Quick status:</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                className="px-3 py-1.5 text-sm rounded border bg-emerald-600 text-white hover:bg-emerald-700"
+                                                onClick={() => runQuickStatus("Completed")}
+                                            >
+                                                Mark Completed
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="px-3 py-1.5 text-sm rounded border bg-rose-600 text-white hover:bg-rose-700"
+                                                onClick={() => runQuickStatus("Canceled")}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="px-3 py-1.5 text-sm rounded border bg-amber-500 text-white hover:bg-amber-600"
+                                                onClick={() => runQuickStatus("NoShow")}
+                                            >
+                                                No-Show
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <label className="text-xs text-gray-600">Reason (optional)</label>
+                                        <input
+                                            className="flex-1 border rounded px-2 py-1 text-sm"
+                                            placeholder="e.g., client requested, illness, no answer…"
+                                            value={statusReason}
+                                            onChange={(e) => setStatusReason(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Main reservation form */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div className="flex flex-col gap-1">
                                     <label className="text-sm font-medium">Client</label>
@@ -244,6 +357,7 @@ const EventModal: React.FC<EventModalProps> = ({
                             )}
                         </div>
                     ) : (
+                        // Blocked Time form
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="flex flex-col gap-1">
                                 <label className="text-sm font-medium">Resource</label>
@@ -315,6 +429,7 @@ const EventModal: React.FC<EventModalProps> = ({
                     )}
                 </div>
 
+                {/* Footer */}
                 <div className="flex items-center justify-between border-t px-4 py-3">
                     <div className="text-xs text-gray-500">{type === "reservation" ? "Reservation" : "Blocked time"}</div>
                     <div className="flex items-center gap-2">

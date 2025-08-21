@@ -10,7 +10,8 @@ import {
     normalizeHHmmOrHHmmss,
     type DefaultCalendarView,
     type CalendarShadingMode,
-    type AvailabilityEnforcement
+    type AvailabilityEnforcement,
+    type ProviderCancelPolicy, // NEW
 } from "@/api/org-settings-api";
 import { useAuth } from "@auth/AuthContext";
 
@@ -19,6 +20,9 @@ type Form = {
     // booking windows as numbers for easy editing
     minLeadMinutes: number;
     cancelWindowHours: number;
+
+    // NEW: provider cancel policy
+    providerCancelPolicy: ProviderCancelPolicy;
 
     // calendar display
     showWeekends: boolean;
@@ -61,6 +65,9 @@ export default function OrgSettingsManager() {
                 setF({
                     minLeadMinutes: timeSpanToMinutes(s.bookingLeadTime),
                     cancelWindowHours: timeSpanToHours(s.cancellationWindow),
+
+                    providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
+
                     showWeekends: s.showWeekends,
                     startOfWeek: s.startOfWeek,
                     businessHoursStartLocal: s.businessHoursStartLocal,
@@ -76,7 +83,7 @@ export default function OrgSettingsManager() {
                     emailEnabled: s.emailEnabled,
                     smsEnabled: s.smsEnabled,
                     sendBookingConfirmation: s.sendBookingConfirmation,
-                    reminderHoursBefore: s.reminderHoursBefore ?? null
+                    reminderHoursBefore: s.reminderHoursBefore ?? null,
                 });
             } catch {
                 toast.error("Failed to load organization settings.");
@@ -110,6 +117,9 @@ export default function OrgSettingsManager() {
                 bookingLeadTime: minutesToTimeSpan(f.minLeadMinutes),
                 cancellationWindow: hoursToTimeSpan(f.cancelWindowHours),
 
+                // NEW: provider cancel policy
+                providerCancelPolicy: f.providerCancelPolicy,
+
                 // calendar display
                 showWeekends: f.showWeekends,
                 startOfWeek: f.startOfWeek,
@@ -132,7 +142,7 @@ export default function OrgSettingsManager() {
                 emailEnabled: f.emailEnabled,
                 smsEnabled: f.smsEnabled,
                 sendBookingConfirmation: f.sendBookingConfirmation,
-                reminderHoursBefore: f.reminderHoursBefore
+                reminderHoursBefore: f.reminderHoursBefore,
             });
             toast.success("Settings saved.");
         } catch {
@@ -174,6 +184,21 @@ export default function OrgSettingsManager() {
                             onChange={(e) => setF({ ...f, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })}
                             disabled={!canEdit}
                         />
+                    </label>
+
+                    {/* NEW: Provider cancel policy */}
+                    <label className="flex flex-col">
+                        <span>Provider cancel policy</span>
+                        <select
+                            className="border rounded px-2 py-1"
+                            value={f.providerCancelPolicy}
+                            onChange={(e) => setF({ ...f, providerCancelPolicy: e.target.value as ProviderCancelPolicy })}
+                            disabled={!canEdit}
+                        >
+                            <option value="AnyTime">AnyTime (default; friendliest)</option>
+                            <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
+                            <option value="None">None (managers only)</option>
+                        </select>
                     </label>
                 </div>
             </section>
@@ -240,9 +265,7 @@ export default function OrgSettingsManager() {
                             onChange={(e) => setF({ ...f, businessHoursEndLocal: `${e.target.value}:00` })}
                             disabled={!canEdit}
                         />
-                        {businessHoursInvalid && (
-                            <span className="text-xs text-red-600 mt-1">End must be after start.</span>
-                        )}
+                        {businessHoursInvalid && <span className="text-xs text-red-600 mt-1">End must be after start.</span>}
                     </label>
                 </div>
             </section>
