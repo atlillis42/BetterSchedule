@@ -103,6 +103,41 @@ namespace BetterSchedule.Server.Models.Tenant
         public bool ProvidersCanEditOwnAvailability { get; set; } = true;
 
         // --------------------------------------------------------------------
+        // Access control / scoping (resources & appointment types)
+        // --------------------------------------------------------------------
+
+        /// <summary>
+        /// If true, providers see and may book only the resources they have access to (via ProviderResourceAccess).
+        /// Managers always see all resources.
+        /// </summary>
+        public bool LimitProvidersToAssignedResources { get; set; } = false;
+
+        /// <summary>
+        /// If true and a provider has no ProviderResourceAccess rows, treat as "no restriction" (fail-open).
+        /// If false, treat as "no access" (strict).
+        /// </summary>
+        public bool FailOpenWhenNoResourceAssignments { get; set; } = true;
+
+        /// <summary>
+        /// If true, providers see and may use only appointment types granted to them (via ProviderAppointmentTypeAccess) or ones they created.
+        /// Managers always see all appointment types.
+        /// </summary>
+        public bool LimitProvidersToAssignedAppointmentTypes { get; set; } = false;
+
+        /// <summary>
+        /// If true and a provider has no ProviderAppointmentTypeAccess rows, treat as "no restriction" (fail-open).
+        /// If false, treat as "no access" (strict).
+        /// </summary>
+        public bool FailOpenWhenNoTypeAssignments { get; set; } = true;
+
+        /// <summary>
+        /// If true, enforce appointment-type ↔ resource rules.
+        /// - If an AppointmentType sets AssignedResourceId, require that resource unless a manager overrides.
+        /// - If AppointmentTypeResourceAccess rows exist for the type, require the selected resource to be in that set.
+        /// </summary>
+        public bool EnforceAppointmentTypeResourceRules { get; set; } = false;
+
+        // --------------------------------------------------------------------
         // Timezone & locale (for consistent UI formatting and server-side conversions)
         // --------------------------------------------------------------------
 
@@ -160,11 +195,6 @@ namespace BetterSchedule.Server.Models.Tenant
         ///// If true, require a signed waiver on file for appointment types that set RequiresWaiver.
         ///// </summary>
         //public bool EnforceWaivers { get; set; } = false;
-
-        ///// <summary>
-        ///// If true, enforce provider-to-resource mapping (ProviderResource) when filtering visible resources and booking.
-        ///// </summary>
-        //public bool EnforceProviderResourceMapping { get; set; } = false;
 
         ///// <summary>
         ///// Enable payments and set default deposit requirement (%) for applicable appointment types.
