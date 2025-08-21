@@ -1,6 +1,6 @@
 ﻿using BetterSchedule.Server.Models.Identity;
-using BetterSchedule.Server.Models.Scheduling;
-using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, ProviderAvailability
+using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization, OrganizationSettings
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -26,7 +26,7 @@ namespace BetterSchedule.Server.Database
         {
             base.OnModelCreating(builder);
 
-            // Identity in explicit schema
+            // Identity → explicit schema
             builder.Entity<ApplicationUser>().ToTable("AspNetUsers", "identity");
             builder.Entity<IdentityRole>().ToTable("AspNetRoles", "identity");
             builder.Entity<IdentityUserRole<string>>().ToTable("AspNetUserRoles", "identity");
@@ -132,7 +132,7 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey(co => co.OrganizationId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // OrganizationSettings → Organization
+            // OrganizationSettings → Organization (1:1)
             builder.Entity<OrganizationSettings>()
                 .HasOne(os => os.Organization)
                 .WithOne()
@@ -144,13 +144,6 @@ namespace BetterSchedule.Server.Database
                 .HasIndex(co => new { co.ClientId, co.OrganizationId })
                 .IsUnique();
 
-            // OrganizationSettings → Organization (one-to-one)
-            builder.Entity<OrganizationSettings>()
-                .HasOne(s => s.Organization)
-                .WithOne()
-                .HasForeignKey<OrganizationSettings>(s => s.OrganizationId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             builder.Entity<CalendarResource>()
                 .HasIndex(r => new { r.OrganizationId, r.Name })
                 .IsUnique();
@@ -161,35 +154,34 @@ namespace BetterSchedule.Server.Database
 
             builder.Entity<ReservationParticipant>(b =>
             {
-                // Store enum as int (clarifies check constraint semantics)
                 b.Property(x => x.Role).HasConversion<int>();
-
-                // Unique for real users (guests have null UserId)
                 b.HasIndex(x => new { x.ReservationId, x.UserId })
                  .IsUnique()
                  .HasFilter("[IsDeleted] = 0 AND [UserId] IS NOT NULL");
-
-                // Guest must have null UserId; Client/Provider must have non-null
                 b.ToTable(t => t.HasCheckConstraint(
                     "CK_ReservationParticipant_User_Guest_Role",
                     "(([Role] = 2 AND [UserId] IS NULL) OR ([Role] IN (0,1) AND [UserId] IS NOT NULL))"
-                // Role enum order: 0=Client,1=ServiceProvider,2=Guest
                 ));
             });
 
-            // Column types
-            builder.Entity<AppointmentType>()
-                .Property(a => a.Price)
-                .HasColumnType("decimal(18,2)");
+            // ProviderAvailability: allow multiple windows per day; prevent identical active duplicates
+            builder.Entity<ProviderAvailability>(b =>
+            {
+                b.HasIndex(pa => new { pa.OrganizationId, pa.ServiceProviderId, pa.DayOfWeek });
 
-            builder.Entity<ProviderAvailability>()
-                .Property(pa => pa.StartTime)
-                .HasColumnType("time");
-
-            builder.Entity<ProviderAvailability>()
-                .Property(pa => pa.EndTime)
-                .HasColumnType("time");
-
+                b.HasIndex(pa => new
+                {
+                    pa.OrganizationId,
+                    pa.ServiceProviderId,
+                    pa.DayOfWeek,
+                    pa.EffectiveFrom,
+                    pa.EffectiveTo,
+                    pa.StartLocalTime,
+                    pa.EndLocalTime
+                })
+                 .IsUnique()
+                 .HasFilter("[IsDeleted] = 0");
+            });
 
             // Query-speed indexes
             builder.Entity<BlockedTime>()
@@ -198,18 +190,32 @@ namespace BetterSchedule.Server.Database
             builder.Entity<BlockedTime>()
                 .HasIndex(bt => new { bt.OrganizationId, bt.ResourceId, bt.StartTime, bt.EndTime });
 
-            builder.Entity<ProviderAvailability>()
-                .HasIndex(pa => new { pa.OrganizationId, pa.ServiceProviderId, pa.DayOfWeek })
-                .IsUnique();
-
-            builder.Entity<ProviderAvailability>()
-                .HasIndex(pa => new { pa.OrganizationId, pa.ProviderId, pa.DayOfWeek, pa.StartTime, pa.EndTime });
-
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });
 
             builder.Entity<AppointmentType>()
                 .HasIndex(a => new { a.OrganizationId, a.CreatedByUserId });
+
+            // Column types / precision
+            builder.Entity<AppointmentType>()
+                .Property(a => a.Price)
+                .HasColumnType("decimal(18,2)");
+
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.StartLocalTime)
+                .HasColumnType("time");
+
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.EndLocalTime)
+                .HasColumnType("time");
+
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.EffectiveFrom)
+                .HasColumnType("date");
+
+            builder.Entity<ProviderAvailability>()
+                .Property(pa => pa.EffectiveTo)
+                .HasColumnType("date");
         }
     }
 }

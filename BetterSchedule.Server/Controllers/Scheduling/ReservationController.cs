@@ -84,7 +84,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create(
-            [FromBody] CreateReservationDto dto, CancellationToken ct)
+            [FromBody] CreateReservationDto dto,
+            [FromQuery] CancellationToken ct,
+            bool overrideAvailability = false
+            )
         {
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest("EndTime must be after StartTime.");
@@ -107,8 +110,19 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 dto.ResourceId,
                 ct);
 
+            // Enforce availability unless properly overridden
+            if (c.OutsideProviderAvailability)
+            {
+                var canOverride =
+                    (IsManager && overrideAvailability) ||
+                    (IsProvider && overrideAvailability && dto.ServiceProviderId == UserId);
+
+                if (!canOverride)
+                    return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+            }
+
             if (c.ProviderBlocked || c.ResourceBlocked)
-                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked for the provider or resource." });
+                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
 
             var warnDoubleBook = c.ReservationOverlap && IsProvider;
 
@@ -141,6 +155,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
+
+
         /// <summary>
         /// Updates an existing reservation. Allowed for managers and service providers.
         /// </summary>
@@ -151,9 +167,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update(
-            [FromRoute] int id, 
-            [FromBody] UpdateReservationDto dto,CancellationToken ct, 
-            [FromQuery] bool managerOverride = false)
+            [FromRoute] int id,
+            [FromBody] UpdateReservationDto dto,
+            [FromQuery] CancellationToken ct,
+            bool managerOverride = false,       
+            bool overrideAvailability = false  
+            )
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
@@ -167,13 +186,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             {
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
                 if (reservation.StartTime - now < cancelWindow && !(managerOverride && IsManager))
-                    return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager override.");
+                    return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
             }
 
-            // To enforce "Provider can only modify their own," uncomment:
-            // if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false)) return Forbid();
-
-            // Proposed values (client is immutable here by design).
             var newProviderId = dto.ServiceProviderId ?? reservation.ServiceProviderId;
             var newAppointmentTypeId = dto.AppointmentTypeId ?? reservation.AppointmentTypeId;
             var newStart = dto.StartTime ?? reservation.StartTime;
@@ -195,8 +210,20 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 newResourceId,
                 ct);
 
+            // Enforce availability unless properly overridden
+            if (c.OutsideProviderAvailability)
+            {
+                var isOwnProvider = IsProvider && newProviderId == UserId;
+                var canOverride =
+                    (IsManager && overrideAvailability) ||
+                    (isOwnProvider && overrideAvailability);
+
+                if (!canOverride)
+                    return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+            }
+
             if (c.ProviderBlocked || c.ResourceBlocked)
-                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked for the provider or resource." });
+                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
 
             var warnDoubleBook = c.ReservationOverlap && IsProvider;
 
@@ -222,6 +249,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (warnDoubleBook) Response.Headers["X-Warned-Double-Booking"] = "true";
             return NoContent();
         }
+
+
 
         /// <summary>
         /// Soft deletes a reservation.

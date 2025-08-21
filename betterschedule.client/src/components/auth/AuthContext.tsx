@@ -1,15 +1,21 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { api } from './axios.ts';
+import React, { createContext, useContext, useState, useEffect, useMemo } from "react";
+import { api } from "./axios.ts";
 import { toast } from "react-toastify";
-
 
 export type AuthContextType = {
     isAuthenticated: boolean;
-    user: string | null;
-    userId: string | null;
+    user: string | null;        // display name/email
+    userId: string | null;      // stable user id
     roles: string[];
     organizationId: string | null;
     loading: boolean;
+
+    // Convenience flags + helper
+    isManager: boolean;
+    isProvider: boolean;
+    isClient: boolean;
+    hasRole: (role: string) => boolean;
+
     login: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
     logout: () => Promise<void>;
     refreshAuth: () => void;
@@ -17,20 +23,18 @@ export type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [user, setUser] = useState<string | null>(null);
-    const [loading, setLoading] = useState(true);
     const [userId, setUserId] = useState<string | null>(null);
     const [roles, setRoles] = useState<string[]>([]);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
 
-    
     const refreshAuth = async () => {
         try {
-            const res = await api.get('/auth/status');
-            console.log("🧪 /auth/status response", res.data);
+            const res = await api.get("/auth/status");
+            // console.log("🧪 /auth/status response", res.data);
 
             setIsAuthenticated(res.data?.authenticated ?? false);
             setUser(res.data?.user ?? null);
@@ -49,12 +53,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
     };
 
+    // Summary: Login; in DEV call flexible identifier endpoint; in PROD call standard endpoint.
     const login = async (email: string, password: string) => {
         try {
-            const url =
-                import.meta.env.MODE === "development" ? "/dev/login" : "/auth/login";
+            // DEV uses flexible "identifier" login (email or username). PROD uses regular login.
+            const url = import.meta.env.MODE === "development" ? "/auth/dev-login" : "/auth/login";
+            const payload = import.meta.env.MODE === "development"
+                ? { identifier: email, password }
+                : { email, password };
 
-            const res = await api.post(url, { email, password });
+            const res = await api.post(url, payload);
 
             if (res.status === 200) {
                 await refreshAuth();
@@ -66,11 +74,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             return { success: false, message: res.data || "Login failed." };
         } catch (err: any) {
             console.error("❌ Login failed", err);
-            toast.error(err.response?.data || "Unexpected error during login.");
-            return {
-                success: false,
-                message: err.response?.data || "Unexpected error during login.",
-            };
+            toast.error(err?.response?.data || "Unexpected error during login.");
+            return { success: false, message: err?.response?.data || "Unexpected error during login." };
         }
     };
 
@@ -88,7 +93,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     useEffect(() => {
         refreshAuth();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Derive flags & helper from roles
+    const roleSet = useMemo(() => new Set(roles.map((r) => r.toLowerCase())), [roles]);
+    const isManager = roleSet.has("manager");
+    // Support either "ServiceProvider" or a shortened "Provider"
+    const isProvider = roleSet.has("serviceprovider") || roleSet.has("provider");
+    const isClient = roleSet.has("client");
+    const hasRole = (role: string) => roleSet.has(role.toLowerCase());
 
     return (
         <AuthContext.Provider
@@ -99,6 +113,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 roles,
                 organizationId,
                 loading,
+                isManager,
+                isProvider,
+                isClient,
+                hasRole,
                 login,
                 logout,
                 refreshAuth,

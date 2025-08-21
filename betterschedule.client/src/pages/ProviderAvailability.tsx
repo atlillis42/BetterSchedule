@@ -1,203 +1,320 @@
-import { useEffect, useState } from "react";
-import { useAuth } from "@auth/AuthContext";
-import { isManager } from "@auth/roles";
-import { getProvidersLite, type UserLite } from "@/api/user-api";
+import { useEffect, useMemo, useState } from "react";
 import {
-    getProviderAvailability,
-    bulkUpsertProviderAvailability,
-    type ProviderAvailabilityDto,
-    type UpsertProviderAvailabilityDto
-} from "@/api/provider-availability-api";
+    listAvailability,
+    createAvailability,
+    updateAvailability,
+    deleteAvailability,
+} from "@api/provider-availability-api";
+import type { ProviderAvailabilityDto } from "@/types/providerAvailabilityTypes";
+import type {
+    CreateProviderAvailabilityDto,
+    UpdateProviderAvailabilityDto,
+    DayOfWeek,
+} from "@/types/providerAvailabilityTypes";
+
+import { useAuth } from "@/components/auth/AuthContext";
 import { toast } from "react-toastify";
 
-const dayOrder = [
-    { label: "Monday", value: 1 },
-    { label: "Tuesday", value: 2 },
-    { label: "Wednesday", value: 3 },
-    { label: "Thursday", value: 4 },
-    { label: "Friday", value: 5 },
-    { label: "Saturday", value: 6 },
-    { label: "Sunday", value: 0 }
-];
+const DAYS: DayOfWeek[] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+type FormState = {
+    id?: number;
+    dayOfWeek: DayOfWeek;
+    startLocalTime: string; // "HH:mm"
+    endLocalTime: string;   // "HH:mm"
+    effectiveFrom: string;  // "YYYY-MM-DD"
+    effectiveTo: string;    // "YYYY-MM-DD"
+};
+
+const toHHmm = (t: string) => (t.length === 5 ? t : t.slice(0, 5));
+const isAfter = (a: string, b: string) => a.localeCompare(b) > 0;
 
 export default function ProviderAvailabilityPage() {
-    const { roles, userId } = useAuth();
+    const { userId, isManager, isProvider, isClient, loading } = useAuth();
 
-    const [providers, setProviders] = useState<UserLite[]>([]);
-    const [providerId, setProviderId] = useState<string>("");
-    const [weekly, setWeekly] = useState<any[]>(dayOrder.map(d => ({ dayOfWeek: d.value, startTime: "", endTime: "", id: undefined })));
-    const [exceptions, setExceptions] = useState<any[]>([]);
+    const [providerId, setProviderId] = useState<string | undefined>(
+        isProvider && !isManager ? userId ?? undefined : undefined
+    );
 
-    useEffect(() => {
-        const loadProviders = async () => {
-            const list = await getProvidersLite();
-            setProviders(list);
-            if (!isManager(roles) && userId) setProviderId(userId);
-        };
-        loadProviders();
-    }, [roles, userId]);
+    const [items, setItems] = useState<ProviderAvailabilityDto[]>([]);
+    const [busy, setBusy] = useState(false);
+    const [editing, setEditing] = useState<FormState | null>(null);
 
-    useEffect(() => {
-        if (providerId) load(providerId);
-    }, [providerId]);
+    const canEdit = isManager || isProvider;
+    const canPickProvider = isManager || isClient;
 
-    const load = async (id: string) => {
-        const data = await getProviderAvailability(id);
-        const w = dayOrder.map(d => ({ dayOfWeek: d.value, startTime: "", endTime: "", id: undefined }));
-        const ex: any[] = [];
-        data.forEach((a: ProviderAvailabilityDto) => {
-            if (a.isException) {
-                ex.push({ id: a.id, date: a.exceptionDate ?? "", startTime: a.startTime, endTime: a.endTime });
-            } else {
-                const idx = dayOrder.findIndex(d => d.value === a.dayOfWeek);
-                if (idx >= 0) w[idx] = { id: a.id, dayOfWeek: a.dayOfWeek, startTime: a.startTime, endTime: a.endTime };
-            }
-        });
-        setWeekly(w);
-        setExceptions(ex);
-    };
-
-    const updateWeekly = (idx: number, field: string, value: string) => {
-        setWeekly(prev => {
-            const copy = [...prev];
-            copy[idx] = { ...copy[idx], [field]: value };
-            return copy;
-        });
-    };
-
-    const updateException = (idx: number, field: string, value: string) => {
-        setExceptions(prev => {
-            const copy = [...prev];
-            copy[idx] = { ...copy[idx], [field]: value };
-            return copy;
-        });
-    };
-
-    const addException = () => setExceptions(ex => [...ex, { date: "", startTime: "", endTime: "" }]);
-
-    const handleSave = async () => {
-        if (!providerId) return;
-        const payload: UpsertProviderAvailabilityDto[] = [
-            ...weekly.filter(w => w.startTime && w.endTime).map(w => ({
-                id: w.id,
-                dayOfWeek: w.dayOfWeek,
-                startTime: w.startTime,
-                endTime: w.endTime,
-                isException: false
-            })),
-            ...exceptions.filter(e => e.date && e.startTime && e.endTime).map(e => ({
-                id: e.id,
-                startTime: e.startTime,
-                endTime: e.endTime,
-                isException: true,
-                exceptionDate: e.date
-            }))
-        ];
+    const load = async () => {
         try {
-            await bulkUpsertProviderAvailability(providerId, payload);
-            toast.success("Availability saved.");
-            load(providerId);
-        } catch {
-            toast.error("Failed to save availability.");
+            setBusy(true);
+            const data = await listAvailability(providerId);
+            setItems(data);
+        } catch (e: any) {
+            toast.error(e?.response?.data?.message ?? "Failed to load availability");
+        } finally {
+            setBusy(false);
         }
     };
 
+    useEffect(() => {
+        load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [providerId]);
+
+    const onAdd = () => {
+        if (!canEdit) return;
+
+        // 👋 Friendly nudge: Providers can only add for themselves
+        if (isProvider && !isManager && providerId && providerId !== userId) {
+            toast.info("You’re viewing another provider’s availability. Switch to yourself to add your own hours.");
+            return;
+        }
+
+        const today = new Date();
+        const isoDate = today.toISOString().slice(0, 10);
+        setEditing({
+            dayOfWeek: DAYS[today.getDay()],
+            startLocalTime: "09:00",
+            endLocalTime: "17:00",
+            effectiveFrom: isoDate,
+            effectiveTo: "2099-12-31",
+        });
+    };
+
+    const onEdit = (row: ProviderAvailabilityDto) => {
+        // 👋 Friendly nudge: Providers cannot edit others' rows
+        if (isProvider && !isManager && row.serviceProviderId !== userId) {
+            toast.info("You're viewing another provider’s availability. Switch the selector to yourself to edit your own hours.");
+            return;
+        }
+
+        if (!canEdit) return;
+
+        setEditing({
+            id: row.id,
+            dayOfWeek: row.dayOfWeek,
+            startLocalTime: toHHmm(row.startLocalTime),
+            endLocalTime: toHHmm(row.endLocalTime),
+            effectiveFrom: row.effectiveFrom,
+            effectiveTo: row.effectiveTo,
+        });
+    };
+
+    const onDelete = async (row: ProviderAvailabilityDto) => {
+        // 👋 Friendly nudge: Providers cannot delete others' rows
+        if (isProvider && !isManager && row.serviceProviderId !== userId) {
+            toast.info("You can only delete your own availability. Switch the selector to yourself to make changes.");
+            return;
+        }
+
+        if (!canEdit) return;
+
+        if (!confirm("Delete this availability row?")) return;
+        try {
+            await deleteAvailability(row.id);
+            toast.success("Deleted");
+            await load();
+        } catch (e: any) {
+            toast.error(e?.response?.data ?? "Delete failed");
+        }
+    };
+
+    const validateForm = (f: FormState) => {
+        if (isAfter(f.startLocalTime, f.endLocalTime)) return "End time must be after start time.";
+        if (f.effectiveTo < f.effectiveFrom) return "Effective to date must be on or after effective from date.";
+        return null;
+    };
+
+    const onSave = async () => {
+        if (!editing) return;
+        const selectedProviderId = isManager ? providerId : isProvider ? userId : undefined;
+        if (!selectedProviderId) {
+            toast.error("Select a provider before saving.");
+            return;
+        }
+
+        const err = validateForm(editing);
+        if (err) {
+            toast.error(err);
+            return;
+        }
+
+        const payloadBase = {
+            serviceProviderId: selectedProviderId,
+            dayOfWeek: editing.dayOfWeek,
+            startLocalTime: editing.startLocalTime,
+            endLocalTime: editing.endLocalTime,
+            effectiveFrom: editing.effectiveFrom,
+            effectiveTo: editing.effectiveTo,
+        };
+
+        try {
+            if (editing.id) {
+                const upd: UpdateProviderAvailabilityDto = { ...payloadBase };
+                await updateAvailability(editing.id, upd);
+                toast.success("Updated");
+            } else {
+                const crt: CreateProviderAvailabilityDto = { ...payloadBase };
+                await createAvailability(crt);
+                toast.success("Created");
+            }
+            setEditing(null);
+            await load();
+        } catch (e: any) {
+            const msg = e?.response?.data ?? e?.message ?? "Save failed";
+            toast.error(typeof msg === "string" ? msg : JSON.stringify(msg));
+        }
+    };
+
+    const grouped = useMemo(() => {
+        const map = new Map<DayOfWeek, ProviderAvailabilityDto[]>();
+        for (const d of DAYS) map.set(d, []);
+        for (const it of items) map.get(it.dayOfWeek)!.push(it);
+        for (const d of DAYS) map.get(d)!.sort((a, b) => a.startLocalTime.localeCompare(b.startLocalTime));
+        return map;
+    }, [items]);
+
+    if (loading) return <div className="p-6">Loading…</div>;
+
     return (
-        <div className="p-4 space-y-4">
-            <h2 className="text-lg font-semibold">Provider Availability</h2>
+        <div className="p-6 space-y-6">
+            <header className="flex items-center justify-between gap-3 flex-wrap">
+                <h1 className="text-2xl font-semibold">Provider Availability</h1>
+                <div className="flex items-center gap-3">
+                    {canPickProvider && (
+                        <input
+                            className="input input-bordered px-3 py-2 rounded border"
+                            placeholder="Filter by provider userId…"
+                            value={providerId ?? ""}
+                            onChange={(e) => setProviderId(e.target.value || undefined)}
+                            title="Enter a provider's userId to filter, or clear to see all"
+                        />
+                    )}
+                    <button
+                        className="btn px-4 py-2 rounded bg-gray-100 border disabled:opacity-50"
+                        onClick={load}
+                        disabled={busy}
+                    >
+                        Refresh
+                    </button>
+                    {canEdit && (
+                        <button className="btn px-4 py-2 rounded bg-blue-600 text-white" onClick={onAdd}>
+                            Add
+                        </button>
+                    )}
+                </div>
+            </header>
 
-            {isManager(roles) && (
-                <select
-                    className="border rounded p-2"
-                    value={providerId}
-                    onChange={e => setProviderId(e.target.value)}
-                >
-                    <option value="">Select Provider</option>
-                    {providers.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                </select>
-            )}
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {DAYS.map((d) => (
+                    <div key={d} className="rounded-xl border p-3 shadow-sm">
+                        <div className="font-medium mb-2">{d}</div>
+                        <ul className="space-y-2">
+                            {grouped.get(d)!.length === 0 && <li className="text-sm text-gray-500">No availability</li>}
+                            {grouped.get(d)!.map((row) => {
+                                const showEdit = canEdit && (isManager || row.serviceProviderId === userId);
+                                return (
+                                    <li key={row.id} className="flex items-center justify-between rounded bg-gray-50 px-3 py-2">
+                                        <div className="text-sm">
+                                            <div>{toHHmm(row.startLocalTime)}–{toHHmm(row.endLocalTime)}</div>
+                                            <div className="text-xs text-gray-500">{row.effectiveFrom} → {row.effectiveTo}</div>
+                                            {isManager && (
+                                                <div className="text-[11px] text-gray-500 mt-0.5">
+                                                    Provider: <span className="font-mono">{row.serviceProviderId}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {showEdit ? (
+                                                <>
+                                                    <button className="text-blue-600 hover:underline" onClick={() => onEdit(row)}>Edit</button>
+                                                    <button className="text-red-600 hover:underline" onClick={() => onDelete(row)}>Delete</button>
+                                                </>
+                                            ) : (
+                                                (isProvider && !isManager) ? (
+                                                    <button
+                                                        className="text-gray-400 cursor-not-allowed"
+                                                        title="Switch the selector to yourself to edit your own hours"
+                                                        onClick={() => {
+                                                            toast.info("You’re viewing another provider’s availability. Switch the selector to yourself to edit.");
+                                                        }}
+                                                    >
+                                                        View only
+                                                    </button>
+                                                ) : null
+                                            )}
+                                        </div>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </div>
+                ))}
+            </div>
 
-            {providerId ? (
-                <>
-                    <table className="w-full border text-sm">
-                        <thead>
-                            <tr className="bg-gray-50">
-                                <th className="p-2 text-left">Day</th>
-                                <th className="p-2 text-center">Start</th>
-                                <th className="p-2 text-center">End</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {dayOrder.map((d, i) => (
-                                <tr key={d.value} className="border-t">
-                                    <td className="p-2">{d.label}</td>
-                                    <td className="p-2 text-center">
-                                        <input
-                                            type="time"
-                                            step={60}
-                                            className="border rounded p-1"
-                                            value={weekly[i].startTime}
-                                            onChange={e => updateWeekly(i, "startTime", e.target.value)}
-                                        />
-                                    </td>
-                                    <td className="p-2 text-center">
-                                        <input
-                                            type="time"
-                                            step={60}
-                                            className="border rounded p-1"
-                                            value={weekly[i].endTime}
-                                            onChange={e => updateWeekly(i, "endTime", e.target.value)}
-                                        />
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+            {editing && (
+                <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
+                    <div className="bg-white rounded-2xl shadow-xl p-6 w/full max-w-lg space-y-4">
+                        <h2 className="text-lg font-semibold">{editing.id ? "Edit" : "Add"} Availability</h2>
 
-                    <div className="mt-4 space-y-2">
-                        <h3 className="font-medium">Exceptions</h3>
-                        {exceptions.map((ex, i) => (
-                            <div key={i} className="flex gap-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <label className="col-span-2 text-sm">
+                                Day of week
+                                <select
+                                    className="w-full border rounded px-2 py-2"
+                                    value={editing.dayOfWeek}
+                                    onChange={(e) => setEditing({ ...editing, dayOfWeek: e.target.value as DayOfWeek })}
+                                >
+                                    {DAYS.map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                            </label>
+
+                            <label className="text-sm">
+                                Start
+                                <input
+                                    type="time"
+                                    className="w-full border rounded px-2 py-2"
+                                    value={editing.startLocalTime}
+                                    onChange={(e) => setEditing({ ...editing, startLocalTime: e.target.value })}
+                                />
+                            </label>
+
+                            <label className="text-sm">
+                                End
+                                <input
+                                    type="time"
+                                    className="w-full border rounded px-2 py-2"
+                                    value={editing.endLocalTime}
+                                    onChange={(e) => setEditing({ ...editing, endLocalTime: e.target.value })}
+                                />
+                            </label>
+
+                            <label className="text-sm">
+                                Effective from
                                 <input
                                     type="date"
-                                    className="border rounded p-1"
-                                    value={ex.date}
-                                    onChange={e => updateException(i, "date", e.target.value)}
+                                    className="w-full border rounded px-2 py-2"
+                                    value={editing.effectiveFrom}
+                                    onChange={(e) => setEditing({ ...editing, effectiveFrom: e.target.value })}
                                 />
-                                <input
-                                    type="time"
-                                    step={60}
-                                    className="border rounded p-1"
-                                    value={ex.startTime}
-                                    onChange={e => updateException(i, "startTime", e.target.value)}
-                                />
-                                <input
-                                    type="time"
-                                    step={60}
-                                    className="border rounded p-1"
-                                    value={ex.endTime}
-                                    onChange={e => updateException(i, "endTime", e.target.value)}
-                                />
-                            </div>
-                        ))}
-                        <button className="px-3 py-1 border rounded" onClick={addException}>
-                            + Add Exception
-                        </button>
-                    </div>
+                            </label>
 
-                    <div>
-                        <button
-                            className="bg-blue-600 text-white px-3 py-1.5 rounded"
-                            onClick={handleSave}
-                        >
-                            Save
-                        </button>
+                            <label className="text-sm">
+                                Effective to
+                                <input
+                                    type="date"
+                                    className="w-full border rounded px-2 py-2"
+                                    value={editing.effectiveTo}
+                                    onChange={(e) => setEditing({ ...editing, effectiveTo: e.target.value })}
+                                />
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end gap-2 pt-2">
+                            <button className="px-4 py-2 rounded border" onClick={() => setEditing(null)}>Cancel</button>
+                            <button className="px-4 py-2 rounded bg-blue-600 text-white" onClick={onSave}>Save</button>
+                        </div>
                     </div>
-                </>
-            ) : (
-                <div className="text-sm text-gray-600">Select a provider to manage availability.</div>
+                </div>
             )}
         </div>
     );

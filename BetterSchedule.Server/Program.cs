@@ -6,13 +6,19 @@ using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Controllers & Swagger
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(o =>
+{
+    // Enable "Monday", "Tuesday", etc. string enums for System.DayOfWeek
+    o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
 
 // AuthN/Z
 builder.Services.AddAuthorization();

@@ -5,6 +5,7 @@ import Calendar from "@calendar/Calendar";
 import MainLayout from "@layout/MainLayout";
 import RequireAuth from "@/routes/RequireAuth";
 import RequireAdmin from "@/routes/RequireAdmin";
+import RequireManagerOrProvider from "@/routes/RequireManagerOrProvider";
 import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 import OrgSettingsPage from "@/pages/OrgSettings";
@@ -28,7 +29,7 @@ export default function AppRoutes() {
                 }
             />
 
-            {/* Appointment Types (admin) */}
+            {/* Appointment Types (manager only) */}
             <Route
                 path="/admin/appointment-types"
                 element={
@@ -42,7 +43,7 @@ export default function AppRoutes() {
                 }
             />
 
-            {/* Resources (admin) */}
+            {/* Resources (manager only) */}
             <Route
                 path="/admin/resources"
                 element={
@@ -56,21 +57,21 @@ export default function AppRoutes() {
                 }
             />
 
-            {/* Provider Availability (admin) */}
+            {/* Provider Availability (manager or provider) */}
             <Route
                 path="/admin/provider-availability"
                 element={
                     <RequireAuth>
-                        <RequireAdmin>
+                        <RequireManagerOrProvider>
                             <MainLayout>
                                 <ProviderAvailabilityPage />
                             </MainLayout>
-                        </RequireAdmin>
+                        </RequireManagerOrProvider>
                     </RequireAuth>
                 }
             />
 
-            {/* Organization Settings (admin) */}
+            {/* Organization Settings (manager only) */}
             <Route
                 path="/admin/settings"
                 element={
