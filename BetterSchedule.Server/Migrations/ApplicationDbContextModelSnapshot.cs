@@ -231,6 +231,53 @@ namespace BetterSchedule.Server.Migrations
                     b.ToTable("CalendarResources");
                 });
 
+            modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.ProviderAvailability", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("EffectiveTo")
+                        .HasColumnType("date");
+
+                    b.Property<TimeSpan>("EndLocalTime")
+                        .HasColumnType("time");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OrganizationId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ServiceProviderId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<TimeSpan>("StartLocalTime")
+                        .HasColumnType("time");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServiceProviderId");
+
+                    b.HasIndex("OrganizationId", "ServiceProviderId", "DayOfWeek");
+
+                    b.HasIndex("OrganizationId", "ServiceProviderId", "DayOfWeek", "EffectiveFrom", "EffectiveTo", "StartLocalTime", "EndLocalTime")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("ProviderAvailabilities");
+                });
+
             modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.Reservation", b =>
                 {
                     b.Property<int>("Id")
@@ -302,6 +349,17 @@ namespace BetterSchedule.Server.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("GuestName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("GuestPhone")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("OrganizationId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -313,16 +371,22 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.HasKey("Id");
 
                     b.HasIndex("OrganizationId");
 
-                    b.HasIndex("ReservationId");
+                    b.HasIndex("UserId");
 
-                    b.ToTable("ReservationParticipants");
+                    b.HasIndex("ReservationId", "UserId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0 AND [UserId] IS NOT NULL");
+
+                    b.ToTable("ReservationParticipants", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReservationParticipant_User_Guest_Role", "(([Role] = 2 AND [UserId] IS NULL) OR ([Role] IN (0,1) AND [UserId] IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("BetterSchedule.Server.Models.Tenant.ClientOrganization", b =>
@@ -359,6 +423,12 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("Address")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<TimeSpan?>("BookingLeadTime")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan?>("CancellationWindow")
+                        .HasColumnType("time");
+
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(max)");
 
@@ -376,6 +446,74 @@ namespace BetterSchedule.Server.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Organizations");
+                });
+
+            modelBuilder.Entity("BetterSchedule.Server.Models.Tenant.OrganizationSettings", b =>
+                {
+                    b.Property<string>("OrganizationId")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("AvailabilityEnforcement")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AvailabilityPublic")
+                        .HasColumnType("bit");
+
+                    b.Property<TimeSpan>("BusinessHoursEndLocal")
+                        .HasColumnType("time");
+
+                    b.Property<TimeSpan>("BusinessHoursStartLocal")
+                        .HasColumnType("time");
+
+                    b.Property<int>("CancelWindowHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DefaultView")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("EmailEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Locale")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("MinLeadMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ProvidersCanEditOwnAvailability")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ReminderHoursBefore")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequireConfirmOnOverrides")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SendBookingConfirmation")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ShadingMode")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ShowWeekends")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("SmsEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("StartOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("OrganizationId");
+
+                    b.ToTable("OrganizationSettings");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -583,6 +721,25 @@ namespace BetterSchedule.Server.Migrations
                     b.Navigation("Organization");
                 });
 
+            modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.ProviderAvailability", b =>
+                {
+                    b.HasOne("BetterSchedule.Server.Models.Tenant.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", "ServiceProvider")
+                        .WithMany()
+                        .HasForeignKey("ServiceProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("ServiceProvider");
+                });
+
             modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.Reservation", b =>
                 {
                     b.HasOne("BetterSchedule.Server.Models.Scheduling.AppointmentType", "AppointmentType")
@@ -632,9 +789,15 @@ namespace BetterSchedule.Server.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId");
+
                     b.Navigation("Organization");
 
                     b.Navigation("Reservation");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("BetterSchedule.Server.Models.Tenant.ClientOrganization", b =>
@@ -652,6 +815,17 @@ namespace BetterSchedule.Server.Migrations
                         .IsRequired();
 
                     b.Navigation("Client");
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("BetterSchedule.Server.Models.Tenant.OrganizationSettings", b =>
+                {
+                    b.HasOne("BetterSchedule.Server.Models.Tenant.Organization", "Organization")
+                        .WithOne()
+                        .HasForeignKey("BetterSchedule.Server.Models.Tenant.OrganizationSettings", "OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Organization");
                 });

@@ -38,7 +38,9 @@ namespace BetterSchedule.Server.Migrations
                     OwnerUserId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Email = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Phone = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    BookingLeadTime = table.Column<TimeSpan>(type: "time", nullable: true),
+                    CancellationWindow = table.Column<TimeSpan>(type: "time", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -123,6 +125,41 @@ namespace BetterSchedule.Server.Migrations
                         principalTable: "Organizations",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "OrganizationSettings",
+                columns: table => new
+                {
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    MinLeadMinutes = table.Column<int>(type: "int", nullable: false),
+                    CancelWindowHours = table.Column<int>(type: "int", nullable: false),
+                    ShowWeekends = table.Column<bool>(type: "bit", nullable: false),
+                    StartOfWeek = table.Column<int>(type: "int", nullable: false),
+                    BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
+                    BusinessHoursEndLocal = table.Column<TimeSpan>(type: "time", nullable: false),
+                    DefaultView = table.Column<int>(type: "int", nullable: false),
+                    ShadingMode = table.Column<int>(type: "int", nullable: false),
+                    AvailabilityEnforcement = table.Column<int>(type: "int", nullable: false),
+                    RequireConfirmOnOverrides = table.Column<bool>(type: "bit", nullable: false),
+                    AvailabilityPublic = table.Column<bool>(type: "bit", nullable: false),
+                    ProvidersCanEditOwnAvailability = table.Column<bool>(type: "bit", nullable: false),
+                    TimeZoneId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    Locale = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
+                    EmailEnabled = table.Column<bool>(type: "bit", nullable: false),
+                    SmsEnabled = table.Column<bool>(type: "bit", nullable: false),
+                    SendBookingConfirmation = table.Column<bool>(type: "bit", nullable: false),
+                    ReminderHoursBefore = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_OrganizationSettings", x => x.OrganizationId);
+                    table.ForeignKey(
+                        name: "FK_OrganizationSettings_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -240,6 +277,39 @@ namespace BetterSchedule.Server.Migrations
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_ClientOrganizations_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProviderAvailabilities",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    ServiceProviderId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    DayOfWeek = table.Column<int>(type: "int", nullable: false),
+                    StartLocalTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    EndLocalTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    EffectiveFrom = table.Column<DateOnly>(type: "date", nullable: false),
+                    EffectiveTo = table.Column<DateOnly>(type: "date", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProviderAvailabilities", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProviderAvailabilities_AspNetUsers_ServiceProviderId",
+                        column: x => x.ServiceProviderId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ProviderAvailabilities_Organizations_OrganizationId",
                         column: x => x.OrganizationId,
                         principalTable: "Organizations",
                         principalColumn: "Id",
@@ -383,13 +453,23 @@ namespace BetterSchedule.Server.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     ReservationId = table.Column<int>(type: "int", nullable: false),
-                    UserId = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    GuestName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    GuestPhone = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: true),
                     Role = table.Column<int>(type: "int", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ReservationParticipants", x => x.Id);
+                    table.CheckConstraint("CK_ReservationParticipant_User_Guest_Role", "(([Role] = 2 AND [UserId] IS NULL) OR ([Role] IN (0,1) AND [UserId] IS NOT NULL))");
+                    table.ForeignKey(
+                        name: "FK_ReservationParticipants_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_ReservationParticipants_Organizations_OrganizationId",
                         column: x => x.OrganizationId,
@@ -515,14 +595,38 @@ namespace BetterSchedule.Server.Migrations
                 column: "OrganizationId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ProviderAvailabilities_OrganizationId_ServiceProviderId_DayOfWeek",
+                table: "ProviderAvailabilities",
+                columns: new[] { "OrganizationId", "ServiceProviderId", "DayOfWeek" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAvailabilities_OrganizationId_ServiceProviderId_DayOfWeek_EffectiveFrom_EffectiveTo_StartLocalTime_EndLocalTime",
+                table: "ProviderAvailabilities",
+                columns: new[] { "OrganizationId", "ServiceProviderId", "DayOfWeek", "EffectiveFrom", "EffectiveTo", "StartLocalTime", "EndLocalTime" },
+                unique: true,
+                filter: "[IsDeleted] = 0");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAvailabilities_ServiceProviderId",
+                table: "ProviderAvailabilities",
+                column: "ServiceProviderId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ReservationParticipants_OrganizationId",
                 table: "ReservationParticipants",
                 column: "OrganizationId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ReservationParticipants_ReservationId",
+                name: "IX_ReservationParticipants_ReservationId_UserId",
                 table: "ReservationParticipants",
-                column: "ReservationId");
+                columns: new[] { "ReservationId", "UserId" },
+                unique: true,
+                filter: "[IsDeleted] = 0 AND [UserId] IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ReservationParticipants_UserId",
+                table: "ReservationParticipants",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reservations_AppointmentTypeId",
@@ -573,6 +677,12 @@ namespace BetterSchedule.Server.Migrations
 
             migrationBuilder.DropTable(
                 name: "ClientOrganizations");
+
+            migrationBuilder.DropTable(
+                name: "OrganizationSettings");
+
+            migrationBuilder.DropTable(
+                name: "ProviderAvailabilities");
 
             migrationBuilder.DropTable(
                 name: "ReservationParticipants");

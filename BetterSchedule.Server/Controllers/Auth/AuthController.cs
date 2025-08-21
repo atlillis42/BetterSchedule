@@ -1,4 +1,5 @@
 ﻿using BetterSchedule.Server.Auth;
+using BetterSchedule.Server.Models.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -16,6 +17,20 @@ namespace BetterSchedule.Server.Controllers.Auth
     [ApiController]
     public class AuthController : ControllerBase
     {
+        private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
+        private readonly IWebHostEnvironment _env;
+
+        public AuthController(
+            SignInManager<ApplicationUser> signInManager,
+            UserManager<ApplicationUser> userManager,
+            IWebHostEnvironment env)
+        {
+            _signInManager = signInManager;
+            _userManager = userManager;
+            _env = env;
+        }
+
         /// <summary>
         /// Gets the current authentication status including user information and roles.
         /// </summary>
@@ -66,5 +81,32 @@ namespace BetterSchedule.Server.Controllers.Auth
                 organizationId = orgId
             });
         }
+
+        // ---------------------------
+        // DEV ONLY: flexible login
+        // Summary: DEV-only login that accepts email OR username as "Identifier".
+        // ---------------------------
+
+        [HttpPost("dev-login")]
+        [AllowAnonymous]
+        public async Task<IActionResult> DevLogin([FromBody] DevLoginRequest req)
+        {
+            if (!_env.IsDevelopment()) return NotFound();
+
+            var user = await _userManager.FindByEmailAsync(req.Identifier)
+                       ?? await _userManager.FindByNameAsync(req.Identifier);
+
+            if (user is null) return Unauthorized(new { success = false });
+
+            var result = await _signInManager.PasswordSignInAsync(
+                user.UserName, req.Password, req.RememberMe, lockoutOnFailure: false);
+
+            if (!result.Succeeded) return Unauthorized(new { success = false });
+
+            return Ok(new { success = true });
+        }
+
+        public sealed record DevLoginRequest(string Identifier, string Password, bool RememberMe = false);
     }
 }
+
