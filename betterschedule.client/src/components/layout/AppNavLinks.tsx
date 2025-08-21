@@ -36,6 +36,9 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canSeeProviderAvailability, c
                     <NavLink to="/admin/resources" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Resources
                     </NavLink>
+                    <NavLink to="/admin/users" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                        Users
+                    </NavLink>
                     <NavLink to="/admin/settings" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Settings
                     </NavLink>
