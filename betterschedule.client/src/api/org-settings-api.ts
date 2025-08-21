@@ -9,14 +9,15 @@ export type AvailabilityEnforcement =
     | "BlockProvidersWarnManagers"
     | "BlockAllRequireOverride";
 
-
-export type ProviderCancelPolicy = "None" | "RespectWindow" | "AnyTime";
+/** Provider cancel policy (server enum) */
+export type ProviderCancelPolicy = "AnyTime" | "RespectWindow" | "None";
 
 /** Read model (matches server OrgSettingsDto) */
 export type OrgSettingsDto = {
     // Booking windows (TimeSpan on server -> string "d.HH:mm:ss" or "HH:mm:ss")
     bookingLeadTime?: string | null;
     cancellationWindow?: string | null;
+    providerCancelPolicy?: ProviderCancelPolicy | null;
 
     // Calendar display
     showWeekends: boolean;
@@ -31,9 +32,6 @@ export type OrgSettingsDto = {
     requireConfirmOnOverrides: boolean;
     availabilityPublic: boolean;
     providersCanEditOwnAvailability: boolean;
-
-    // NEW: provider cancel policy
-    providerCancelPolicy: ProviderCancelPolicy;
 
     // TZ/Locale
     timeZoneId: string;
@@ -50,22 +48,27 @@ export type OrgSettingsDto = {
 export type UpdateOrgSettingsDto = Partial<{
     bookingLeadTime: string;          // "d.HH:mm:ss" or "HH:mm:ss"
     cancellationWindow: string;       // same
+    providerCancelPolicy: ProviderCancelPolicy;
+
+    // Calendar display
     showWeekends: boolean;
     startOfWeek: number;
     businessHoursStartLocal: string;  // "HH:mm:ss"
     businessHoursEndLocal: string;    // "HH:mm:ss"
     defaultView: DefaultCalendarView;
+
+    // Availability
     shadingMode: CalendarShadingMode;
     availabilityEnforcement: AvailabilityEnforcement;
     requireConfirmOnOverrides: boolean;
     availabilityPublic: boolean;
     providersCanEditOwnAvailability: boolean;
 
-    
-    providerCancelPolicy: ProviderCancelPolicy;
-
+    // TZ/Locale
     timeZoneId: string;
     locale: string;
+
+    // Notifications
     emailEnabled: boolean;
     smsEnabled: boolean;
     sendBookingConfirmation: boolean;
