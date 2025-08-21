@@ -28,10 +28,10 @@ namespace BetterSchedule.Server.Models.Scheduling
 
         // Active date window for this weekly rule
         [Required]
-        public DateTimeOffset EffectiveFrom { get; set; }
+        public DateOnly EffectiveFrom { get; set; }
 
         [Required]
-        public DateTimeOffset EffectiveTo { get; set; }
+        public DateOnly EffectiveTo { get; set; }
 
         public bool IsDeleted { get; set; } = false;
     }

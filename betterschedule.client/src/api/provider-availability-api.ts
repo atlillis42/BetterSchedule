@@ -1,53 +1,44 @@
 import { api } from "@auth/axios";
-import { toast } from "react-toastify";
+import type {
+    ProviderAvailabilityDto,
+    CreateProviderAvailabilityDto,
+    UpdateProviderAvailabilityDto,
+    UpsertProviderAvailabilityDto,
+} from "@/types/providerAvailabilityTypes";
 
-/**
- * Availability slot returned from the API.
- */
-export type ProviderAvailabilityDto = {
-    id: number;
-    organizationId: string;
-    serviceProviderId: string;
-    dayOfWeek?: number | null; // 0=Sunday
-    startTime: string; // "HH:mm" or "HH:mm:ss"
-    endTime: string;   // "HH:mm" or "HH:mm:ss"
-    isException: boolean;
-    exceptionDate?: string | null; // YYYY-MM-DD when isException
-};
-
-/**
- * Payload for creating or updating availability slots in bulk.
- */
-export type UpsertProviderAvailabilityDto = {
-    id?: number;
-    dayOfWeek?: number | null; // 0=Sunday
-    startTime: string; // "HH:mm" or "HH:mm:ss"
-    endTime: string;   // "HH:mm" or "HH:mm:ss"
-    isException?: boolean;
-    exceptionDate?: string | null; // YYYY-MM-DD when isException
-};
-
-/**
- * Retrieves availability slots for a service provider.
- * @param providerId - Service provider identifier.
- * @returns List of availability slots.
- */
-export async function getProviderAvailability(providerId: string): Promise<ProviderAvailabilityDto[]> {
-    const { data } = await api.get(`/provider-availability/${providerId}`);
-    return data;
+export async function listAvailability(providerId?: string) {
+    const resp = await api.get<ProviderAvailabilityDto[]>("/provider-availability", {
+        params: providerId ? { providerId } : undefined,
+    });
+    return resp.data;
 }
 
-/**
- * Bulk upserts availability slots for a service provider.
- * @param providerId - Service provider identifier.
- * @param payload - Availability slots to create/update.
- * @param opts - Optional behaviour flags.
- */
-export async function bulkUpsertProviderAvailability(
-    providerId: string,
-    payload: UpsertProviderAvailabilityDto[],
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
-): Promise<void> {
-    await api.post(`/provider-availability/${providerId}/bulk`, payload);
-    if (opts.toastSuccess) toast.success("Availability saved.");
+export async function getAvailability(id: number) {
+    const resp = await api.get<ProviderAvailabilityDto>(`/provider-availability/${id}`);
+    return resp.data;
+}
+
+export async function ensureDefaultAvailability(providerId: string) {
+    const resp = await api.post<{ created: boolean; count: number }>(
+        `/provider-availability/providers/${providerId}/ensure-default`
+    );
+    return resp.data;
+}
+
+export async function createAvailability(payload: CreateProviderAvailabilityDto) {
+    const resp = await api.post<ProviderAvailabilityDto>("/provider-availability", payload);
+    return resp.data;
+}
+
+export async function updateAvailability(id: number, payload: UpdateProviderAvailabilityDto) {
+    await api.put<void>(`/provider-availability/${id}`, payload);
+}
+
+export async function deleteAvailability(id: number) {
+    await api.delete<void>(`/provider-availability/${id}`);
+}
+
+export async function upsertAvailability(payload: UpsertProviderAvailabilityDto) {
+    const resp = await api.post<ProviderAvailabilityDto>("/provider-availability/upsert", payload);
+    return resp.data;
 }
