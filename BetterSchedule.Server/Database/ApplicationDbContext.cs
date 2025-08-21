@@ -1,6 +1,7 @@
 ﻿using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, ProviderAvailability
 using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization, OrganizationSettings
+using BetterSchedule.Server.Models.Access;          
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,11 @@ namespace BetterSchedule.Server.Database
         public DbSet<Organization> Organizations { get; set; } = default!;
         public DbSet<ClientOrganization> ClientOrganizations { get; set; } = default!;
         public DbSet<OrganizationSettings> OrganizationSettings { get; set; } = default!;
+
+        // Access control sets
+        public DbSet<ProviderResourceAccess> ProviderResourceAccesses { get; set; } = default!;
+        public DbSet<ProviderAppointmentTypeAccess> ProviderAppointmentTypeAccesses { get; set; } = default!;
+        public DbSet<AppointmentTypeResourceAccess> AppointmentTypeResourceAccesses { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -216,6 +222,64 @@ namespace BetterSchedule.Server.Database
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.EffectiveTo)
                 .HasColumnType("date");
+
+            // ---------------------------
+            // Access control entities
+            // ---------------------------
+
+            builder.Entity<ProviderResourceAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.UserId });
+                e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Resource)
+                    .WithMany()
+                    .HasForeignKey(x => x.ResourceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<ProviderAppointmentTypeAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.UserId });
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.AppointmentTypeId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.AppointmentType)
+                    .WithMany()
+                    .HasForeignKey(x => x.AppointmentTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<AppointmentTypeResourceAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
+                e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.AppointmentType)
+                    .WithMany()
+                    .HasForeignKey(x => x.AppointmentTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Resource)
+                    .WithMany()
+                    .HasForeignKey(x => x.ResourceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
         }
     }
 }
