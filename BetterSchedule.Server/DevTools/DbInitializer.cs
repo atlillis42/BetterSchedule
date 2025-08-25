@@ -3,6 +3,7 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Models.Business; // <-- add
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,6 +37,11 @@ namespace BetterSchedule.Server.DevTools
                 db.AppointmentTypes.RemoveRange(db.AppointmentTypes);
                 db.CalendarResources.RemoveRange(db.CalendarResources);
                 db.OrganizationSettings.RemoveRange(db.OrganizationSettings);
+
+                // NEW: package tables
+                db.PackageAssignments.RemoveRange(db.PackageAssignments);
+                db.Packages.RemoveRange(db.Packages);
+
                 await db.SaveChangesAsync();
             }
 
@@ -121,6 +127,50 @@ namespace BetterSchedule.Server.DevTools
             var massageType = await EnsureAppointmentTypeAsync(db, org1.Id, "Therapeutic Massage", TimeSpan.FromMinutes(90), 65.00m, "Full-body massage.", bob.Id, studio2.Id, true, false);
             var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", alice.Id, outdoor.Id, true, false);
             var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", alice.Id, arena.Id, false, false);
+
+            // -----------------------------
+            // PACKAGES (org1)
+            // -----------------------------
+            var yoga10 = await EnsurePackageAsync(
+                db, org1.Id,
+                name: "Yoga 10-Pack",
+                appointmentTypeId: yogaType.Id,
+                totalUses: 10,
+                providerLocked: false,
+                providerId: null,
+                expiresAfterDays: 365,      // 1 year
+                isActive: true);
+
+            var massage5Bob = await EnsurePackageAsync(
+                db, org1.Id,
+                name: "Massage 5-Pack (Bob)",
+                appointmentTypeId: massageType.Id,
+                totalUses: 5,
+                providerLocked: true,
+                providerId: bob.Id,
+                expiresAfterDays: 90,
+                isActive: true);
+
+            var private3 = await EnsurePackageAsync(
+                db, org1.Id,
+                name: "Private Training 3-Pack",
+                appointmentTypeId: privateType.Id,
+                totalUses: 3,
+                providerLocked: false,
+                providerId: null,
+                expiresAfterDays: null,     // no expiry
+                isActive: true);
+
+            // Assign a couple to demo clients
+            await EnsurePackageAssignmentAsync(
+                db, org1.Id,
+                clientId: carla.Id,
+                package: massage5Bob);
+
+            await EnsurePackageAssignmentAsync(
+                db, org1.Id,
+                clientId: devClient.Id,
+                package: yoga10);
 
             // -----------------------------
             // Reservations (org1)
@@ -376,6 +426,95 @@ namespace BetterSchedule.Server.DevTools
                 return type;
             }
 
+            // NEW: ensure package in org by name
+            static async Task<Package> EnsurePackageAsync(
+                ApplicationDbContext db,
+                string organizationId,
+                string name,
+                int appointmentTypeId,
+                int totalUses,
+                bool providerLocked,
+                string? providerId,
+                int? expiresAfterDays,
+                bool isActive)
+            {
+                var pkg = await db.Packages.FirstOrDefaultAsync(p => p.OrganizationId == organizationId && p.Name == name);
+                if (pkg is null)
+                {
+                    pkg = new Package
+                    {
+                        OrganizationId = organizationId,
+                        Name = name,
+                        AppointmentTypeId = appointmentTypeId,
+                        TotalUses = totalUses,
+                        ProviderLocked = providerLocked,
+                        ProviderId = providerLocked ? providerId : null,
+                        ExpiresAfterDays = expiresAfterDays,
+                        IsActive = isActive,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    db.Packages.Add(pkg);
+                    await db.SaveChangesAsync();
+                }
+                else
+                {
+                    var changed = false;
+                    if (pkg.AppointmentTypeId != appointmentTypeId) { pkg.AppointmentTypeId = appointmentTypeId; changed = true; }
+                    if (pkg.TotalUses != totalUses) { pkg.TotalUses = totalUses; changed = true; }
+                    if (pkg.ProviderLocked != providerLocked) { pkg.ProviderLocked = providerLocked; changed = true; }
+                    if ((pkg.ProviderId ?? "") != (providerLocked ? (providerId ?? "") : "")) { pkg.ProviderId = providerLocked ? providerId : null; changed = true; }
+                    if (pkg.ExpiresAfterDays != expiresAfterDays) { pkg.ExpiresAfterDays = expiresAfterDays; changed = true; }
+                    if (pkg.IsActive != isActive) { pkg.IsActive = isActive; changed = true; }
+                    if (changed) await db.SaveChangesAsync();
+                }
+                return pkg;
+            }
+
+            // NEW: ensure assignment (creates a fresh grant each call if none exists for (org,client,package) with same GrantedAt day)
+            static async Task<PackageAssignment> EnsurePackageAssignmentAsync(
+                ApplicationDbContext db,
+                string organizationId,
+                string clientId,
+                Package package)
+            {
+                var today = DateTime.UtcNow.Date;
+                var existing = await db.PackageAssignments.FirstOrDefaultAsync(a =>
+                    a.OrganizationId == organizationId &&
+                    a.ClientId == clientId &&
+                    a.PackageId == package.Id &&
+                    !a.IsDeleted &&
+                    a.GrantedAt.Date == today);
+
+                if (existing is not null) return existing;
+
+                DateTimeOffset? expires = null;
+                if (package.ExpiresAfterDays.HasValue && package.ExpiresAfterDays.Value > 0)
+                    expires = DateTimeOffset.UtcNow.AddDays(package.ExpiresAfterDays.Value);
+
+                var assignment = new PackageAssignment
+                {
+                    OrganizationId = organizationId,
+                    ClientId = clientId,
+                    PackageId = package.Id,
+
+                    // denormalized for fast eligibility checks
+                    PackageName = package.Name,
+                    AppointmentTypeId = package.AppointmentTypeId,
+                    TotalUses = package.TotalUses,
+                    RemainingUses = package.TotalUses,
+                    ProviderLocked = package.ProviderLocked,
+                    ProviderId = package.ProviderLocked ? package.ProviderId : null,
+
+                    GrantedAt = DateTimeOffset.UtcNow,
+                    ExpiresAtUtc = expires,
+                    IsDeleted = false
+                };
+
+                db.PackageAssignments.Add(assignment);
+                await db.SaveChangesAsync();
+                return assignment;
+            }
+
             static async Task EnsureReservationAsync(
                 ApplicationDbContext db,
                 string organizationId,
@@ -559,27 +698,27 @@ namespace BetterSchedule.Server.DevTools
                 await db.SaveChangesAsync();
             }
 
-        static async Task EnsureOrgSettingsAsync(
-            ApplicationDbContext db,
-            string organizationId,
-            int minLeadMinutes,
-            int cancelWindowHours,
-            bool showWeekends,
-            int startOfWeek,
-            TimeSpan businessStart,
-            TimeSpan businessEnd,
-            DefaultCalendarView defaultView,
-            CalendarShadingMode shading,
-            AvailabilityEnforcement enforcement,
-            bool requireConfirmOnOverrides,
-            bool availabilityPublic,
-            bool providersCanEditOwn,
-            string timeZoneId,
-            string locale,
-            bool emailEnabled,
-            bool smsEnabled,
-            bool sendBookingConfirmation,
-            int? reminderHoursBefore)
+            static async Task EnsureOrgSettingsAsync(
+                ApplicationDbContext db,
+                string organizationId,
+                int minLeadMinutes,
+                int cancelWindowHours,
+                bool showWeekends,
+                int startOfWeek,
+                TimeSpan businessStart,
+                TimeSpan businessEnd,
+                DefaultCalendarView defaultView,
+                CalendarShadingMode shading,
+                AvailabilityEnforcement enforcement,
+                bool requireConfirmOnOverrides,
+                bool availabilityPublic,
+                bool providersCanEditOwn,
+                string timeZoneId,
+                string locale,
+                bool emailEnabled,
+                bool smsEnabled,
+                bool sendBookingConfirmation,
+                int? reminderHoursBefore)
             {
                 var s = await db.OrganizationSettings.FirstOrDefaultAsync(x => x.OrganizationId == organizationId);
                 if (s is null)
@@ -604,7 +743,8 @@ namespace BetterSchedule.Server.DevTools
                         EmailEnabled = emailEnabled,
                         SmsEnabled = smsEnabled,
                         SendBookingConfirmation = sendBookingConfirmation,
-                        ReminderHoursBefore = reminderHoursBefore
+                        ReminderHoursBefore = reminderHoursBefore,
+                        // ProviderCancelPolicy omitted here -> relies on model default (AnyTime)
                     };
                     db.OrganizationSettings.Add(s);
                     await db.SaveChangesAsync();
@@ -635,7 +775,6 @@ namespace BetterSchedule.Server.DevTools
                     if (changed) await db.SaveChangesAsync();
                 }
             }
-
 
             static async Task EnsureProviderAvailabilityAsync(
                 ApplicationDbContext db,

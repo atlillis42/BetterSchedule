@@ -38,36 +38,35 @@ namespace BetterSchedule.Server.Models.Tenant
         [Range(0, 168)]
         public int CancelWindowHours { get; set; } = 2;
 
+        /// <summary>
+        /// Provider cancel policy:
+        /// - AnyTime (default): providers may cancel their own reservations at any time (inside or outside window).
+        /// - RespectWindow: providers may cancel their own reservations only when outside the cancel window (inside window requires manager).
+        /// - None: providers cannot cancel; only managers may cancel.
+        /// </summary>
+        [Required]
+        public ProviderCancelPolicy ProviderCancelPolicy { get; set; } = ProviderCancelPolicy.AnyTime;
+
         // --------------------------------------------------------------------
         // Calendar display preferences (UI only; does not change availability rules)
         // --------------------------------------------------------------------
 
-        /// <summary>
-        /// Whether weekend columns are shown by default in calendar views.
-        /// </summary>
+        /// <summary>Whether weekend columns are shown by default in calendar views.</summary>
         public bool ShowWeekends { get; set; } = true;
 
-        /// <summary>
-        /// First day of week for week/month views. 0 = Sunday, 1 = Monday, etc.
-        /// </summary>
+        /// <summary>First day of week for week/month views. 0 = Sunday, 1 = Monday, etc.</summary>
         [Range(0, 6)]
         public int StartOfWeek { get; set; } = 0;
 
-        /// <summary>
-        /// Organization "business hours" start (local clock). Used when shading by org hours.
-        /// </summary>
+        /// <summary>Organization "business hours" start (local clock). Used when shading by org hours.</summary>
         [Required]
         public TimeSpan BusinessHoursStartLocal { get; set; } = new(8, 0, 0);
 
-        /// <summary>
-        /// Organization "business hours" end (local clock). Used when shading by org hours.
-        /// </summary>
+        /// <summary>Organization "business hours" end (local clock). Used when shading by org hours.</summary>
         [Required]
         public TimeSpan BusinessHoursEndLocal { get; set; } = new(18, 0, 0);
 
-        /// <summary>
-        /// Default calendar view for new sessions.
-        /// </summary>
+        /// <summary>Default calendar view for new sessions.</summary>
         public DefaultCalendarView DefaultView { get; set; } = DefaultCalendarView.Week;
 
         // --------------------------------------------------------------------
@@ -87,47 +86,29 @@ namespace BetterSchedule.Server.Models.Tenant
         public AvailabilityEnforcement AvailabilityEnforcement { get; set; } =
             AvailabilityEnforcement.BlockProvidersWarnManagers;
 
-        /// <summary>
-        /// If true, the server requires an explicit confirmation/flag when performing an "override" action that violates availability or lead/cancel windows.
-        /// </summary>
+        /// <summary>If true, the server requires an explicit confirmation/flag when performing an "override" action that violates availability or lead/cancel windows.</summary>
         public bool RequireConfirmOnOverrides { get; set; } = true;
 
-        /// <summary>
-        /// If true, anyone in the org can view provider availability (read-only). Only managers (and optionally providers themselves) may edit it.
-        /// </summary>
+        /// <summary>If true, anyone in the org can view provider availability (read-only). Only managers (and optionally providers themselves) may edit it.</summary>
         public bool AvailabilityPublic { get; set; } = true;
 
-        /// <summary>
-        /// If true, providers can edit their own availability; managers can always edit.
-        /// </summary>
+        /// <summary>If true, providers can edit their own availability; managers can always edit.</summary>
         public bool ProvidersCanEditOwnAvailability { get; set; } = true;
 
         // --------------------------------------------------------------------
         // Access control / scoping (resources & appointment types)
         // --------------------------------------------------------------------
 
-        /// <summary>
-        /// If true, providers see and may book only the resources they have access to (via ProviderResourceAccess).
-        /// Managers always see all resources.
-        /// </summary>
+        /// <summary>If true, providers see and may book only the resources they have access to (via ProviderResourceAccess). Managers always see all resources.</summary>
         public bool LimitProvidersToAssignedResources { get; set; } = false;
 
-        /// <summary>
-        /// If true and a provider has no ProviderResourceAccess rows, treat as "no restriction" (fail-open).
-        /// If false, treat as "no access" (strict).
-        /// </summary>
+        /// <summary>If true and a provider has no ProviderResourceAccess rows, treat as "no restriction" (fail-open). If false, treat as "no access" (strict).</summary>
         public bool FailOpenWhenNoResourceAssignments { get; set; } = true;
 
-        /// <summary>
-        /// If true, providers see and may use only appointment types granted to them (via ProviderAppointmentTypeAccess) or ones they created.
-        /// Managers always see all appointment types.
-        /// </summary>
+        /// <summary>If true, providers see and may use only appointment types granted to them (via ProviderAppointmentTypeAccess) or ones they created. Managers always see all appointment types.</summary>
         public bool LimitProvidersToAssignedAppointmentTypes { get; set; } = false;
 
-        /// <summary>
-        /// If true and a provider has no ProviderAppointmentTypeAccess rows, treat as "no restriction" (fail-open).
-        /// If false, treat as "no access" (strict).
-        /// </summary>
+        /// <summary>If true and a provider has no ProviderAppointmentTypeAccess rows, treat as "no restriction" (fail-open). If false, treat as "no access" (strict).</summary>
         public bool FailOpenWhenNoTypeAssignments { get; set; } = true;
 
         /// <summary>
@@ -138,123 +119,77 @@ namespace BetterSchedule.Server.Models.Tenant
         public bool EnforceAppointmentTypeResourceRules { get; set; } = false;
 
         // --------------------------------------------------------------------
-        // Timezone & locale (for consistent UI formatting and server-side conversions)
+        // Timezone & locale
         // --------------------------------------------------------------------
 
-        /// <summary>
-        /// IANA timezone id used as the default org timezone for display and local-time rules (e.g., availability windows).
-        /// </summary>
+        /// <summary>IANA timezone id used as the default org timezone for display and local-time rules (e.g., availability windows).</summary>
         [Required, MaxLength(64)]
         public string TimeZoneId { get; set; } = "America/New_York";
 
-        /// <summary>
-        /// UI/formatting locale (e.g., "en-US").
-        /// </summary>
+        /// <summary>UI/formatting locale (e.g., "en-US").</summary>
         [MaxLength(16)]
         public string Locale { get; set; } = "en-US";
 
         // --------------------------------------------------------------------
-        // Notifications (lightweight toggles; actual delivery pipelines can come later)
+        // Notifications (toggles; pipelines implemented later)
         // --------------------------------------------------------------------
 
-        /// <summary>
-        /// Enables email notifications (confirmations, reminders) once configured.
-        /// </summary>
         public bool EmailEnabled { get; set; } = false;
-
-        /// <summary>
-        /// Enables SMS notifications (confirmations, reminders) once configured.
-        /// </summary>
         public bool SmsEnabled { get; set; } = false;
-
-        /// <summary>
-        /// Sends confirmation on successful booking if the corresponding channel is enabled.
-        /// </summary>
         public bool SendBookingConfirmation { get; set; } = false;
-
-        /// <summary>
-        /// If set, send a reminder this many hours before the reservation start (channels must be enabled).
-        /// </summary>
         public int? ReminderHoursBefore { get; set; } = null;
 
         // --------------------------------------------------------------------
-        // === Future-ready toggles (commented until we implement them end-to-end) ===
+        // === Future-ready toggles (commented until end-to-end implemented) ===
         // --------------------------------------------------------------------
-
-        ///// <summary>
-        ///// If true, require clients to be authenticated and explicitly allowed for self-booking.
-        ///// </summary>
-        //public bool AllowClientSelfBooking { get; set; } = true;
-
-        ///// <summary>
-        ///// Limit how far in advance clients may book (days).
-        ///// </summary>
-        //public int? ClientBookingMaxDaysAhead { get; set; } = 60;
-
-        ///// <summary>
-        ///// If true, require a signed waiver on file for appointment types that set RequiresWaiver.
-        ///// </summary>
-        //public bool EnforceWaivers { get; set; } = false;
-
-        ///// <summary>
-        ///// Enable payments and set default deposit requirement (%) for applicable appointment types.
-        ///// </summary>
-        //public bool PaymentsEnabled { get; set; } = false;
-        //public decimal? DefaultDepositPercent { get; set; }
-
-        ///// <summary>
-        ///// Enable external calendar sync features.
-        ///// </summary>
-        //public bool GoogleCalendarSyncEnabled { get; set; } = false;
-        //public bool OutlookSyncEnabled { get; set; } = false;
-
-        ///// <summary>
-        ///// Audit and retention policy (days).
-        ///// </summary>
-        //public int? AuditRetentionDays { get; set; }
+        // public bool AllowClientSelfBooking { get; set; } = true;
+        // public int? ClientBookingMaxDaysAhead { get; set; } = 60;
+        // public bool EnforceWaivers { get; set; } = false;
+        // public bool PaymentsEnabled { get; set; } = false;
+        // public decimal? DefaultDepositPercent { get; set; }
+        // public bool GoogleCalendarSyncEnabled { get; set; } = false;
+        // public bool OutlookSyncEnabled { get; set; } = false;
+        // public int? AuditRetentionDays { get; set; }
     }
 
-    /// <summary>
-    /// Calendar shading options for the SPA.
-    /// </summary>
+    /// <summary>Calendar shading options for the SPA.</summary>
     public enum CalendarShadingMode
     {
-        /// <summary>No background shading.</summary>
         None = 0,
-
-        /// <summary>Shade outside org business hours (see BusinessHoursStartLocal/EndLocal).</summary>
         OrgBusinessHours = 1,
-
-        /// <summary>Shade outside the selected provider’s availability windows.</summary>
         ProviderAvailability = 2
     }
 
-    /// <summary>
-    /// Server-side enforcement levels for provider availability checks.
-    /// </summary>
+    /// <summary>Server-side enforcement levels for provider availability checks.</summary>
     public enum AvailabilityEnforcement
     {
-        /// <summary>Ignore availability (no server checks).</summary>
         None = 0,
-
-        /// <summary>Allow but warn (e.g., via response header) so the client can toast.</summary>
         Warn = 1,
-
-        /// <summary>Providers are blocked by default; managers can proceed (with optional explicit override confirmation).</summary>
         BlockProvidersWarnManagers = 2,
-
-        /// <summary>Both providers and managers must explicitly confirm/flag an override to proceed.</summary>
         BlockAllRequireOverride = 3
     }
 
-    /// <summary>
-    /// Default calendar view for new sessions.
-    /// </summary>
+    /// <summary>Default calendar view for new sessions.</summary>
     public enum DefaultCalendarView
     {
         Day = 0,
         Week = 1,
         Month = 2,
         Resources = 3
+    }
+
+    /// <summary>
+    /// Provider cancel policy for status changes to Canceled.
+    /// </summary>
+    public enum ProviderCancelPolicy
+    {
+        /// <summary>Providers cannot cancel; managers only.</summary>
+        None = 0,
+
+        /// <summary>Providers may cancel only when outside the cancel window. Inside the window requires a manager.</summary>
+        RespectWindow = 1,
+
+        /// <summary>Providers may cancel at any time (inside or outside cancel window). Default.</summary>
+        AnyTime = 2
     }
 }
