@@ -16,6 +16,6 @@ namespace BetterSchedule.Server.Models.DTOs.Packages
         public string? ProviderId { get; set; }
 
         public int? ExpiresAfterDays { get; set; }
-        public bool IsActive { get; set; } = true;
+        public bool? IsActive { get; set; } 
     }
 }

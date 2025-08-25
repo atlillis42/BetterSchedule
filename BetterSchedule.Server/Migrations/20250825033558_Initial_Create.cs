@@ -461,6 +461,46 @@ namespace BetterSchedule.Server.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Packages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    TotalUses = table.Column<int>(type: "int", nullable: false),
+                    ProviderLocked = table.Column<bool>(type: "bit", nullable: false),
+                    ProviderId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    ExpiresAfterDays = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Packages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Packages_AppointmentTypes_AppointmentTypeId",
+                        column: x => x.AppointmentTypeId,
+                        principalTable: "AppointmentTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Packages_AspNetUsers_ProviderId",
+                        column: x => x.ProviderId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Packages_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "ProviderAppointmentTypeAccesses",
                 columns: table => new
                 {
@@ -486,6 +526,49 @@ namespace BetterSchedule.Server.Migrations
                         column: x => x.UserId,
                         principalSchema: "identity",
                         principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PackageAssignments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    ClientId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    PackageId = table.Column<int>(type: "int", nullable: false),
+                    PackageName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    TotalUses = table.Column<int>(type: "int", nullable: false),
+                    RemainingUses = table.Column<int>(type: "int", nullable: false),
+                    ProviderLocked = table.Column<bool>(type: "bit", nullable: false),
+                    ProviderId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    GrantedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ExpiresAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PackageAssignments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_AspNetUsers_ClientId",
+                        column: x => x.ClientId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_Packages_PackageId",
+                        column: x => x.PackageId,
+                        principalTable: "Packages",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -537,6 +620,47 @@ namespace BetterSchedule.Server.Migrations
                         name: "FK_Reservations_Organizations_OrganizationId",
                         column: x => x.OrganizationId,
                         principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_PackageAssignments_PackageAssignmentId",
+                        column: x => x.PackageAssignmentId,
+                        principalTable: "PackageAssignments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PackageRedemptions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    PackageAssignmentId = table.Column<int>(type: "int", nullable: false),
+                    ReservationId = table.Column<int>(type: "int", nullable: false),
+                    Uses = table.Column<int>(type: "int", nullable: false, defaultValue: 1),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PackageRedemptions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_PackageAssignments_PackageAssignmentId",
+                        column: x => x.PackageAssignmentId,
+                        principalTable: "PackageAssignments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_Reservations_ReservationId",
+                        column: x => x.ReservationId,
+                        principalTable: "Reservations",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -716,6 +840,73 @@ namespace BetterSchedule.Server.Migrations
                 column: "OrganizationId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_ClientId",
+                table: "PackageAssignments",
+                column: "ClientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_ExpiresAtUtc",
+                table: "PackageAssignments",
+                column: "ExpiresAtUtc");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_OrganizationId_ClientId",
+                table: "PackageAssignments",
+                columns: new[] { "OrganizationId", "ClientId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_OrganizationId_ClientId_AppointmentTypeId_IsDeleted",
+                table: "PackageAssignments",
+                columns: new[] { "OrganizationId", "ClientId", "AppointmentTypeId", "IsDeleted" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_PackageId",
+                table: "PackageAssignments",
+                column: "PackageId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_OrganizationId_ReservationId",
+                table: "PackageRedemptions",
+                columns: new[] { "OrganizationId", "ReservationId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_PackageAssignmentId",
+                table: "PackageRedemptions",
+                column: "PackageAssignmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_ReservationId",
+                table: "PackageRedemptions",
+                column: "ReservationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_AppointmentTypeId",
+                table: "Packages",
+                column: "AppointmentTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_AppointmentTypeId",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "AppointmentTypeId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_IsActive",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "IsActive" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_Name",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_ProviderId",
+                table: "Packages",
+                column: "ProviderId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ProviderAppointmentTypeAccesses_AppointmentTypeId",
                 table: "ProviderAppointmentTypeAccesses",
                 column: "AppointmentTypeId");
@@ -812,9 +1003,19 @@ namespace BetterSchedule.Server.Migrations
                 column: "ClientId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Reservations_OrganizationId_PackageAssignmentId",
+                table: "Reservations",
+                columns: new[] { "OrganizationId", "PackageAssignmentId" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Reservations_OrganizationId_ServiceProviderId_StartTime_EndTime",
                 table: "Reservations",
                 columns: new[] { "OrganizationId", "ServiceProviderId", "StartTime", "EndTime" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_PackageAssignmentId",
+                table: "Reservations",
+                column: "PackageAssignmentId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reservations_ServiceProviderId",
@@ -858,6 +1059,9 @@ namespace BetterSchedule.Server.Migrations
                 name: "OrganizationSettings");
 
             migrationBuilder.DropTable(
+                name: "PackageRedemptions");
+
+            migrationBuilder.DropTable(
                 name: "ProviderAppointmentTypeAccesses");
 
             migrationBuilder.DropTable(
@@ -875,6 +1079,12 @@ namespace BetterSchedule.Server.Migrations
 
             migrationBuilder.DropTable(
                 name: "Reservations");
+
+            migrationBuilder.DropTable(
+                name: "PackageAssignments");
+
+            migrationBuilder.DropTable(
+                name: "Packages");
 
             migrationBuilder.DropTable(
                 name: "AppointmentTypes");
