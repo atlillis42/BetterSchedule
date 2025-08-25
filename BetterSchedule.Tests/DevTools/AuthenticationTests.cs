@@ -3,7 +3,8 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Tests;
 using Xunit;
-using BetterSchedule.Server; 
+using BetterSchedule.Server;
+using BetterSchedule.Tests;
 
 namespace Tests.DevTools
 {

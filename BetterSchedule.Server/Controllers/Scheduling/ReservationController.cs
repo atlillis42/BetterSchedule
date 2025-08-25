@@ -5,6 +5,7 @@ using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Services.Scheduling;
+using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -20,6 +21,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ReservationController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+        private readonly IDateTimeProvider _clock;
         private readonly ISchedulingConflictService _conflicts;
 
         /// <summary>
@@ -27,9 +29,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// </summary>
         /// <param name="db">Database context for reservation operations.</param>
         /// <param name="conflicts">Service for checking scheduling conflicts.</param>
-        public ReservationController(ApplicationDbContext db, ISchedulingConflictService conflicts)
+        public ReservationController(ApplicationDbContext db, IDateTimeProvider clock, ISchedulingConflictService conflicts)
         {
             _db = db;
+            _clock = clock; 
             _conflicts = conflicts;
         }
 
@@ -97,7 +100,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
             if (settings is not null)
             {
-                var now = DateTimeOffset.UtcNow;
+                var now = _clock.UtcNow;
                 if (dto.StartTime < now.AddMinutes(settings.MinLeadMinutes))
                     return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
             }
@@ -138,7 +141,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 PackageAssignmentId = dto.PackageAssignmentId,
                 Notes = dto.Notes,
                 Status = ReservationStatus.Booked,
-                CreatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = _clock.UtcNow,
                 UpdatedAt = null,
                 IsDeleted = false
             };
@@ -181,7 +184,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var settings = await _db.OrganizationSettings
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
-            var now = DateTimeOffset.UtcNow;
+            var now = _clock.UtcNow;
             if (settings is not null)
             {
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
@@ -242,7 +245,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             reservation.AppointmentTypeId = newAppointmentTypeId;
             reservation.StartTime = newStart;
             reservation.EndTime = newEnd;
-            reservation.UpdatedAt = DateTimeOffset.UtcNow;
+            reservation.UpdatedAt = _clock.UtcNow;
 
             await _db.SaveChangesAsync(ct);
 
@@ -274,7 +277,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
             if (settings is not null)
             {
-                var now = DateTimeOffset.UtcNow;
+                var now = _clock.UtcNow;
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
                 if (entity.StartTime - now < cancelWindow && !(managerOverride && IsManager))
                     return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
