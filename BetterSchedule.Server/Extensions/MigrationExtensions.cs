@@ -12,7 +12,14 @@ namespace BetterSchedule.Server.Extensions
 
             using ApplicationDbContext context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            context.Database.Migrate();
+            if (context.Database.IsRelational())
+            {
+                context.Database.Migrate();
+            }
+            else
+            {
+                context.Database.EnsureCreated();
+            }
         }       
     }
 }
