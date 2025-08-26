@@ -3,7 +3,6 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
-using BetterSchedule.Server.Models.Business; // <-- add
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,12 +10,18 @@ namespace BetterSchedule.Server.DevTools
 {
     public static class DbInitializer
     {
+        /// <summary>
+        /// Seeds development/demo data. Optional <paramref name="nowUtc"/> lets you fix the clock for deterministic seeding.
+        /// </summary>
         public static async Task SeedAsync(
             ApplicationDbContext db,
             UserManager<ApplicationUser> userManager,
             RoleManager<IdentityRole> roleManager,
-            bool reset = false)
+            bool reset = false,
+            DateTimeOffset? nowUtc = null)
         {
+            var now = nowUtc ?? DateTimeOffset.UtcNow;
+
             // -----------------------------
             // Roles
             // -----------------------------
@@ -37,11 +42,6 @@ namespace BetterSchedule.Server.DevTools
                 db.AppointmentTypes.RemoveRange(db.AppointmentTypes);
                 db.CalendarResources.RemoveRange(db.CalendarResources);
                 db.OrganizationSettings.RemoveRange(db.OrganizationSettings);
-
-                // NEW: package tables
-                db.PackageAssignments.RemoveRange(db.PackageAssignments);
-                db.Packages.RemoveRange(db.Packages);
-
                 await db.SaveChangesAsync();
             }
 
@@ -52,7 +52,7 @@ namespace BetterSchedule.Server.DevTools
             var org2 = await EnsureOrganizationAsync(db, "demo-org-2", "Second Demo Org");
 
             // -----------------------------
-            // Org Settings (new model)
+            // Org Settings
             // -----------------------------
             await EnsureOrgSettingsAsync(
                 db,
@@ -100,11 +100,15 @@ namespace BetterSchedule.Server.DevTools
                 reminderHoursBefore: null
             );
 
+            // fetch tz ids for helpers below
+            var org1Tz = await db.OrganizationSettings.Where(x => x.OrganizationId == org1.Id).Select(x => x.TimeZoneId).FirstAsync();
+            var org2Tz = await db.OrganizationSettings.Where(x => x.OrganizationId == org2.Id).Select(x => x.TimeZoneId).FirstAsync();
+
             // -----------------------------
             // Users (org1 + org2)
             // -----------------------------
             var devAdmin = await EnsureDevUserAsync("admin@dev.local", org1.Id, new[] { "Manager", "ServiceProvider", "Client" });
-            var devProvider = await EnsureDevUserAsync("provider@dev.local", org1.Id, new[] { "ServiceProvider" });
+            var devProv = await EnsureDevUserAsync("provider@dev.local", org1.Id, new[] { "ServiceProvider" });
             var devClient = await EnsureDevUserAsync("client@dev.local", org1.Id, new[] { "Client" });
             var devHybrid = await EnsureDevUserAsync("hybrid@dev.local", org1.Id, new[] { "ServiceProvider", "Client" });
 
@@ -129,103 +133,67 @@ namespace BetterSchedule.Server.DevTools
             var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", alice.Id, arena.Id, false, false);
 
             // -----------------------------
-            // PACKAGES (org1)
+            // Reservations (org1) — use org1 timezone
             // -----------------------------
-            var yoga10 = await EnsurePackageAsync(
-                db, org1.Id,
-                name: "Yoga 10-Pack",
-                appointmentTypeId: yogaType.Id,
-                totalUses: 10,
-                providerLocked: false,
-                providerId: null,
-                expiresAfterDays: 365,      // 1 year
-                isActive: true);
+            // Helpers to build local times in org tz:
+            DateOnly org1Today = LocalToday(now, org1Tz);
+            DateTimeOffset L1(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org1Tz, org1Today, daysFromToday, hour, minute);
 
-            var massage5Bob = await EnsurePackageAsync(
-                db, org1.Id,
-                name: "Massage 5-Pack (Bob)",
-                appointmentTypeId: massageType.Id,
-                totalUses: 5,
-                providerLocked: true,
-                providerId: bob.Id,
-                expiresAfterDays: 90,
-                isActive: true);
-
-            var private3 = await EnsurePackageAsync(
-                db, org1.Id,
-                name: "Private Training 3-Pack",
-                appointmentTypeId: privateType.Id,
-                totalUses: 3,
-                providerLocked: false,
-                providerId: null,
-                expiresAfterDays: null,     // no expiry
-                isActive: true);
-
-            // Assign a couple to demo clients
-            await EnsurePackageAssignmentAsync(
-                db, org1.Id,
-                clientId: carla.Id,
-                package: massage5Bob);
-
-            await EnsurePackageAssignmentAsync(
-                db, org1.Id,
-                clientId: devClient.Id,
-                package: yoga10);
-
-            // -----------------------------
-            // Reservations (org1)
-            // -----------------------------
             await EnsureReservationAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id,
-                UtcToday().AddDays(-7).AddHours(9), UtcToday().AddDays(-7).AddHours(10),
-                arena.Id, ReservationStatus.Completed, "Completed past yoga session.");
+                L1(-7, 9), L1(-7, 10),
+                arena.Id, ReservationStatus.Completed, "Completed past yoga session.", now);
 
             await EnsureReservationAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
-                UtcToday().AddDays(-3).AddHours(14), UtcToday().AddDays(-3).AddHours(15).AddMinutes(30),
-                studio2.Id, ReservationStatus.NoShow, "Missed massage, client didn't show.");
+                L1(-3, 14), L1(-3, 15).AddMinutes(30),
+                studio2.Id, ReservationStatus.NoShow, "Missed massage, client did not show.", now);
 
             await EnsureReservationAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id,
-                UtcToday().AddHours(17), UtcToday().AddHours(19),
-                outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.");
+                L1(0, 17), L1(0, 19),
+                outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.", now);
 
             await EnsureReservationAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id,
-                UtcToday().AddDays(2).AddHours(10), UtcToday().AddDays(2).AddHours(12),
-                outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.");
+                L1(2, 10), L1(2, 12),
+                outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.", now);
 
             await EnsureReservationAsync(db, org1.Id, alice.Id, bob.Id, privateType.Id,
-                UtcToday().AddDays(10).AddHours(16), UtcToday().AddDays(10).AddHours(16).AddMinutes(45),
-                arena.Id, ReservationStatus.Canceled, "Cancelled by client.");
+                L1(10, 16), L1(10, 16).AddMinutes(45),
+                arena.Id, ReservationStatus.Canceled, "Cancelled by client.", now);
 
-            // Visual sample series (next 7 days)
-            await EnsureReservationSeriesAsync(
-                db, org1.Id, carla.Id, bob.Id, massageType.Id, studio2.Id,
-                firstDayOffset: 0, days: 7, dailyStartHour: 11, durationMinutes: 60, notes: "Daily massage demo slot.");
+            // Visual sample series (next 7 days) at 11:00 local
+            for (int i = 0; i < 7; i++)
+            {
+                await EnsureReservationAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
+                    L1(i, 11), L1(i, 11).AddMinutes(60),
+                    studio2.Id, ReservationStatus.Booked, "Daily massage demo slot.", now, allowDuplicate: false);
+            }
 
             // -----------------------------
-            // BlockedTimes (org1)
+            // BlockedTimes (org1) — org local
             // -----------------------------
             await EnsureBlockedTimeAsync(db, org1.Id, arena.Id, "Floor waxing",
-                UtcToday().AddDays(1).AddHours(12), UtcToday().AddDays(1).AddHours(15), "#cccccc", alice.Id);
+                L1(1, 12), L1(1, 15), "#cccccc", alice.Id);
 
             await EnsureBlockedTimeAsync(db, org1.Id, arena.Id, "Private booking",
-                UtcToday().AddDays(5).AddHours(18), UtcToday().AddDays(5).AddHours(21), "#fcba03", bob.Id);
+                L1(5, 18), L1(5, 21), "#fcba03", bob.Id);
 
             // -----------------------------
-            // Org2 sample
+            // Org2 sample — use org2 timezone
             // -----------------------------
             var studioA = await EnsureResourceAsync(db, org2.Id, "Studio A", "#a0c4ff");
-            var turfField = await EnsureResourceAsync(db, org2.Id, "Turf Field", "#caffbf");
+            var turf = await EnsureResourceAsync(db, org2.Id, "Turf Field", "#caffbf");
+            var pilates = await EnsureAppointmentTypeAsync(db, org2.Id, "Pilates", TimeSpan.FromMinutes(50), 22.00m, "Mat pilates.", dana.Id, studioA.Id, true, false);
 
-            var pilates = await EnsureAppointmentTypeAsync(db, org2.Id, "Pilates", TimeSpan.FromMinutes(50), 22.00m, "Mat pilates.",
-                dana.Id, studioA.Id, true, false);
+            DateOnly org2Today = LocalToday(now, org2Tz);
+            DateTimeOffset L2(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org2Tz, org2Today, daysFromToday, hour, minute);
 
             await EnsureReservationAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id,
-                UtcToday().AddDays(1).AddHours(9), UtcToday().AddDays(1).AddHours(10),
-                studioA.Id, ReservationStatus.Booked, "Org2 pilates.");
+                L2(1, 9), L2(1, 10),
+                studioA.Id, ReservationStatus.Booked, "Org2 pilates.", now);
 
             // -----------------------------
             // Participants: extra test cases
             // -----------------------------
-            var r1Id = await FindReservationIdAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id, UtcToday().AddHours(17), UtcToday().AddHours(19));
+            var r1Id = await FindReservationIdAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id, L1(0, 17), L1(0, 19));
             if (r1Id.HasValue)
             {
                 await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.ServiceProvider, userId: bob.Id);
@@ -234,26 +202,27 @@ namespace BetterSchedule.Server.DevTools
                 await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Parent Chaperone", guestPhone: "555-0101");
             }
 
-            var r2Id = await FindReservationIdAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id, UtcToday().AddDays(2).AddHours(10), UtcToday().AddDays(2).AddHours(12));
+            var r2Id = await FindReservationIdAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id, L1(2, 10), L1(2, 12));
             if (r2Id.HasValue)
                 await EnsureParticipantAsync(db, r2Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Team Manager", guestPhone: "555-0202");
 
-            var r3Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id, UtcToday().AddHours(11), UtcToday().AddHours(12));
+            var r3Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id, L1(0, 11), L1(0, 12));
             if (r3Id.HasValue)
                 await EnsureParticipantAsync(db, r3Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Support Person", guestPhone: "555-0303");
 
-            var r4Id = await FindReservationIdAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id, UtcToday().AddDays(-7).AddHours(9), UtcToday().AddDays(-7).AddHours(10));
+            var r4Id = await FindReservationIdAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id, L1(-7, 9), L1(-7, 10));
             if (r4Id.HasValue)
                 await EnsureParticipantAsync(db, r4Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Observer", guestPhone: "555-0404");
 
-            var r5Id = await FindReservationIdAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id, UtcToday().AddDays(1).AddHours(9), UtcToday().AddDays(1).AddHours(10));
+            var r5Id = await FindReservationIdAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id, L2(1, 9), L2(1, 10));
             if (r5Id.HasValue)
                 await EnsureParticipantAsync(db, r5Id.Value, org2.Id, ReservationParticipantRole.Guest, guestName: "Friend", guestPhone: "555-0505");
 
             // -----------------------------
             // Provider Availability (demo)
             // -----------------------------
-            var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+            var today1 = LocalToday(now, org1Tz);
+            var today2 = LocalToday(now, org2Tz);
             var farFuture = new DateOnly(2099, 12, 31);
 
             // Org1: Bob — Mon–Fri 09:00–17:00
@@ -264,7 +233,7 @@ namespace BetterSchedule.Server.DevTools
                     dayOfWeek: dow,
                     startLocalTime: new TimeSpan(9, 0, 0),
                     endLocalTime: new TimeSpan(17, 0, 0),
-                    effectiveFrom: today,
+                    effectiveFrom: today1,
                     effectiveTo: farFuture);
             }
 
@@ -276,7 +245,7 @@ namespace BetterSchedule.Server.DevTools
                     dayOfWeek: dow,
                     startLocalTime: new TimeSpan(10, 0, 0),
                     endLocalTime: new TimeSpan(18, 0, 0),
-                    effectiveFrom: today,
+                    effectiveFrom: today2,
                     effectiveTo: farFuture);
             }
 
@@ -286,7 +255,21 @@ namespace BetterSchedule.Server.DevTools
             // Helpers
             // ============================================================
 
-            static DateTimeOffset UtcToday() => DateTimeOffset.UtcNow.Date;
+            static DateOnly LocalToday(DateTimeOffset now, string tzId)
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                var localNow = TimeZoneInfo.ConvertTime(now, tz);
+                return DateOnly.FromDateTime(localNow.Date);
+            }
+
+            static DateTimeOffset AtLocal(DateTimeOffset now, string tzId, DateOnly baseLocalDay, int daysFromToday, int hour, int minute = 0)
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+                var localDateTime = baseLocalDay.AddDays(daysFromToday).ToDateTime(new TimeOnly(hour, minute));
+                var unspecified = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
+                var offset = tz.GetUtcOffset(unspecified);
+                return new DateTimeOffset(unspecified, offset); // keep local offset; DB stores DateTimeOffset
+            }
 
             async Task<ApplicationUser> EnsureDevUserAsync(string email, string organizationId, string[] rolesToAdd)
             {
@@ -426,95 +409,6 @@ namespace BetterSchedule.Server.DevTools
                 return type;
             }
 
-            // NEW: ensure package in org by name
-            static async Task<Package> EnsurePackageAsync(
-                ApplicationDbContext db,
-                string organizationId,
-                string name,
-                int appointmentTypeId,
-                int totalUses,
-                bool providerLocked,
-                string? providerId,
-                int? expiresAfterDays,
-                bool isActive)
-            {
-                var pkg = await db.Packages.FirstOrDefaultAsync(p => p.OrganizationId == organizationId && p.Name == name);
-                if (pkg is null)
-                {
-                    pkg = new Package
-                    {
-                        OrganizationId = organizationId,
-                        Name = name,
-                        AppointmentTypeId = appointmentTypeId,
-                        TotalUses = totalUses,
-                        ProviderLocked = providerLocked,
-                        ProviderId = providerLocked ? providerId : null,
-                        ExpiresAfterDays = expiresAfterDays,
-                        IsActive = isActive,
-                        CreatedAt = DateTimeOffset.UtcNow
-                    };
-                    db.Packages.Add(pkg);
-                    await db.SaveChangesAsync();
-                }
-                else
-                {
-                    var changed = false;
-                    if (pkg.AppointmentTypeId != appointmentTypeId) { pkg.AppointmentTypeId = appointmentTypeId; changed = true; }
-                    if (pkg.TotalUses != totalUses) { pkg.TotalUses = totalUses; changed = true; }
-                    if (pkg.ProviderLocked != providerLocked) { pkg.ProviderLocked = providerLocked; changed = true; }
-                    if ((pkg.ProviderId ?? "") != (providerLocked ? (providerId ?? "") : "")) { pkg.ProviderId = providerLocked ? providerId : null; changed = true; }
-                    if (pkg.ExpiresAfterDays != expiresAfterDays) { pkg.ExpiresAfterDays = expiresAfterDays; changed = true; }
-                    if (pkg.IsActive != isActive) { pkg.IsActive = isActive; changed = true; }
-                    if (changed) await db.SaveChangesAsync();
-                }
-                return pkg;
-            }
-
-            // NEW: ensure assignment (creates a fresh grant each call if none exists for (org,client,package) with same GrantedAt day)
-            static async Task<PackageAssignment> EnsurePackageAssignmentAsync(
-                ApplicationDbContext db,
-                string organizationId,
-                string clientId,
-                Package package)
-            {
-                var today = DateTime.UtcNow.Date;
-                var existing = await db.PackageAssignments.FirstOrDefaultAsync(a =>
-                    a.OrganizationId == organizationId &&
-                    a.ClientId == clientId &&
-                    a.PackageId == package.Id &&
-                    !a.IsDeleted &&
-                    a.GrantedAt.Date == today);
-
-                if (existing is not null) return existing;
-
-                DateTimeOffset? expires = null;
-                if (package.ExpiresAfterDays.HasValue && package.ExpiresAfterDays.Value > 0)
-                    expires = DateTimeOffset.UtcNow.AddDays(package.ExpiresAfterDays.Value);
-
-                var assignment = new PackageAssignment
-                {
-                    OrganizationId = organizationId,
-                    ClientId = clientId,
-                    PackageId = package.Id,
-
-                    // denormalized for fast eligibility checks
-                    PackageName = package.Name,
-                    AppointmentTypeId = package.AppointmentTypeId,
-                    TotalUses = package.TotalUses,
-                    RemainingUses = package.TotalUses,
-                    ProviderLocked = package.ProviderLocked,
-                    ProviderId = package.ProviderLocked ? package.ProviderId : null,
-
-                    GrantedAt = DateTimeOffset.UtcNow,
-                    ExpiresAtUtc = expires,
-                    IsDeleted = false
-                };
-
-                db.PackageAssignments.Add(assignment);
-                await db.SaveChangesAsync();
-                return assignment;
-            }
-
             static async Task EnsureReservationAsync(
                 ApplicationDbContext db,
                 string organizationId,
@@ -525,7 +419,9 @@ namespace BetterSchedule.Server.DevTools
                 DateTimeOffset end,
                 int? resourceId,
                 ReservationStatus status,
-                string? notes)
+                string? notes,
+                DateTimeOffset nowUtc,
+                bool allowDuplicate = true)
             {
                 var exists = await db.Reservations.AnyAsync(r =>
                     r.OrganizationId == organizationId &&
@@ -535,7 +431,8 @@ namespace BetterSchedule.Server.DevTools
                     r.StartTime == start &&
                     r.EndTime == end);
 
-                if (exists) return;
+                if (exists && !allowDuplicate) return;
+                if (exists && allowDuplicate) return;
 
                 db.Reservations.Add(new Reservation
                 {
@@ -548,55 +445,9 @@ namespace BetterSchedule.Server.DevTools
                     ResourceId = resourceId,
                     Status = status,
                     Notes = notes,
-                    CreatedAt = DateTimeOffset.UtcNow,
+                    CreatedAt = nowUtc,
                     IsDeleted = false
                 });
-                await db.SaveChangesAsync();
-            }
-
-            static async Task EnsureReservationSeriesAsync(
-                ApplicationDbContext db,
-                string organizationId,
-                string clientId,
-                string providerId,
-                int typeId,
-                int resourceId,
-                int firstDayOffset,
-                int days,
-                int dailyStartHour,
-                int durationMinutes,
-                string? notes)
-            {
-                for (int i = 0; i < days; i++)
-                {
-                    var start = UtcToday().AddDays(firstDayOffset + i).AddHours(dailyStartHour);
-                    var end = start.AddMinutes(durationMinutes);
-                    var exists = await db.Reservations.AnyAsync(r =>
-                        r.OrganizationId == organizationId &&
-                        r.ClientId == clientId &&
-                        r.ServiceProviderId == providerId &&
-                        r.AppointmentTypeId == typeId &&
-                        r.StartTime == start &&
-                        r.EndTime == end);
-
-                    if (!exists)
-                    {
-                        db.Reservations.Add(new Reservation
-                        {
-                            OrganizationId = organizationId,
-                            ClientId = clientId,
-                            ServiceProviderId = providerId,
-                            AppointmentTypeId = typeId,
-                            StartTime = start,
-                            EndTime = end,
-                            ResourceId = resourceId,
-                            Status = ReservationStatus.Booked,
-                            Notes = notes,
-                            CreatedAt = DateTimeOffset.UtcNow,
-                            IsDeleted = false
-                        });
-                    }
-                }
                 await db.SaveChangesAsync();
             }
 
@@ -743,8 +594,7 @@ namespace BetterSchedule.Server.DevTools
                         EmailEnabled = emailEnabled,
                         SmsEnabled = smsEnabled,
                         SendBookingConfirmation = sendBookingConfirmation,
-                        ReminderHoursBefore = reminderHoursBefore,
-                        // ProviderCancelPolicy omitted here -> relies on model default (AnyTime)
+                        ReminderHoursBefore = reminderHoursBefore
                     };
                     db.OrganizationSettings.Add(s);
                     await db.SaveChangesAsync();

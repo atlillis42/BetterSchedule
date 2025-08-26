@@ -225,9 +225,11 @@ namespace BetterSchedule.Server.Services.Scheduling
         {
             if (endUtc <= startUtc) return false;
 
-            // TODO: When you add per-org timezone config, use it here.
-            // For now, evaluate in server-local time as the "org" local clock.
-            var tz = GetOrgTimeZone();
+            var tzId = await _db.OrganizationSettings
+                .Where(x => x.OrganizationId == organizationId)
+                .Select(x => x.TimeZoneId)
+                .FirstOrDefaultAsync(ct) ?? "America/New_York";
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
 
             var startLocal = TimeZoneInfo.ConvertTime(startUtc, tz);
             var endLocal = TimeZoneInfo.ConvertTime(endUtc, tz);
@@ -235,26 +237,29 @@ namespace BetterSchedule.Server.Services.Scheduling
             var cur = startLocal;
             while (cur < endLocal)
             {
-                // Segment end is midnight of next day or overall end, whichever comes first
-                var dayEndLocal = new DateTimeOffset(
-                    cur.Date.AddDays(1),
-                    tz.GetUtcOffset(cur.Date.AddDays(1)));
+                // End of the current local day (next midnight in local time)
+                var nextMidnightLocalDate = cur.Date.AddDays(1);
 
-                var segEnd = endLocal < dayEndLocal ? endLocal : dayEndLocal;
+                // Build a DateTimeOffset at next midnight using that local day's offset
+                var nextMidnightOffset = new DateTimeOffset(
+                    nextMidnightLocalDate,
+                    tz.GetUtcOffset(nextMidnightLocalDate));
 
-                var segDateOnly = DateOnly.FromDateTime(cur.Date);
-                var segDay = cur.DayOfWeek;
-                var segStartT = cur.TimeOfDay;
-                var segEndT = segEnd.TimeOfDay; // may be 00:00 for midnight (treated as end-of-day)
+                var segEnd = endLocal < nextMidnightOffset ? endLocal : nextMidnightOffset;
 
-                // If this day segment has no duration, skip (defensive)
+                // Defensive: skip zero-length segments
                 if (segEnd <= cur)
                 {
                     cur = segEnd;
                     continue;
                 }
 
-                // Coverage query: a single availability row must cover the entire segment
+                var segDateOnly = DateOnly.FromDateTime(cur.Date);
+                var segDay = cur.DayOfWeek;
+                var segStartT = cur.TimeOfDay;
+                var segEndT = segEnd.TimeOfDay; // 00:00 is allowed (end-of-day)
+
+                // A single availability row must fully cover this local-day segment
                 var covered = await _db.ProviderAvailabilities
                     .Where(a => a.OrganizationId == organizationId && !a.IsDeleted)
                     .Where(a => a.ServiceProviderId == serviceProviderId)
@@ -269,12 +274,6 @@ namespace BetterSchedule.Server.Services.Scheduling
             }
 
             return true;
-        }
-
-        private static TimeZoneInfo GetOrgTimeZone()
-        {
-            // Placeholder: swap to OrganizationSettings.TimeZoneId when available.
-            return TimeZoneInfo.Local;
         }
     }
 }

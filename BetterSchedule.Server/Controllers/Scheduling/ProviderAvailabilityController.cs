@@ -4,6 +4,7 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.ProviderAvailability;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +18,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ProviderAvailabilityController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public ProviderAvailabilityController(ApplicationDbContext db) => _db = db;
+        private readonly IDateTimeProvider _clock;
+        public ProviderAvailabilityController(ApplicationDbContext db, IDateTimeProvider clock)
+        {
+            _db = db;
+            _clock = clock;
+        }
+        
 
         // GET /api/provider-availability?providerId=abc
         [HttpGet]
@@ -75,11 +82,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (hasAny) return Ok(new { created = false, count = 0 });
 
             var s = await _db.OrganizationSettings.FirstOrDefaultAsync(x => x.OrganizationId == OrganizationId, ct);
+            var tzId = s?.TimeZoneId ?? "UTC";
 
             var start = s?.BusinessHoursStartLocal ?? new TimeSpan(9, 0, 0);
             var end = s?.BusinessHoursEndLocal ?? new TimeSpan(17, 0, 0);
 
-            var today = DateOnly.FromDateTime(DateTime.UtcNow.Date);
+            var todayLocal = _clock.TodayInTimeZone(tzId);
             var far = new DateOnly(2099, 12, 31);
 
             var days = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday };
@@ -93,7 +101,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     DayOfWeek = dow,
                     StartLocalTime = start,
                     EndLocalTime = end,
-                    EffectiveFrom = today,
+                    EffectiveFrom = todayLocal,
                     EffectiveTo = far,
                     IsDeleted = false
                 });

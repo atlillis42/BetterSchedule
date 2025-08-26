@@ -2,6 +2,7 @@ using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
+using BetterSchedule.Server.Services.Time;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Identity;
@@ -19,6 +20,8 @@ builder.Services.AddControllers().AddJsonOptions(o =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+// Clock
+builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 
 // AuthN/Z
 builder.Services.AddAuthorization();
@@ -67,11 +70,11 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 var app = builder.Build();
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
-
 if (app.Environment.IsDevelopment())
 {
+    app.UseDevDiagnostics();
+
+    // Apply migrations + seed dev data
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
 
@@ -115,6 +118,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Static files 
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 app.UseHttpsRedirection();
 app.UseCors();

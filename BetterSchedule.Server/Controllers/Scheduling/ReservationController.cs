@@ -6,9 +6,11 @@ using BetterSchedule.Server.Models.DTOs.Reservation;
 using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Services.Scheduling;
+using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using System.Linq.Expressions;
 using static BetterSchedule.Server.Auth.ReservationScopes;
 
@@ -20,15 +22,25 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class ReservationController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+        private readonly IDateTimeProvider _clock;
         private readonly ISchedulingConflictService _conflicts;
 
-        public ReservationController(ApplicationDbContext db, ISchedulingConflictService conflicts)
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ReservationController"/> class.
+        /// </summary>
+        /// <param name="db">Database context for reservation operations.</param>
+        /// <param name="clock">Clock abstraction for deterministic time.</param>
+        /// <param name="conflicts">Service for checking scheduling conflicts.</param>
+        public ReservationController(ApplicationDbContext db, IDateTimeProvider clock, ISchedulingConflictService conflicts)
         {
             _db = db;
+            _clock = clock;
             _conflicts = conflicts;
         }
 
-        /// <summary>Lists reservations overlapping the optional time range and visible to the caller.</summary>
+        /// <summary>
+        /// Lists reservations overlapping the optional time range and visible to the caller.
+        /// </summary>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
@@ -45,7 +57,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        /// <summary>Retrieves a reservation by identifier if visible to the caller.</summary>
+        /// <summary>
+        /// Retrieves a reservation by identifier if visible to the caller.
+        /// </summary>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
@@ -58,7 +72,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return dto is null ? NotFound() : Ok(dto);
         }
 
-        /// <summary>Creates a new reservation. Allowed for managers and service providers.</summary>
+        /// <summary>
+        /// Creates a new reservation. Allowed for managers and service providers.
+        /// </summary>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationDto>> Create(
@@ -74,7 +90,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
             if (settings is not null)
             {
-                var now = DateTimeOffset.UtcNow;
+                var now = _clock.UtcNow;
                 if (dto.StartTime < now.AddMinutes(settings.MinLeadMinutes))
                     return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
             }
@@ -87,6 +103,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 dto.ResourceId,
                 ct);
 
+            // Enforce availability unless properly overridden
             if (c.OutsideProviderAvailability)
             {
                 var canOverride =
@@ -128,7 +145,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 PackageAssignmentId = dto.PackageAssignmentId,
                 Notes = dto.Notes,
                 Status = ReservationStatus.Booked,
-                CreatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = _clock.UtcNow,
                 UpdatedAt = null,
                 IsDeleted = false
             };
@@ -145,7 +162,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        /// <summary>Updates an existing reservation. Allowed for managers and service providers.</summary>
+        /// <summary>
+        /// Updates an existing reservation. Allowed for managers and service providers.
+        /// </summary>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update(
@@ -168,7 +187,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .AsNoTracking()
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
 
-            var now = DateTimeOffset.UtcNow;
+            var now = _clock.UtcNow;
 
             // Parse status (if supplied)
             var isStatusProvided = !string.IsNullOrWhiteSpace(dto.Status);
@@ -228,13 +247,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                             var policy = settings.ProviderCancelPolicy;
                             switch (policy)
                             {
-                                case Models.Tenant.ProviderCancelPolicy.AnyTime:
+                                case BetterSchedule.Server.Models.Tenant.ProviderCancelPolicy.AnyTime:
                                     break;
-                                case Models.Tenant.ProviderCancelPolicy.RespectWindow:
+                                case BetterSchedule.Server.Models.Tenant.ProviderCancelPolicy.RespectWindow:
                                     if (insideCancelWindow)
                                         return BadRequest($"Providers cannot cancel within {settings.CancelWindowHours} hours of start time. Ask a manager to override.");
                                     break;
-                                case Models.Tenant.ProviderCancelPolicy.None:
+                                case BetterSchedule.Server.Models.Tenant.ProviderCancelPolicy.None:
                                     return Forbid();
                             }
                         }
@@ -314,10 +333,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             reservation.AppointmentTypeId = newTypeId;
             reservation.StartTime = newStart;
             reservation.EndTime = newEnd;
-            reservation.UpdatedAt = DateTimeOffset.UtcNow;
+            reservation.UpdatedAt = _clock.UtcNow;
 
             // --- Redemption-aware counter updates (atomic) ---
-
             var currentRedemption = await _db.PackageRedemptions
                 .FirstOrDefaultAsync(x => x.OrganizationId == OrganizationId && x.ReservationId == reservation.Id, ct);
 
@@ -340,7 +358,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     PackageAssignmentId = assignmentId,
                     ReservationId = reservation.Id,
                     Uses = 1,
-                    CreatedAt = DateTimeOffset.UtcNow
+                    CreatedAt = _clock.UtcNow
                 });
             }
 
@@ -404,7 +422,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 }
                 else
                 {
-                    // Edge: removing assignment while keeping Completed → treat as restore (no assignment to charge)
+                    // Removing assignment while keeping Completed → restore (no assignment to charge)
                     if (currentRedemption is not null)
                     {
                         await RestoreAsync(currentRedemption, ct);
@@ -420,7 +438,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        /// <summary>Soft deletes a reservation.</summary>
+        /// <summary>
+        /// Soft deletes a reservation.
+        /// </summary>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct, [FromQuery] bool managerOverride = false)
@@ -438,17 +458,50 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
             if (settings is not null)
             {
-                var now = DateTimeOffset.UtcNow;
+                var now = _clock.UtcNow;
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
                 if (entity.StartTime - now < cancelWindow && !(managerOverride && IsManager))
                     return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
             }
 
-            // Note: we don't auto-restore uses on delete; use status transitions to restore.
+            // Note: we do not auto-restore uses on delete; use status transitions to restore.
             entity.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
+
+        /// <summary>Map entity -> DTO (status as string).</summary>
+        private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
+        {
+            Id = r.Id,
+            OrganizationId = r.OrganizationId,
+            ClientId = r.ClientId,
+            ServiceProviderId = r.ServiceProviderId,
+            AppointmentTypeId = r.AppointmentTypeId,
+            StartTime = r.StartTime,
+            EndTime = r.EndTime,
+            ResourceId = r.ResourceId,
+            PackageAssignmentId = r.PackageAssignmentId,
+            Status = r.Status.ToString(),
+            Notes = r.Notes,
+            CreatedAt = r.CreatedAt,
+            UpdatedAt = r.UpdatedAt,
+            IsDeleted = r.IsDeleted,
+            Participants = r.Participants
+                .Where(p => !p.IsDeleted)
+                .Select(p => new ReservationParticipantDto
+                {
+                    Id = p.Id,
+                    ReservationId = p.ReservationId,
+                    UserId = p.UserId ?? string.Empty,
+                    GuestName = p.GuestName,
+                    GuestPhone = p.GuestPhone,
+                    Role = p.Role.ToString(),
+                    OrganizationId = p.OrganizationId,
+                    IsDeleted = p.IsDeleted
+                })
+                .ToList()
+        };
 
         /// <summary>
         /// Validates that a package assignment is eligible for this reservation context.
@@ -488,7 +541,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     return BadRequest("This package is locked to a different provider.");
             }
 
-            if (a.ExpiresAtUtc.HasValue && DateTimeOffset.UtcNow > a.ExpiresAtUtc.Value)
+            if (a.ExpiresAtUtc.HasValue && _clock.UtcNow > a.ExpiresAtUtc.Value)
                 return BadRequest("Package assignment is expired.");
 
             if (requireRemainingUse && a.RemainingUses <= 0)
@@ -496,39 +549,5 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
             return null;
         }
-
-
-        /// <summary>Map entity -> DTO (status as string).</summary>
-        private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
-        {
-            Id = r.Id,
-            OrganizationId = r.OrganizationId,
-            ClientId = r.ClientId,
-            ServiceProviderId = r.ServiceProviderId,
-            AppointmentTypeId = r.AppointmentTypeId,
-            StartTime = r.StartTime,
-            EndTime = r.EndTime,
-            ResourceId = r.ResourceId,
-            PackageAssignmentId = r.PackageAssignmentId,
-            Status = r.Status.ToString(),
-            Notes = r.Notes,
-            CreatedAt = r.CreatedAt,
-            UpdatedAt = r.UpdatedAt,
-            IsDeleted = r.IsDeleted,
-            Participants = r.Participants
-                .Where(p => !p.IsDeleted)
-                .Select(p => new ReservationParticipantDto
-                {
-                    Id = p.Id,
-                    ReservationId = p.ReservationId,
-                    UserId = p.UserId ?? string.Empty,
-                    GuestName = p.GuestName,
-                    GuestPhone = p.GuestPhone,
-                    Role = p.Role.ToString(),
-                    OrganizationId = p.OrganizationId,
-                    IsDeleted = p.IsDeleted
-                })
-                .ToList()
-        };
     }
 }

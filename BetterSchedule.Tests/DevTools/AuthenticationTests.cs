@@ -1,16 +1,18 @@
 ﻿using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Tests;
 using Xunit;
-using BetterSchedule.Server; // Ensure this using directive matches your actual Program namespace
+using BetterSchedule.Server;
+using BetterSchedule.Tests;
 
 namespace Tests.DevTools
 {
-    public class AuthenticationTests : IClassFixture<WebApplicationFactory<BetterSchedule.Server.Program>>
+    public class AuthenticationTests : IClassFixture<TestWebApplicationFactory>
     {
         private readonly HttpClient _client;
 
-        public AuthenticationTests(WebApplicationFactory<BetterSchedule.Server.Program> factory)
+        public AuthenticationTests(TestWebApplicationFactory factory)
         {
             _client = factory.CreateClient();
         }
