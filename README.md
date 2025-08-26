@@ -17,7 +17,7 @@ Designed for both **web and mobile**, the platform focuses on **clean architectu
 
 ## Live Status
 
-**Last updated:** August 15, 2025  
+**Last updated:** August 25, 2025  
 **Legend:** ✅ implemented ⏳ foundation present (not surfaced end-to-end) ❌ not implemented
 
 | Feature Category | Status | Notes |
@@ -35,35 +35,33 @@ Designed for both **web and mobile**, the platform focuses on **clean architectu
 | UI/UX Enhancements | ✅ | Event modal, toolbar controls, responsive layout. |
 | Developer Utilities & Swagger | ✅ | Dev endpoints (`whoami`, `reset-db`, blocked-time dumps); Swagger/OpenAPI UI in development. |
 | Automated Tests | ✅ | xUnit tests for dev login endpoints; base for further backend automation. |
-| Group/Participant Support | ⏳ | `ReservationParticipant` model supports multi-client/guest/secondary provider; UI flows not implemented. |
-| Availability Setup | ❌ | No provider availability editor/enforcement. |
-| Package/Session Tracking | ❌ | `PackageAssignmentId` hook present; no business logic. |
-| Admin UI & Role Management | ❌ | Only basic resource/appointment-type managers; no user/role admin panel. |
-| Payment / Docs / Notifications | ❌ | Waiver flag exists; no uploads/e-sign, payments, or email/SMS. |
-| Advanced Reporting / Analytics | ❌ | Not started. |
+| Group/Participant Support | ✅ | UI and APIs for multi-client, guest, and secondary provider participation. |
+| Availability Setup | ✅ | Provider availability editor with enforcement and shading modes. |
+| Package/Session Tracking | ✅ | Packages, assignments, and redemption tracking. |
+| Admin UI & Role Management | ✅ | Org settings, user/role manager, provider access controls. |
+| Lead/Cancel Windows | ✅ | `MinLeadMinutes` & `CancelWindowHours` guardrails on create/reschedule/cancel. |
 
 ---
 
-## MVP-Adjacent (Next Up)
+## Next Phase: Bug Fix & Polish
 
-- **Availability Editor & Enforcement**: UI/APIs for recurring provider availability; prevent bookings outside working hours.  
-- **Participant UX**: Surface `ReservationParticipant` for group appointments, multi-provider/guest scenarios.  
-- **Reservation Status Controls**: Quick actions to mark **Completed**/**Canceled**/**No-Show** (with reason).  
-- **Organization Admin Panel**: Manage users/roles, organization settings, resource ownership.  
-- **Lead/Cancel Windows**: `MinLeadMinutes`, `CancelWindowHours` — server-enforced guardrails on create/reschedule/cancel.
+- **Expand automated test coverage across backend and frontend.
+- **Cross-browser and responsive layout tuning.
+- **Accessibility review and improved error messaging.
+- **Performance profiling and minor UX refinements.
+- **Advanced Reporting / Analytics 
 
 ---
 
 ## Post-MVP / Roadmap
 
+- **Audit & History**: UI for soft-deleted items and change history/restore.
 - **Recurring Reservations & Templates**: Series support (`RecurrenceId`), schedule templates per provider/resource.  
 - **Waivers & Documents**: Uploads, e-sign, attachment storage; enforce `RequiresWaiver`.  
-- **Packages / Sessions**: Auto-decrement bundles via `PackageAssignmentId`; promo codes.  
 - **Payments**: Stripe (or similar) for deposits, payments, refunds.  
 - **Notifications**: Email/SMS confirmations, reminders, configurable rules.  
 - **Timezone & Calendar Sync**: Per-user/org TZ/locale; Google/Outlook/ICS two-way sync; DST handling.  
 - **Capacity & Overbooking Controls**: Resource capacity (e.g., class size) and waitlists; **AppointmentType capacity (class size limit)**.  
-- **Audit & History**: UI for soft-deleted items and change history/restore.  
 - **Security & Integrations**: 2FA/SSO, API tokens, suspicious-login alerts.  
 - **Internationalization & Theming**: Multi-language, dark mode.  
 - **Admin & Reporting**: Dashboards for usage, cancellations, upcoming appointments.  

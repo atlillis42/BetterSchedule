@@ -5,6 +5,7 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Models.Business;   // <-- Package, PackageAssignment, PackageRedemption
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -68,31 +69,80 @@ namespace BetterSchedule.Tests
             DateTimeOffset L(int daysFromToday, int hour, int minute = 0) =>
                 AtLocal(fixedUtcNow, OrgTzId, todayLocal, daysFromToday, hour, minute);
 
+            // ------------------------------------------------------------------
             // Reservations (exactly 5)
+            // ------------------------------------------------------------------
             // In-progress now (P1, with resource via "WithResource")
             await EnsureReservationAsync(db, OrgId, c1.Id, p1.Id, withRes.Id,
                 start: fixedUtcNow.AddMinutes(-15), end: fixedUtcNow.AddMinutes(45),
-                resourceId: r1.Id, status: ReservationStatus.Booked, "In-progress");
+                resourceId: r1.Id, status: ReservationStatus.Booked, "In-progress", fixedUtcNow);
 
-            // Future (tomorrow 10:00–11:00) (P1) — using NoResource (resourceId null)
+            // Future (tomorrow 10:00–11:00) (P1) — NoResource (resourceId null)
             await EnsureReservationAsync(db, OrgId, c2.Id, p1.Id, noRes.Id,
                 start: L(+1, 10), end: L(+1, 11),
-                resourceId: null, status: ReservationStatus.Booked, "Future");
+                resourceId: null, status: ReservationStatus.Booked, "Future", fixedUtcNow);
 
             // Past (yesterday 10:00–11:00) (P1)
             await EnsureReservationAsync(db, OrgId, c1.Id, p1.Id, withRes.Id,
                 start: L(-1, 10), end: L(-1, 11),
-                resourceId: r1.Id, status: ReservationStatus.Booked, "Past");
+                resourceId: r1.Id, status: ReservationStatus.Booked, "Past", fixedUtcNow);
 
             // Canceled (in 2 days 16:00–16:45) (P2)
             await EnsureReservationAsync(db, OrgId, c2.Id, p2.Id, noRes.Id,
                 start: L(+2, 16), end: L(+2, 16).AddMinutes(45),
-                resourceId: null, status: ReservationStatus.Canceled, "Canceled");
+                resourceId: null, status: ReservationStatus.Canceled, "Canceled", fixedUtcNow);
 
             // No-show (3 days ago 14:00–15:30) (P2)
             await EnsureReservationAsync(db, OrgId, c1.Id, p2.Id, withRes.Id,
                 start: L(-3, 14), end: L(-3, 15).AddMinutes(30),
-                resourceId: r2.Id, status: ReservationStatus.NoShow, "No-show");
+                resourceId: r2.Id, status: ReservationStatus.NoShow, "No-show", fixedUtcNow);
+
+            // ------------------------------------------------------------------
+            // Packages & Assignments (for targeted tests)
+            // ------------------------------------------------------------------
+            // Active, unlocked package for "NoResource" type
+            var pkgNoResUnlocked = await EnsurePackageAsync(
+                db, OrgId, appointmentTypeId: noRes.Id,
+                providerLocked: false, providerId: null, isActive: true);
+
+            // Active, provider-locked package for "WithResource" type, locked to P1
+            var pkgWithResLockedP1 = await EnsurePackageAsync(
+                db, OrgId, appointmentTypeId: withRes.Id,
+                providerLocked: true, providerId: p1.Id, isActive: true);
+
+            // Inactive package (negative test)
+            var pkgInactiveNoRes = await EnsurePackageAsync(
+                db, OrgId, appointmentTypeId: noRes.Id,
+                providerLocked: false, providerId: null, isActive: false);
+
+            // Assignments:
+            // - C1 gets 2 remaining uses on the unlocked NoResource package (valid, non-expired)
+            await EnsurePackageAssignmentAsync(db, OrgId, pkgNoResUnlocked.Id, c1.Id,
+                remainingUses: 2, expiresAtUtc: fixedUtcNow.AddDays(30), isDeleted: false);
+
+            // - C2 gets 1 remaining use on the provider-locked P1 package (valid)
+            await EnsurePackageAssignmentAsync(db, OrgId, pkgWithResLockedP1.Id, c2.Id,
+                remainingUses: 1, expiresAtUtc: null, isDeleted: false);
+
+            // - C1 gets an EXPIRED assignment (should fail validation)
+            await EnsurePackageAssignmentAsync(db, OrgId, pkgNoResUnlocked.Id, c1.Id,
+                remainingUses: 5, expiresAtUtc: fixedUtcNow.AddDays(-1), isDeleted: false);
+
+            // - C2 gets an EXHAUSTED assignment (RemainingUses = 0)
+            await EnsurePackageAssignmentAsync(db, OrgId, pkgNoResUnlocked.Id, c2.Id,
+                remainingUses: 0, expiresAtUtc: fixedUtcNow.AddDays(60), isDeleted: false);
+
+            // - C1 gets an assignment on an INACTIVE package (should be treated as not found)
+            await EnsurePackageAssignmentAsync(db, OrgId, pkgInactiveNoRes.Id, c1.Id,
+                remainingUses: 3, expiresAtUtc: fixedUtcNow.AddDays(60), isDeleted: false);
+
+            // If you need a pre-redeemed example for some tests, you can link a redemption
+            // to one of the reservations above. Keep commented by default to avoid interfering
+            // with “exactly 5 reservations” invariants.
+            //
+            // var anyBooked = await db.Reservations.FirstAsync(r => r.OrganizationId == OrgId && r.Status == ReservationStatus.Booked);
+            // var c1NoResAssignment = await db.PackageAssignments.FirstAsync(a => a.OrganizationId == OrgId && a.ClientId == c1.Id && a.PackageId == pkgNoResUnlocked.Id && a.RemainingUses > 0);
+            // await EnsurePackageRedemptionAsync(db, OrgId, c1NoResAssignment.Id, anyBooked.Id, uses: 1, createdAt: fixedUtcNow);
         }
 
         // ---------- helpers ----------
@@ -267,7 +317,8 @@ namespace BetterSchedule.Tests
             DateTimeOffset end,
             int? resourceId,
             ReservationStatus status,
-            string? notes)
+            string? notes,
+            DateTimeOffset createdAtUtc)
         {
             var exists = await db.Reservations.AnyAsync(r =>
                 r.OrganizationId == orgId &&
@@ -289,8 +340,109 @@ namespace BetterSchedule.Tests
                 ResourceId = resourceId,
                 Status = status,
                 Notes = notes,
-                CreatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = createdAtUtc,
                 IsDeleted = false
+            });
+            await db.SaveChangesAsync();
+        }
+
+        // ---------------- Packages helpers ----------------
+
+        private static async Task<Package> EnsurePackageAsync(
+            ApplicationDbContext db,
+            string orgId,
+            int appointmentTypeId,
+            bool providerLocked,
+            string? providerId,
+            bool isActive)
+        {
+            // Idempotent: treat the (org, type, locked, providerId, isActive) tuple as a seed key
+            var pkg = await db.Packages.FirstOrDefaultAsync(x =>
+                x.OrganizationId == orgId &&
+                x.AppointmentTypeId == appointmentTypeId &&
+                x.ProviderLocked == providerLocked &&
+                x.ProviderId == providerId &&
+                x.IsActive == isActive);
+
+            if (pkg is null)
+            {
+                pkg = new Package
+                {
+                    OrganizationId = orgId,
+                    AppointmentTypeId = appointmentTypeId,
+                    ProviderLocked = providerLocked,
+                    ProviderId = providerId,
+                    IsActive = isActive
+                };
+                db.Packages.Add(pkg);
+                await db.SaveChangesAsync();
+            }
+            return pkg;
+        }
+
+        private static async Task<PackageAssignment> EnsurePackageAssignmentAsync(
+            ApplicationDbContext db,
+            string orgId,
+            int packageId,
+            string clientId,
+            int remainingUses,
+            DateTimeOffset? expiresAtUtc,
+            bool isDeleted)
+        {
+            // Allow multiple assignments to the same package/client distinguished by expiry date
+            var a = await db.PackageAssignments.FirstOrDefaultAsync(x =>
+                x.OrganizationId == orgId &&
+                x.PackageId == packageId &&
+                x.ClientId == clientId &&
+                x.ExpiresAtUtc == expiresAtUtc);
+
+            if (a is null)
+            {
+                a = new PackageAssignment
+                {
+                    OrganizationId = orgId,
+                    PackageId = packageId,
+                    ClientId = clientId,
+                    RemainingUses = remainingUses,
+                    ExpiresAtUtc = expiresAtUtc,
+                    IsDeleted = isDeleted
+                };
+                db.PackageAssignments.Add(a);
+                await db.SaveChangesAsync();
+            }
+            else
+            {
+                var changed = false;
+                if (a.RemainingUses != remainingUses) { a.RemainingUses = remainingUses; changed = true; }
+                if (a.IsDeleted != isDeleted) { a.IsDeleted = isDeleted; changed = true; }
+                if (changed) await db.SaveChangesAsync();
+            }
+            return a;
+        }
+
+        // Optional pre-redeemed helper (kept unused by default)
+        private static async Task EnsurePackageRedemptionAsync(
+            ApplicationDbContext db,
+            string orgId,
+            int assignmentId,
+            int reservationId,
+            int uses,
+            DateTimeOffset createdAt)
+        {
+            var exists = await db.PackageRedemptions.AnyAsync(x =>
+                x.OrganizationId == orgId &&
+                x.PackageAssignmentId == assignmentId &&
+                x.ReservationId == reservationId);
+
+            if (exists) return;
+
+            db.PackageRedemptions.Add(new PackageRedemption
+            {
+                OrganizationId = orgId,
+                PackageAssignmentId = assignmentId,
+                ReservationId = reservationId,
+                Uses = uses,
+                CreatedAt = createdAt
             });
             await db.SaveChangesAsync();
         }

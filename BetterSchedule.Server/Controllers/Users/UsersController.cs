@@ -3,6 +3,7 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Users;
 using BetterSchedule.Server.Models.Identity;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,12 +15,18 @@ namespace BetterSchedule.Server.Controllers.Users
     public sealed class UsersController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+        private readonly UserManager<ApplicationUser> _userManager;
+
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UsersController"/> class.
         /// </summary>
-        /// <param name="db">Database context used to query users.</param>
-        public UsersController(ApplicationDbContext db) => _db = db;
+        /// <param name="userManager">Identity user manager for role assignments.</param>
+        public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        {
+            _db = db;
+            _userManager = userManager;
+        }
 
         /// <summary>
         /// Returns a lightweight list of service providers for selection UIs.
@@ -82,6 +89,82 @@ namespace BetterSchedule.Server.Controllers.Users
 
             return Ok(items);
         }
+
+
+        private static readonly string[] AllowedRoles = { "Manager", "ServiceProvider", "Client" };
+
+        /// <summary>
+        /// Returns users in the current organization with their roles.
+        /// </summary>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of user DTOs.</returns>
+        [HttpGet]
+        [Authorize(Roles = "Manager")]
+        public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers(CancellationToken ct)
+        {
+            var users = await _db.Users
+                .Where(u => u.OrganizationId == OrganizationId)
+                .Select(u => new UserDto
+                {
+                    Id = u.Id,
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.UserName ?? u.Email ?? u.Id) : u.FullName,
+                    UserName = u.UserName,
+                    Email = u.Email,
+                    Roles = (from ur in _db.UserRoles
+                             join r in _db.Roles on ur.RoleId equals r.Id
+                             where ur.UserId == u.Id
+                             select r.Name).ToList()
+                })
+                .OrderBy(u => u.Name)
+                .ToListAsync(ct);
+
+            return Ok(users);
+        }
+
+        /// <summary>
+        /// Adds an allowed role to a user within the organization.
+        /// </summary>
+        /// <param name="userId">Target user identifier.</param>
+        /// <param name="role">Role to add.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>No content on success.</returns>
+        [HttpPost("{userId}/roles/{role}")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> AddRole(string userId, string role, CancellationToken ct)
+        {
+            if (!AllowedRoles.Contains(role)) return BadRequest("Invalid role.");
+
+            var user = await _db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.OrganizationId == OrganizationId, ct);
+            if (user is null) return NotFound();
+
+            var result = await _userManager.AddToRoleAsync(user, role);
+            if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
+
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Removes an allowed role from a user within the organization.
+        /// </summary>
+        /// <param name="userId">Target user identifier.</param>
+        /// <param name="role">Role to remove.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>No content on success.</returns>
+        [HttpDelete("{userId}/roles/{role}")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> RemoveRole(string userId, string role, CancellationToken ct)
+        {
+            if (!AllowedRoles.Contains(role)) return BadRequest("Invalid role.");
+
+            var user = await _db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.OrganizationId == OrganizationId, ct);
+            if (user is null) return NotFound();
+
+            var result = await _userManager.RemoveFromRoleAsync(user, role);
+            if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
+
+            return NoContent();
+        }
+
 
         // -----------------------------
         // Internal helpers

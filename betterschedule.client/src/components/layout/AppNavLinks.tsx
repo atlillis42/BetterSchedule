@@ -33,9 +33,19 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canSeeProviderAvailability, c
                     <NavLink to="/admin/appointment-types" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Appointment Types
                     </NavLink>
+
+                    <NavLink to="/admin/packages" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                        Packages
+                    </NavLink>
+
                     <NavLink to="/admin/resources" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Resources
                     </NavLink>
+
+                    <NavLink to="/admin/users" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                        Users
+                    </NavLink>
+
                     <NavLink to="/admin/settings" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Settings
                     </NavLink>

@@ -10,15 +10,20 @@ import {
     normalizeHHmmOrHHmmss,
     type DefaultCalendarView,
     type CalendarShadingMode,
-    type AvailabilityEnforcement
+    type AvailabilityEnforcement,
+    type ProviderCancelPolicy, 
 } from "@/api/org-settings-api";
 import { useAuth } from "@auth/AuthContext";
+import ProviderAccessManager from "@/components/admin/ProviderAccessManager";
 
 /** Local form model (UI-friendly fields) */
 type Form = {
     // booking windows as numbers for easy editing
     minLeadMinutes: number;
     cancelWindowHours: number;
+
+    // provider cancel policy
+    providerCancelPolicy: ProviderCancelPolicy;
 
     // calendar display
     showWeekends: boolean;
@@ -45,10 +50,14 @@ type Form = {
     reminderHoursBefore: number | null;
 };
 
+type TabKey = "general" | "access";
+
 const hhmm = (ts: string) => ts.slice(0, 5); // "HH:mm:ss" -> "HH:mm"
 
 export default function OrgSettingsManager() {
     const { isManager } = useAuth();
+    const [activeTab, setActiveTab] = useState<TabKey>("general");
+
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [f, setF] = useState<Form | null>(null);
@@ -61,6 +70,9 @@ export default function OrgSettingsManager() {
                 setF({
                     minLeadMinutes: timeSpanToMinutes(s.bookingLeadTime),
                     cancelWindowHours: timeSpanToHours(s.cancellationWindow),
+
+                    providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
+
                     showWeekends: s.showWeekends,
                     startOfWeek: s.startOfWeek,
                     businessHoursStartLocal: s.businessHoursStartLocal,
@@ -76,7 +88,7 @@ export default function OrgSettingsManager() {
                     emailEnabled: s.emailEnabled,
                     smsEnabled: s.smsEnabled,
                     sendBookingConfirmation: s.sendBookingConfirmation,
-                    reminderHoursBefore: s.reminderHoursBefore ?? null
+                    reminderHoursBefore: s.reminderHoursBefore ?? null,
                 });
             } catch {
                 toast.error("Failed to load organization settings.");
@@ -110,6 +122,9 @@ export default function OrgSettingsManager() {
                 bookingLeadTime: minutesToTimeSpan(f.minLeadMinutes),
                 cancellationWindow: hoursToTimeSpan(f.cancelWindowHours),
 
+                // provider cancel policy
+                providerCancelPolicy: f.providerCancelPolicy,
+
                 // calendar display
                 showWeekends: f.showWeekends,
                 startOfWeek: f.startOfWeek,
@@ -132,7 +147,7 @@ export default function OrgSettingsManager() {
                 emailEnabled: f.emailEnabled,
                 smsEnabled: f.smsEnabled,
                 sendBookingConfirmation: f.sendBookingConfirmation,
-                reminderHoursBefore: f.reminderHoursBefore
+                reminderHoursBefore: f.reminderHoursBefore,
             });
             toast.success("Settings saved.");
         } catch {
@@ -147,253 +162,295 @@ export default function OrgSettingsManager() {
 
     return (
         <div className="p-6 space-y-6">
-            <h1 className="text-xl font-semibold">Organization Settings</h1>
+            <header className="flex items-center justify-between">
+                <h1 className="text-xl font-semibold">Organization Settings</h1>
 
-            {/* Booking guardrails */}
-            <section className="rounded-xl border p-4 space-y-3 bg-white">
-                <div className="font-medium">Booking Guardrails</div>
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
-                    <label className="flex flex-col">
-                        <span>Min lead time (minutes)</span>
-                        <input
-                            type="number"
-                            min={0}
-                            className="border rounded px-2 py-1"
-                            value={f.minLeadMinutes}
-                            onChange={(e) => setF({ ...f, minLeadMinutes: Math.max(0, Number(e.target.value || 0)) })}
-                            disabled={!canEdit}
-                        />
-                    </label>
-                    <label className="flex flex-col">
-                        <span>Cancel window (hours)</span>
-                        <input
-                            type="number"
-                            min={0}
-                            className="border rounded px-2 py-1"
-                            value={f.cancelWindowHours}
-                            onChange={(e) => setF({ ...f, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })}
-                            disabled={!canEdit}
-                        />
-                    </label>
+                {/* Tab switcher */}
+                <div className="flex gap-2 border rounded-lg bg-white overflow-hidden">
+                    <button
+                        className={`px-3 py-2 text-sm ${activeTab === "general" ? "bg-gray-900 text-white" : "text-gray-700"}`}
+                        onClick={() => setActiveTab("general")}
+                    >
+                        General
+                    </button>
+                    <button
+                        className={`px-3 py-2 text-sm ${activeTab === "access" ? "bg-gray-900 text-white" : "text-gray-700"}`}
+                        onClick={() => setActiveTab("access")}
+                    >
+                        Access
+                    </button>
                 </div>
-            </section>
+            </header>
 
-            {/* Calendar display */}
-            <section className="rounded-xl border p-4 space-y-3 bg-white">
-                <div className="font-medium">Calendar Display</div>
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.showWeekends}
-                            onChange={(e) => setF({ ...f, showWeekends: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Show weekends</span>
-                    </label>
+            {activeTab === "general" && (
+                <>
+                    {/* Booking guardrails */}
+                    <section className="rounded-xl border p-4 space-y-3 bg-white">
+                        <div className="font-medium">Booking Guardrails</div>
+                        <div className="grid md:grid-cols-3 gap-3 text-sm">
+                            <label className="flex flex-col">
+                                <span>Min lead time (minutes)</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="border rounded px-2 py-1"
+                                    value={f.minLeadMinutes}
+                                    onChange={(e) => setF({ ...f, minLeadMinutes: Math.max(0, Number(e.target.value || 0)) })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
+                            <label className="flex flex-col">
+                                <span>Cancel window (hours)</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="border rounded px-2 py-1"
+                                    value={f.cancelWindowHours}
+                                    onChange={(e) => setF({ ...f, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
 
-                    <label className="flex flex-col">
-                        <span>Start of week (0=Sun)</span>
-                        <input
-                            type="number"
-                            min={0}
-                            max={6}
-                            className="border rounded px-2 py-1"
-                            value={f.startOfWeek}
-                            onChange={(e) => setF({ ...f, startOfWeek: Math.min(6, Math.max(0, Number(e.target.value || 0))) })}
-                            disabled={!canEdit}
-                        />
-                    </label>
+                            {/* Provider cancel policy */}
+                            <label className="flex flex-col">
+                                <span>Provider cancel policy</span>
+                                <select
+                                    className="border rounded px-2 py-1"
+                                    value={f.providerCancelPolicy}
+                                    onChange={(e) => setF({ ...f, providerCancelPolicy: e.target.value as ProviderCancelPolicy })}
+                                    disabled={!canEdit}
+                                >
+                                    <option value="AnyTime">AnyTime (default; friendliest)</option>
+                                    <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
+                                    <option value="None">None (managers only)</option>
+                                </select>
+                            </label>
+                        </div>
+                    </section>
 
-                    <label className="flex flex-col">
-                        <span>Default view</span>
-                        <select
-                            className="border rounded px-2 py-1"
-                            value={f.defaultView}
-                            onChange={(e) => setF({ ...f, defaultView: e.target.value as DefaultCalendarView })}
-                            disabled={!canEdit}
+                    {/* Calendar display */}
+                    <section className="rounded-xl border p-4 space-y-3 bg-white">
+                        <div className="font-medium">Calendar Display</div>
+                        <div className="grid md:grid-cols-3 gap-3 text-sm">
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.showWeekends}
+                                    onChange={(e) => setF({ ...f, showWeekends: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Show weekends</span>
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Start of week (0=Sun)</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={6}
+                                    className="border rounded px-2 py-1"
+                                    value={f.startOfWeek}
+                                    onChange={(e) => setF({ ...f, startOfWeek: Math.min(6, Math.max(0, Number(e.target.value || 0))) })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Default view</span>
+                                <select
+                                    className="border rounded px-2 py-1"
+                                    value={f.defaultView}
+                                    onChange={(e) => setF({ ...f, defaultView: e.target.value as DefaultCalendarView })}
+                                    disabled={!canEdit}
+                                >
+                                    <option>Day</option>
+                                    <option>Week</option>
+                                    <option>Month</option>
+                                    <option>Resources</option>
+                                </select>
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Business start (local)</span>
+                                <input
+                                    type="time"
+                                    className="border rounded px-2 py-1"
+                                    value={hhmm(f.businessHoursStartLocal)}
+                                    onChange={(e) => setF({ ...f, businessHoursStartLocal: `${e.target.value}:00` })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Business end (local)</span>
+                                <input
+                                    type="time"
+                                    className={`border rounded px-2 py-1 ${businessHoursInvalid ? "border-red-500" : ""}`}
+                                    value={hhmm(f.businessHoursEndLocal)}
+                                    onChange={(e) => setF({ ...f, businessHoursEndLocal: `${e.target.value}:00` })}
+                                    disabled={!canEdit}
+                                />
+                                {businessHoursInvalid && <span className="text-xs text-red-600 mt-1">End must be after start.</span>}
+                            </label>
+                        </div>
+                    </section>
+
+                    {/* Availability */}
+                    <section className="rounded-xl border p-4 space-y-3 bg-white">
+                        <div className="font-medium">Availability</div>
+                        <div className="grid md:grid-cols-3 gap-3 text-sm">
+                            <label className="flex flex-col">
+                                <span>Shading mode</span>
+                                <select
+                                    className="border rounded px-2 py-1"
+                                    value={f.shadingMode}
+                                    onChange={(e) => setF({ ...f, shadingMode: e.target.value as any })}
+                                    disabled={!canEdit}
+                                >
+                                    <option value="None">None</option>
+                                    <option value="OrgBusinessHours">OrgBusinessHours</option>
+                                    <option value="ProviderAvailability">ProviderAvailability</option>
+                                </select>
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Enforcement</span>
+                                <select
+                                    className="border rounded px-2 py-1"
+                                    value={f.availabilityEnforcement}
+                                    onChange={(e) => setF({ ...f, availabilityEnforcement: e.target.value as any })}
+                                    disabled={!canEdit}
+                                >
+                                    <option>None</option>
+                                    <option>Warn</option>
+                                    <option>BlockProvidersWarnManagers</option>
+                                    <option>BlockAllRequireOverride</option>
+                                </select>
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.requireConfirmOnOverrides}
+                                    onChange={(e) => setF({ ...f, requireConfirmOnOverrides: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Require confirm on overrides</span>
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.availabilityPublic}
+                                    onChange={(e) => setF({ ...f, availabilityPublic: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Availability visible to all users</span>
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.providersCanEditOwnAvailability}
+                                    onChange={(e) => setF({ ...f, providersCanEditOwnAvailability: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Providers can edit their own availability</span>
+                            </label>
+                        </div>
+                    </section>
+
+                    {/* Locale / Notifications */}
+                    <section className="rounded-xl border p-4 space-y-3 bg-white">
+                        <div className="font-medium">Locale & Notifications</div>
+                        <div className="grid md:grid-cols-3 gap-3 text-sm">
+                            <label className="flex flex-col">
+                                <span>Time zone (IANA)</span>
+                                <input
+                                    className="border rounded px-2 py-1"
+                                    value={f.timeZoneId}
+                                    onChange={(e) => setF({ ...f, timeZoneId: e.target.value })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Locale</span>
+                                <input
+                                    className="border rounded px-2 py-1"
+                                    value={f.locale}
+                                    onChange={(e) => setF({ ...f, locale: e.target.value })}
+                                    disabled={!canEdit}
+                                />
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.emailEnabled}
+                                    onChange={(e) => setF({ ...f, emailEnabled: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Email enabled</span>
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.smsEnabled}
+                                    onChange={(e) => setF({ ...f, smsEnabled: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>SMS enabled</span>
+                            </label>
+
+                            <label className="flex items-center gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={f.sendBookingConfirmation}
+                                    onChange={(e) => setF({ ...f, sendBookingConfirmation: e.target.checked })}
+                                    disabled={!canEdit}
+                                />
+                                <span>Send booking confirmations</span>
+                            </label>
+
+                            <label className="flex flex-col">
+                                <span>Reminder (hours before)</span>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    className="border rounded px-2 py-1"
+                                    value={f.reminderHoursBefore ?? ""}
+                                    onChange={(e) =>
+                                        setF({
+                                            ...f,
+                                            reminderHoursBefore:
+                                                e.target.value === "" ? null : Math.max(0, Number(e.target.value || 0)),
+                                        })
+                                    }
+                                    disabled={!canEdit}
+                                />
+                            </label>
+                        </div>
+                    </section>
+
+                    <div className="flex justify-end">
+                        <button
+                            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+                            onClick={save}
+                            disabled={!canEdit || saving}
                         >
-                            <option>Day</option>
-                            <option>Week</option>
-                            <option>Month</option>
-                            <option>Resources</option>
-                        </select>
-                    </label>
+                            {saving ? "Saving…" : "Save Settings"}
+                        </button>
+                    </div>
+                </>
+            )}
 
-                    <label className="flex flex-col">
-                        <span>Business start (local)</span>
-                        <input
-                            type="time"
-                            className="border rounded px-2 py-1"
-                            value={hhmm(f.businessHoursStartLocal)}
-                            onChange={(e) => setF({ ...f, businessHoursStartLocal: `${e.target.value}:00` })}
-                            disabled={!canEdit}
-                        />
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Business end (local)</span>
-                        <input
-                            type="time"
-                            className={`border rounded px-2 py-1 ${businessHoursInvalid ? "border-red-500" : ""}`}
-                            value={hhmm(f.businessHoursEndLocal)}
-                            onChange={(e) => setF({ ...f, businessHoursEndLocal: `${e.target.value}:00` })}
-                            disabled={!canEdit}
-                        />
-                        {businessHoursInvalid && (
-                            <span className="text-xs text-red-600 mt-1">End must be after start.</span>
-                        )}
-                    </label>
+            {activeTab === "access" && (
+                <div className="space-y-6">
+                    <ProviderAccessManager />
                 </div>
-            </section>
-
-            {/* Availability */}
-            <section className="rounded-xl border p-4 space-y-3 bg-white">
-                <div className="font-medium">Availability</div>
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
-                    <label className="flex flex-col">
-                        <span>Shading mode</span>
-                        <select
-                            className="border rounded px-2 py-1"
-                            value={f.shadingMode}
-                            onChange={(e) => setF({ ...f, shadingMode: e.target.value as any })}
-                            disabled={!canEdit}
-                        >
-                            <option value="None">None</option>
-                            <option value="OrgBusinessHours">OrgBusinessHours</option>
-                            <option value="ProviderAvailability">ProviderAvailability</option>
-                        </select>
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Enforcement</span>
-                        <select
-                            className="border rounded px-2 py-1"
-                            value={f.availabilityEnforcement}
-                            onChange={(e) => setF({ ...f, availabilityEnforcement: e.target.value as any })}
-                            disabled={!canEdit}
-                        >
-                            <option>None</option>
-                            <option>Warn</option>
-                            <option>BlockProvidersWarnManagers</option>
-                            <option>BlockAllRequireOverride</option>
-                        </select>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.requireConfirmOnOverrides}
-                            onChange={(e) => setF({ ...f, requireConfirmOnOverrides: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Require confirm on overrides</span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.availabilityPublic}
-                            onChange={(e) => setF({ ...f, availabilityPublic: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Availability visible to all users</span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.providersCanEditOwnAvailability}
-                            onChange={(e) => setF({ ...f, providersCanEditOwnAvailability: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Providers can edit their own availability</span>
-                    </label>
-                </div>
-            </section>
-
-            {/* Locale / Notifications */}
-            <section className="rounded-xl border p-4 space-y-3 bg-white">
-                <div className="font-medium">Locale & Notifications</div>
-                <div className="grid md:grid-cols-3 gap-3 text-sm">
-                    <label className="flex flex-col">
-                        <span>Time zone (IANA)</span>
-                        <input
-                            className="border rounded px-2 py-1"
-                            value={f.timeZoneId}
-                            onChange={(e) => setF({ ...f, timeZoneId: e.target.value })}
-                            disabled={!canEdit}
-                        />
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Locale</span>
-                        <input
-                            className="border rounded px-2 py-1"
-                            value={f.locale}
-                            onChange={(e) => setF({ ...f, locale: e.target.value })}
-                            disabled={!canEdit}
-                        />
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.emailEnabled}
-                            onChange={(e) => setF({ ...f, emailEnabled: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Email enabled</span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.smsEnabled}
-                            onChange={(e) => setF({ ...f, smsEnabled: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>SMS enabled</span>
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                        <input
-                            type="checkbox"
-                            checked={f.sendBookingConfirmation}
-                            onChange={(e) => setF({ ...f, sendBookingConfirmation: e.target.checked })}
-                            disabled={!canEdit}
-                        />
-                        <span>Send booking confirmations</span>
-                    </label>
-
-                    <label className="flex flex-col">
-                        <span>Reminder (hours before)</span>
-                        <input
-                            type="number"
-                            min={0}
-                            className="border rounded px-2 py-1"
-                            value={f.reminderHoursBefore ?? ""}
-                            onChange={(e) =>
-                                setF({
-                                    ...f,
-                                    reminderHoursBefore: e.target.value === "" ? null : Math.max(0, Number(e.target.value || 0)),
-                                })
-                            }
-                            disabled={!canEdit}
-                        />
-                    </label>
-                </div>
-            </section>
-
-            <div className="flex justify-end">
-                <button
-                    className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-                    onClick={save}
-                    disabled={!canEdit || saving}
-                >
-                    {saving ? "Saving…" : "Save Settings"}
-                </button>
-            </div>
+            )}
         </div>
     );
 }

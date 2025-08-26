@@ -1,6 +1,8 @@
 ﻿using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, ProviderAvailability
 using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization, OrganizationSettings
+using BetterSchedule.Server.Models.Access;
+using BetterSchedule.Server.Models.Business;        // Packages, PackageAssignments
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +23,17 @@ namespace BetterSchedule.Server.Database
         public DbSet<Organization> Organizations { get; set; } = default!;
         public DbSet<ClientOrganization> ClientOrganizations { get; set; } = default!;
         public DbSet<OrganizationSettings> OrganizationSettings { get; set; } = default!;
+
+        // Access control sets
+        public DbSet<ProviderResourceAccess> ProviderResourceAccesses { get; set; } = default!;
+        public DbSet<ProviderAppointmentTypeAccess> ProviderAppointmentTypeAccesses { get; set; } = default!;
+        public DbSet<AppointmentTypeResourceAccess> AppointmentTypeResourceAccesses { get; set; } = default!;
+
+        // Packages
+        public DbSet<Package> Packages { get; set; } = default!;
+        public DbSet<PackageAssignment> PackageAssignments { get; set; } = default!;
+        public DbSet<PackageRedemption> PackageRedemptions { get; set; } = default!;
+
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -108,6 +121,13 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey(r => r.ServiceProviderId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            // NEW: Reservation → PackageAssignment (nullable FK; restrict)
+            builder.Entity<Reservation>()
+                .HasOne<PackageAssignment>()
+                .WithMany()
+                .HasForeignKey(r => r.PackageAssignmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             builder.Entity<ReservationParticipant>()
                 .HasOne(rp => rp.Reservation)
                 .WithMany(r => r.Participants)
@@ -193,6 +213,10 @@ namespace BetterSchedule.Server.Database
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });
 
+            // Helpful for joins/filter on package usage
+            builder.Entity<Reservation>()
+                .HasIndex(r => new { r.OrganizationId, r.PackageAssignmentId });
+
             builder.Entity<AppointmentType>()
                 .HasIndex(a => new { a.OrganizationId, a.CreatedByUserId });
 
@@ -216,6 +240,149 @@ namespace BetterSchedule.Server.Database
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.EffectiveTo)
                 .HasColumnType("date");
+
+            // ---------------------------
+            // Access control entities
+            // ---------------------------
+
+            builder.Entity<ProviderResourceAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.UserId });
+                e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Resource)
+                    .WithMany()
+                    .HasForeignKey(x => x.ResourceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<ProviderAppointmentTypeAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.UserId });
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.AppointmentTypeId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.AppointmentType)
+                    .WithMany()
+                    .HasForeignKey(x => x.AppointmentTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            builder.Entity<AppointmentTypeResourceAccess>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
+                e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                e.HasOne(x => x.AppointmentType)
+                    .WithMany()
+                    .HasForeignKey(x => x.AppointmentTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne(x => x.Resource)
+                    .WithMany()
+                    .HasForeignKey(x => x.ResourceId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // ---------------------------
+            // Packages
+            // ---------------------------
+
+            builder.Entity<Package>(e =>
+            {
+                e.HasKey(x => x.Id);
+
+                e.HasOne<Organization>()
+                    .WithMany()
+                    .HasForeignKey(x => x.OrganizationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<AppointmentType>()
+                    .WithMany()
+                    .HasForeignKey(x => x.AppointmentTypeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Optional provider lock FK
+                e.HasOne<ApplicationUser>()
+                    .WithMany()
+                    .HasForeignKey(x => x.ProviderId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Name uniqueness within org
+                e.HasIndex(x => new { x.OrganizationId, x.Name }).IsUnique();
+
+                // Helpful filters
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
+                e.HasIndex(x => new { x.OrganizationId, x.IsActive });
+            });
+
+            builder.Entity<PackageAssignment>(e =>
+            {
+                e.HasKey(x => x.Id);
+
+                e.HasOne<Organization>()
+                    .WithMany()
+                    .HasForeignKey(x => x.OrganizationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<ApplicationUser>() // client
+                    .WithMany()
+                    .HasForeignKey(x => x.ClientId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<Package>()
+                    .WithMany()
+                    .HasForeignKey(x => x.PackageId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Common query patterns used by Eligible endpoint
+                e.HasIndex(x => new { x.OrganizationId, x.ClientId });
+                e.HasIndex(x => new { x.OrganizationId, x.ClientId, x.AppointmentTypeId, x.IsDeleted });
+                e.HasIndex(x => x.ExpiresAtUtc);
+            });
+
+            builder.Entity<PackageRedemption>(e =>
+            {
+                e.HasKey(x => x.Id);
+
+                e.HasOne<Organization>()
+                    .WithMany()
+                    .HasForeignKey(x => x.OrganizationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<PackageAssignment>()
+                    .WithMany()
+                    .HasForeignKey(x => x.PackageAssignmentId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                e.HasOne<Reservation>()
+                    .WithMany()
+                    .HasForeignKey(x => x.ReservationId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Prevent double-consumption on the same reservation
+                e.HasIndex(x => new { x.OrganizationId, x.ReservationId }).IsUnique();
+                // Fast lookups by assignment for reporting
+                e.HasIndex(x => x.PackageAssignmentId);
+
+                // Default to '1' in DB
+                e.Property(x => x.Uses).HasDefaultValue(1);
+            });
         }
     }
 }

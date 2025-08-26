@@ -27,6 +27,7 @@ import type {
 } from "@/types";
 
 import { useAuth } from "@/components/auth/AuthContext";
+import type { ReservationDto } from "@/api/reservation-api";
 
 type ProviderLite = { id: string; name: string };
 
@@ -55,6 +56,7 @@ const Calendar = () => {
     const [events, setEvents] = useState<UiEvent[]>([]);
     const [resources, setResources] = useState<CalendarResource[]>([]);
     const [providers, setProviders] = useState<ProviderLite[]>([]);
+    const [showCanceled, setShowCanceled] = useState<boolean>(true); // toggle to hide/show canceled reservations
 
     // Availability (keyed by provider)
     const [availabilityByProvider, setAvailabilityByProvider] = useState<Map<string, ProviderAvailabilityDto[]>>(new Map());
@@ -75,6 +77,13 @@ const Calendar = () => {
             return "local time";
         }
     }, []);
+
+    // --- Helpers ---
+    const refreshVisibleEvents = async () => {
+        const { start, end } = getVisibleRange(startDate, view);
+        const all = await fetchAllEvents(start, end);
+        setEvents(all);
+    };
 
     // Utility: does a range fall within provider availability?
     const isRangeAvailableFor = (providerId: string | undefined, start: DayPilot.Date, end: DayPilot.Date) => {
@@ -113,6 +122,30 @@ const Calendar = () => {
             if (isProvider && !isManager) {
                 args.cell.disabled = true;
             }
+        }
+    };
+
+    // Reservation status → color + class
+    const colorByStatus = (status?: string) => {
+        // defaults to Booked blue
+        switch (status) {
+            case "Completed": return { backColor: "#10b981", cssClass: "res-status-completed" }; // emerald
+            case "Canceled": return { backColor: "#9ca3af", cssClass: "res-status-canceled" };  // gray
+            case "NoShow": return { backColor: "#f59e0b", cssClass: "res-status-noshow" };    // amber
+            default: return { backColor: "#3b82f6", cssClass: "res-status-booked" };    // blue
+        }
+    };
+
+    // Style events before render (applied to Day/Week/Scheduler/Month)
+    const beforeEventRender = (args: any) => {
+        const e = args.data;
+        if (e?.type === "reservation" && e?.reservation) {
+            const res: ReservationDto = e.reservation;
+            const { backColor, cssClass } = colorByStatus(res.status);
+            args.data.backColor = backColor;
+            // Provide a tooltip so status is visible on hover even if text is something else
+            args.data.toolTip = `Reservation • ${res.status}`;
+            args.data.cssClass = [e.cssClass, cssClass].filter(Boolean).join(" ");
         }
     };
 
@@ -359,10 +392,7 @@ const Calendar = () => {
             }
 
             setShowModal(false);
-
-            const { start: fetchStart, end: fetchEnd } = getVisibleRange(new DayPilot.Date(modalValues.startDate), view);
-            const allEvents = await fetchAllEvents(fetchStart, fetchEnd);
-            setEvents(allEvents);
+            await refreshVisibleEvents();
         } catch (err: any) {
             // Inline message for known server codes / wrapped errors
             const code = err?.response?.data?.code as string | undefined;
@@ -404,10 +434,7 @@ const Calendar = () => {
             await deleteBlockedTime(modalValues.id);
         }
         setShowModal(false);
-
-        const { start: fetchStart, end: fetchEnd } = getVisibleRange(new DayPilot.Date(modalValues.startDate), view);
-        const allEvents = await fetchAllEvents(fetchStart, fetchEnd);
-        setEvents(allEvents);
+        await refreshVisibleEvents();
     };
 
     // Initial Load + whenever view/start change
@@ -478,6 +505,12 @@ const Calendar = () => {
         };
     }, [overlayProviderId]);
 
+    // Filtered events for display (toggle canceled)
+    const visibleEvents = useMemo(() => {
+        if (showCanceled) return events;
+        return events.filter((e) => e.type !== "reservation" || e?.reservation?.status !== "Canceled");
+    }, [events, showCanceled]);
+
     // Read-only modal logic (disables save/delete)
     const readOnly =
         (modalType === "reservation" && !canManageReservations) ||
@@ -498,6 +531,8 @@ const Calendar = () => {
                 error={modalFormError}
                 resources={resources}
                 providers={providers}
+                // NEW: let the modal ask us to refetch (used by quick status actions)
+                onRefreshRequested={refreshVisibleEvents}
             />
 
             <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
@@ -508,7 +543,7 @@ const Calendar = () => {
                         showMonths={3}
                         skipMonths={3}
                         onTimeRangeSelected={(args) => setStartDate(args.day)}
-                        events={events}
+                        events={visibleEvents}
                     />
                 </div>
                 <div className="calendar-main flex flex-col flex-1 min-w-0">
@@ -546,6 +581,36 @@ const Calendar = () => {
                             </select>
                         </div>
 
+                        {/* Legend + show/hide canceled */}
+                        <div className="ml-4 flex items-center gap-3 text-xs">
+                            <div className="flex items-center gap-1">
+                                <span className="inline-block w-3 h-3 rounded" style={{ background: "#3b82f6" }} />
+                                <span>Booked</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="inline-block w-3 h-3 rounded" style={{ background: "#10b981" }} />
+                                <span>Completed</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="inline-block w-3 h-3 rounded" style={{ background: "#f59e0b" }} />
+                                <span>No-Show</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <span className="inline-block w-3 h-3 rounded" style={{ background: "#9ca3af" }} />
+                                <span>Canceled</span>
+                            </div>
+
+                            <label className="ml-2 inline-flex items-center gap-1">
+                                <input
+                                    type="checkbox"
+                                    className="align-middle"
+                                    checked={showCanceled}
+                                    onChange={(e) => setShowCanceled(e.target.checked)}
+                                />
+                                <span>Show canceled</span>
+                            </label>
+                        </div>
+
                         <span className="ml-auto text-xs text-gray-600">All times in {tzLabel}</span>
                     </div>
 
@@ -555,11 +620,12 @@ const Calendar = () => {
                                 viewType="Day"
                                 theme="betterschedule"
                                 startDate={startDate}
-                                events={events}
+                                events={visibleEvents}
                                 durationBarVisible={false}
                                 onTimeRangeSelected={onTimeRangeSelected}
                                 onEventClick={onEventClick}
                                 onBeforeCellRender={beforeCellRender}
+                                onBeforeEventRender={beforeEventRender}
                                 headerHeight={40}
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
@@ -577,11 +643,12 @@ const Calendar = () => {
                                 viewType="Week"
                                 theme="betterschedule"
                                 startDate={startDate}
-                                events={events}
+                                events={visibleEvents}
                                 durationBarVisible={false}
                                 onTimeRangeSelected={onTimeRangeSelected}
                                 onEventClick={onEventClick}
                                 onBeforeCellRender={beforeCellRender}
+                                onBeforeEventRender={beforeEventRender}
                                 headerHeight={40}
                                 onBeforeHeaderRender={(args) => {
                                     const { weekday, short } = formatWeekHeader(args.header.start);
@@ -599,10 +666,11 @@ const Calendar = () => {
                                 <DayPilotMonth
                                     startDate={startDate}
                                     theme="monthlybetterschedule"
-                                    events={events}
+                                    events={visibleEvents}
                                     eventBarVisible={false}
                                     onTimeRangeSelected={onTimeRangeSelected}
                                     onEventClick={onEventClick}
+                                    onBeforeEventRender={beforeEventRender}
                                 />
                             </div>
                         )}
@@ -617,8 +685,9 @@ const Calendar = () => {
                                     { groupBy: "Hour" },
                                 ]}
                                 resources={resources}
-                                events={events}
+                                events={visibleEvents}
                                 onEventClick={onEventClick}
+                                onBeforeEventRender={beforeEventRender}
                                 cellWidth={50}
                                 headerHeight={30}
                                 rowHeaderWidth={150}

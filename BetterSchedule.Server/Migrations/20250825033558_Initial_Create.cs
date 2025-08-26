@@ -134,6 +134,7 @@ namespace BetterSchedule.Server.Migrations
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     MinLeadMinutes = table.Column<int>(type: "int", nullable: false),
                     CancelWindowHours = table.Column<int>(type: "int", nullable: false),
+                    ProviderCancelPolicy = table.Column<int>(type: "int", nullable: false),
                     ShowWeekends = table.Column<bool>(type: "bit", nullable: false),
                     StartOfWeek = table.Column<int>(type: "int", nullable: false),
                     BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
@@ -144,6 +145,11 @@ namespace BetterSchedule.Server.Migrations
                     RequireConfirmOnOverrides = table.Column<bool>(type: "bit", nullable: false),
                     AvailabilityPublic = table.Column<bool>(type: "bit", nullable: false),
                     ProvidersCanEditOwnAvailability = table.Column<bool>(type: "bit", nullable: false),
+                    LimitProvidersToAssignedResources = table.Column<bool>(type: "bit", nullable: false),
+                    FailOpenWhenNoResourceAssignments = table.Column<bool>(type: "bit", nullable: false),
+                    LimitProvidersToAssignedAppointmentTypes = table.Column<bool>(type: "bit", nullable: false),
+                    FailOpenWhenNoTypeAssignments = table.Column<bool>(type: "bit", nullable: false),
+                    EnforceAppointmentTypeResourceRules = table.Column<bool>(type: "bit", nullable: false),
                     TimeZoneId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     Locale = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     EmailEnabled = table.Column<bool>(type: "bit", nullable: false),
@@ -396,6 +402,178 @@ namespace BetterSchedule.Server.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "ProviderResourceAccesses",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    ResourceId = table.Column<int>(type: "int", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProviderResourceAccesses", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProviderResourceAccesses_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ProviderResourceAccesses_CalendarResources_ResourceId",
+                        column: x => x.ResourceId,
+                        principalTable: "CalendarResources",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AppointmentTypeResourceAccesses",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    ResourceId = table.Column<int>(type: "int", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AppointmentTypeResourceAccesses", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AppointmentTypeResourceAccesses_AppointmentTypes_AppointmentTypeId",
+                        column: x => x.AppointmentTypeId,
+                        principalTable: "AppointmentTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_AppointmentTypeResourceAccesses_CalendarResources_ResourceId",
+                        column: x => x.ResourceId,
+                        principalTable: "CalendarResources",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "Packages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    TotalUses = table.Column<int>(type: "int", nullable: false),
+                    ProviderLocked = table.Column<bool>(type: "bit", nullable: false),
+                    ProviderId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    ExpiresAfterDays = table.Column<int>(type: "int", nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Packages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Packages_AppointmentTypes_AppointmentTypeId",
+                        column: x => x.AppointmentTypeId,
+                        principalTable: "AppointmentTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Packages_AspNetUsers_ProviderId",
+                        column: x => x.ProviderId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Packages_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProviderAppointmentTypeAccesses",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    UserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProviderAppointmentTypeAccesses", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProviderAppointmentTypeAccesses_AppointmentTypes_AppointmentTypeId",
+                        column: x => x.AppointmentTypeId,
+                        principalTable: "AppointmentTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_ProviderAppointmentTypeAccesses_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PackageAssignments",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    ClientId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    PackageId = table.Column<int>(type: "int", nullable: false),
+                    PackageName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
+                    TotalUses = table.Column<int>(type: "int", nullable: false),
+                    RemainingUses = table.Column<int>(type: "int", nullable: false),
+                    ProviderLocked = table.Column<bool>(type: "bit", nullable: false),
+                    ProviderId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    GrantedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ExpiresAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PackageAssignments", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_AspNetUsers_ClientId",
+                        column: x => x.ClientId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageAssignments_Packages_PackageId",
+                        column: x => x.PackageId,
+                        principalTable: "Packages",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Reservations",
                 columns: table => new
                 {
@@ -444,6 +622,47 @@ namespace BetterSchedule.Server.Migrations
                         principalTable: "Organizations",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_Reservations_PackageAssignments_PackageAssignmentId",
+                        column: x => x.PackageAssignmentId,
+                        principalTable: "PackageAssignments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "PackageRedemptions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    PackageAssignmentId = table.Column<int>(type: "int", nullable: false),
+                    ReservationId = table.Column<int>(type: "int", nullable: false),
+                    Uses = table.Column<int>(type: "int", nullable: false, defaultValue: 1),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_PackageRedemptions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_Organizations_OrganizationId",
+                        column: x => x.OrganizationId,
+                        principalTable: "Organizations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_PackageAssignments_PackageAssignmentId",
+                        column: x => x.PackageAssignmentId,
+                        principalTable: "PackageAssignments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_PackageRedemptions_Reservations_ReservationId",
+                        column: x => x.ReservationId,
+                        principalTable: "Reservations",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -483,6 +702,32 @@ namespace BetterSchedule.Server.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypeResourceAccesses_AppointmentTypeId",
+                table: "AppointmentTypeResourceAccesses",
+                column: "AppointmentTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypeResourceAccesses_OrganizationId_AppointmentTypeId",
+                table: "AppointmentTypeResourceAccesses",
+                columns: new[] { "OrganizationId", "AppointmentTypeId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypeResourceAccesses_OrganizationId_AppointmentTypeId_ResourceId_IsDeleted",
+                table: "AppointmentTypeResourceAccesses",
+                columns: new[] { "OrganizationId", "AppointmentTypeId", "ResourceId", "IsDeleted" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypeResourceAccesses_OrganizationId_ResourceId",
+                table: "AppointmentTypeResourceAccesses",
+                columns: new[] { "OrganizationId", "ResourceId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AppointmentTypeResourceAccesses_ResourceId",
+                table: "AppointmentTypeResourceAccesses",
+                column: "ResourceId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AppointmentTypes_AssignedResourceId",
@@ -595,6 +840,99 @@ namespace BetterSchedule.Server.Migrations
                 column: "OrganizationId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_ClientId",
+                table: "PackageAssignments",
+                column: "ClientId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_ExpiresAtUtc",
+                table: "PackageAssignments",
+                column: "ExpiresAtUtc");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_OrganizationId_ClientId",
+                table: "PackageAssignments",
+                columns: new[] { "OrganizationId", "ClientId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_OrganizationId_ClientId_AppointmentTypeId_IsDeleted",
+                table: "PackageAssignments",
+                columns: new[] { "OrganizationId", "ClientId", "AppointmentTypeId", "IsDeleted" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageAssignments_PackageId",
+                table: "PackageAssignments",
+                column: "PackageId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_OrganizationId_ReservationId",
+                table: "PackageRedemptions",
+                columns: new[] { "OrganizationId", "ReservationId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_PackageAssignmentId",
+                table: "PackageRedemptions",
+                column: "PackageAssignmentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PackageRedemptions_ReservationId",
+                table: "PackageRedemptions",
+                column: "ReservationId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_AppointmentTypeId",
+                table: "Packages",
+                column: "AppointmentTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_AppointmentTypeId",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "AppointmentTypeId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_IsActive",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "IsActive" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_OrganizationId_Name",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Packages_ProviderId",
+                table: "Packages",
+                column: "ProviderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAppointmentTypeAccesses_AppointmentTypeId",
+                table: "ProviderAppointmentTypeAccesses",
+                column: "AppointmentTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAppointmentTypeAccesses_OrganizationId_AppointmentTypeId",
+                table: "ProviderAppointmentTypeAccesses",
+                columns: new[] { "OrganizationId", "AppointmentTypeId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAppointmentTypeAccesses_OrganizationId_UserId",
+                table: "ProviderAppointmentTypeAccesses",
+                columns: new[] { "OrganizationId", "UserId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAppointmentTypeAccesses_OrganizationId_UserId_AppointmentTypeId_IsDeleted",
+                table: "ProviderAppointmentTypeAccesses",
+                columns: new[] { "OrganizationId", "UserId", "AppointmentTypeId", "IsDeleted" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderAppointmentTypeAccesses_UserId",
+                table: "ProviderAppointmentTypeAccesses",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_ProviderAvailabilities_OrganizationId_ServiceProviderId_DayOfWeek",
                 table: "ProviderAvailabilities",
                 columns: new[] { "OrganizationId", "ServiceProviderId", "DayOfWeek" });
@@ -610,6 +948,32 @@ namespace BetterSchedule.Server.Migrations
                 name: "IX_ProviderAvailabilities_ServiceProviderId",
                 table: "ProviderAvailabilities",
                 column: "ServiceProviderId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderResourceAccesses_OrganizationId_ResourceId",
+                table: "ProviderResourceAccesses",
+                columns: new[] { "OrganizationId", "ResourceId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderResourceAccesses_OrganizationId_UserId",
+                table: "ProviderResourceAccesses",
+                columns: new[] { "OrganizationId", "UserId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderResourceAccesses_OrganizationId_UserId_ResourceId_IsDeleted",
+                table: "ProviderResourceAccesses",
+                columns: new[] { "OrganizationId", "UserId", "ResourceId", "IsDeleted" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderResourceAccesses_ResourceId",
+                table: "ProviderResourceAccesses",
+                column: "ResourceId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProviderResourceAccesses_UserId",
+                table: "ProviderResourceAccesses",
+                column: "UserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReservationParticipants_OrganizationId",
@@ -639,9 +1003,19 @@ namespace BetterSchedule.Server.Migrations
                 column: "ClientId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Reservations_OrganizationId_PackageAssignmentId",
+                table: "Reservations",
+                columns: new[] { "OrganizationId", "PackageAssignmentId" });
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Reservations_OrganizationId_ServiceProviderId_StartTime_EndTime",
                 table: "Reservations",
                 columns: new[] { "OrganizationId", "ServiceProviderId", "StartTime", "EndTime" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reservations_PackageAssignmentId",
+                table: "Reservations",
+                column: "PackageAssignmentId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reservations_ServiceProviderId",
@@ -652,6 +1026,9 @@ namespace BetterSchedule.Server.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "AppointmentTypeResourceAccesses");
+
             migrationBuilder.DropTable(
                 name: "AspNetRoleClaims",
                 schema: "identity");
@@ -682,7 +1059,16 @@ namespace BetterSchedule.Server.Migrations
                 name: "OrganizationSettings");
 
             migrationBuilder.DropTable(
+                name: "PackageRedemptions");
+
+            migrationBuilder.DropTable(
+                name: "ProviderAppointmentTypeAccesses");
+
+            migrationBuilder.DropTable(
                 name: "ProviderAvailabilities");
+
+            migrationBuilder.DropTable(
+                name: "ProviderResourceAccesses");
 
             migrationBuilder.DropTable(
                 name: "ReservationParticipants");
@@ -693,6 +1079,12 @@ namespace BetterSchedule.Server.Migrations
 
             migrationBuilder.DropTable(
                 name: "Reservations");
+
+            migrationBuilder.DropTable(
+                name: "PackageAssignments");
+
+            migrationBuilder.DropTable(
+                name: "Packages");
 
             migrationBuilder.DropTable(
                 name: "AppointmentTypes");
