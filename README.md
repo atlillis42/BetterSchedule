@@ -67,6 +67,7 @@ Designed for both **web and mobile**, the platform focuses on **clean architectu
 - **Admin & Reporting**: Dashboards for usage, cancellations, upcoming appointments.  
 - **Mobile/PWA**: Offline mode, push notifications.  
 - **Auth Flows**: OAuth providers, password recovery.
+- **PATCH Update**: Move to more robust JSON Patch partial updates in lieu of existing PUT functionality.
 
 ---
 
