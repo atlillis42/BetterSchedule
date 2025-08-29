@@ -10,11 +10,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 {
     /// <summary>
     /// Manage and query client package assignments.
+    /// Responsibilities:
     /// - List eligible assignments for a booking context
     /// - Grant a package to a client
     /// - List assignments by client
-    /// 
-    /// NOTE: Uses lean PackageAssignment model; enriches via join to Package.
+    ///
+    /// Notes:
+    /// - Uses <see cref="PackageAssignment"/> snapshot fields as the source of truth for reads.
+    /// - Existing assignments remain valid even if the underlying Package becomes inactive.
     /// </summary>
     [ApiController]
     [Route("api/package-assignments")]
@@ -27,8 +30,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Lists a client's assignments that are eligible for a given appointment type (and optional provider).
+        /// Uses snapshot fields; does not require current package to be active.
         /// </summary>
         [HttpGet("eligible")]
+        [ProducesResponseType(typeof(IEnumerable<PackageAssignmentDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<PackageAssignmentDto>>> Eligible(
             [FromQuery] string clientId,
             [FromQuery] int appointmentTypeId,
@@ -37,95 +42,99 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         {
             var now = DateTimeOffset.UtcNow;
 
-            var query =
-                from a in _db.PackageAssignments.AsNoTracking()
-                join p in _db.Packages.AsNoTracking() on a.PackageId equals p.Id
-                where a.OrganizationId == OrganizationId
-                      && p.OrganizationId == OrganizationId
-                      && !a.IsDeleted
-                      && p.IsActive
-                      && a.ClientId == clientId
-                      && p.AppointmentTypeId == appointmentTypeId
-                      && (!a.ExpiresAtUtc.HasValue || a.ExpiresAtUtc.Value >= now)
-                      && a.RemainingUses > 0
-                select new { a, p };
+            var q = _db.PackageAssignments.AsNoTracking().Where(a =>
+                a.OrganizationId == OrganizationId &&
+                !a.IsDeleted &&
+                a.ClientId == clientId &&
+                a.AppointmentTypeId == appointmentTypeId &&
+                (a.ExpiresAtUtc == null || a.ExpiresAtUtc.Value >= now) &&
+                a.RemainingUses > 0
+            );
 
             if (!string.IsNullOrWhiteSpace(providerId))
             {
-                query = query.Where(x => !x.p.ProviderLocked || (x.p.ProviderLocked && x.p.ProviderId == providerId));
+                q = q.Where(a => !a.ProviderLocked || a.ProviderId == providerId);
             }
 
-            var list = await query
-                .OrderByDescending(x => x.a.RemainingUses)
-                .ThenBy(x => x.a.ExpiresAtUtc ?? DateTimeOffset.MaxValue)
-                .Select(x => new PackageAssignmentDto
+            var list = await q
+                .OrderByDescending(a => a.RemainingUses)
+                .ThenBy(a => a.ExpiresAtUtc ?? DateTimeOffset.MaxValue)
+                .Select(a => new PackageAssignmentDto
                 {
-                    Id = x.a.Id,
-                    OrganizationId = x.a.OrganizationId,
-                    ClientId = x.a.ClientId,
-                    PackageId = x.a.PackageId,
-                    RemainingUses = x.a.RemainingUses,
-                    GrantedAt = x.a.GrantedAt,
-                    ExpiresAtUtc = x.a.ExpiresAtUtc,
-                    IsDeleted = x.a.IsDeleted,
+                    Id = a.Id,
+                    OrganizationId = a.OrganizationId,
+                    ClientId = a.ClientId,
+                    PackageId = a.PackageId,
+                    RemainingUses = a.RemainingUses,
+                    GrantedAt = a.GrantedAt,
+                    ExpiresAtUtc = a.ExpiresAtUtc,
+                    IsDeleted = a.IsDeleted,
 
-                    // enrich from Package
-                    PackageName = x.p.Name,
-                    AppointmentTypeId = x.p.AppointmentTypeId,
-                    TotalUses = x.p.TotalUses,
-                    ProviderLocked = x.p.ProviderLocked,
-                    ProviderId = x.p.ProviderId
+                    // Snapshot fields
+                    PackageName = a.PackageName,
+                    AppointmentTypeId = a.AppointmentTypeId,
+                    TotalUses = a.TotalUses,
+                    ProviderLocked = a.ProviderLocked,
+                    ProviderId = a.ProviderId
                 })
                 .ToListAsync(ct);
 
             return Ok(list);
         }
 
-        /// <summary>Lists all assignments for a given client (enriched with package details).</summary>
+        /// <summary>
+        /// Lists all non-deleted assignments for a given client (with snapshot details).
+        /// </summary>
         [HttpGet("by-client/{clientId}")]
+        [ProducesResponseType(typeof(IEnumerable<PackageAssignmentDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<PackageAssignmentDto>>> ByClient([FromRoute] string clientId, CancellationToken ct)
         {
-            var list = await (
-                    from a in _db.PackageAssignments.AsNoTracking()
-                    join p in _db.Packages.AsNoTracking() on a.PackageId equals p.Id
-                    where a.OrganizationId == OrganizationId
-                          && p.OrganizationId == OrganizationId
-                          && !a.IsDeleted
-                          && a.ClientId == clientId
-                    orderby a.GrantedAt descending
-                    select new PackageAssignmentDto
-                    {
-                        Id = a.Id,
-                        OrganizationId = a.OrganizationId,
-                        ClientId = a.ClientId,
-                        PackageId = a.PackageId,
-                        RemainingUses = a.RemainingUses,
-                        GrantedAt = a.GrantedAt,
-                        ExpiresAtUtc = a.ExpiresAtUtc,
-                        IsDeleted = a.IsDeleted,
+            var list = await _db.PackageAssignments.AsNoTracking()
+                .Where(a => a.OrganizationId == OrganizationId && !a.IsDeleted && a.ClientId == clientId)
+                .OrderByDescending(a => a.GrantedAt)
+                .Select(a => new PackageAssignmentDto
+                {
+                    Id = a.Id,
+                    OrganizationId = a.OrganizationId,
+                    ClientId = a.ClientId,
+                    PackageId = a.PackageId,
+                    RemainingUses = a.RemainingUses,
+                    GrantedAt = a.GrantedAt,
+                    ExpiresAtUtc = a.ExpiresAtUtc,
+                    IsDeleted = a.IsDeleted,
 
-                        PackageName = p.Name,
-                        AppointmentTypeId = p.AppointmentTypeId,
-                        TotalUses = p.TotalUses,
-                        ProviderLocked = p.ProviderLocked,
-                        ProviderId = p.ProviderId
-                    })
+                    // Snapshot fields
+                    PackageName = a.PackageName,
+                    AppointmentTypeId = a.AppointmentTypeId,
+                    TotalUses = a.TotalUses,
+                    ProviderLocked = a.ProviderLocked,
+                    ProviderId = a.ProviderId
+                })
                 .ToListAsync(ct);
 
             return Ok(list);
         }
 
         /// <summary>
-        /// Grants a package to a client (sets RemainingUses from package.TotalUses and computes ExpiresAtUtc using ExpiresAfterDays).
+        /// Grants a package to a client.
+        /// Sets RemainingUses from Package.TotalUses and computes ExpiresAtUtc from Package.ExpiresAfterDays.
+        /// Also snapshots package fields onto the assignment for future-proof reads.
         /// </summary>
         [HttpPost("grant")]
+        [ProducesResponseType(typeof(PackageAssignmentDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PackageAssignmentDto>> Grant([FromBody] GrantPackageDto dto, CancellationToken ct)
         {
+            // Validate client exists in org
+            var clientExists = await _db.Users.AnyAsync(u => u.Id == dto.ClientId && u.OrganizationId == OrganizationId, ct);
+            if (!clientExists) return BadRequest("Client not found in this organization.");
+
             var p = await _db.Packages
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == dto.PackageId && x.OrganizationId == OrganizationId && x.IsActive, ct);
+                .FirstOrDefaultAsync(x => x.Id == dto.PackageId && x.OrganizationId == OrganizationId, ct);
 
             if (p is null) return BadRequest("Package not found.");
+            if (p.TotalUses <= 0) return BadRequest("Package has invalid TotalUses.");
 
             var now = DateTimeOffset.UtcNow;
             DateTimeOffset? expires = null;
@@ -138,7 +147,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 ClientId = dto.ClientId,
                 PackageId = p.Id,
 
+                // Snapshots from Package
+                PackageName = p.Name,
+                AppointmentTypeId = p.AppointmentTypeId,
+                TotalUses = p.TotalUses,
                 RemainingUses = p.TotalUses,
+                ProviderLocked = p.ProviderLocked,
+                ProviderId = p.ProviderLocked ? p.ProviderId : null,
+
                 GrantedAt = now,
                 ExpiresAtUtc = expires,
                 IsDeleted = false
@@ -147,28 +163,23 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _db.PackageAssignments.Add(assignment);
             await _db.SaveChangesAsync(ct);
 
-            var read = await (
-                    from a in _db.PackageAssignments.AsNoTracking()
-                    join pkg in _db.Packages.AsNoTracking() on a.PackageId equals pkg.Id
-                    where a.Id == assignment.Id
-                    select new PackageAssignmentDto
-                    {
-                        Id = a.Id,
-                        OrganizationId = a.OrganizationId,
-                        ClientId = a.ClientId,
-                        PackageId = a.PackageId,
-                        RemainingUses = a.RemainingUses,
-                        GrantedAt = a.GrantedAt,
-                        ExpiresAtUtc = a.ExpiresAtUtc,
-                        IsDeleted = a.IsDeleted,
+            var read = new PackageAssignmentDto
+            {
+                Id = assignment.Id,
+                OrganizationId = assignment.OrganizationId,
+                ClientId = assignment.ClientId,
+                PackageId = assignment.PackageId,
+                RemainingUses = assignment.RemainingUses,
+                GrantedAt = assignment.GrantedAt,
+                ExpiresAtUtc = assignment.ExpiresAtUtc,
+                IsDeleted = assignment.IsDeleted,
 
-                        PackageName = pkg.Name,
-                        AppointmentTypeId = pkg.AppointmentTypeId,
-                        TotalUses = pkg.TotalUses,
-                        ProviderLocked = pkg.ProviderLocked,
-                        ProviderId = pkg.ProviderId
-                    })
-                .FirstAsync(ct);
+                PackageName = assignment.PackageName,
+                AppointmentTypeId = assignment.AppointmentTypeId,
+                TotalUses = assignment.TotalUses,
+                ProviderLocked = assignment.ProviderLocked,
+                ProviderId = assignment.ProviderId
+            };
 
             return CreatedAtAction(nameof(ByClient), new { clientId = dto.ClientId }, read);
         }

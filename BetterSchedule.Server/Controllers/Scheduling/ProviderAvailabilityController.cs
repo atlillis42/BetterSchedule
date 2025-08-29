@@ -12,6 +12,10 @@ using System.Linq.Expressions;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
+    /// <summary>
+    /// APIs for querying and managing provider weekly availability within an organization.
+    /// Enforces org scoping and role-based permissions.
+    /// </summary>
     [ApiController]
     [Route("api/provider-availability")]
     [Authorize]
@@ -19,24 +23,34 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     {
         private readonly ApplicationDbContext _db;
         private readonly IDateTimeProvider _clock;
+
+        /// <summary>
+        /// Initializes a new instance of the controller with the database context and clock.
+        /// </summary>
+        /// <param name="db">The application database context.</param>
+        /// <param name="clock">A time provider for organization-local calculations.</param>
         public ProviderAvailabilityController(ApplicationDbContext db, IDateTimeProvider clock)
         {
             _db = db;
             _clock = clock;
         }
-        
 
-        // GET /api/provider-availability?providerId=abc
+        /// <summary>
+        /// Gets availability rows visible to the current user, optionally filtered by provider.
+        /// </summary>
+        /// <param name="providerId">Optional service provider user ID filter.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Availability rows in the caller's organization.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ProviderAvailabilityDto>>> List(
             [FromQuery] string? providerId,
             CancellationToken ct)
         {
             var query = _db.ProviderAvailabilities
-                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient);
+                .VisibleTo(OrganizationId, UserIdOrThrow, IsManager, IsProvider, IsClient);
 
             if (!string.IsNullOrWhiteSpace(providerId))
-            {                
+            {
                 query = query.Where(a => a.ServiceProviderId == providerId);
             }
 
@@ -50,12 +64,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
-        // GET /api/provider-availability/{id}
+        /// <summary>
+        /// Gets a single availability row by identifier using the same visibility rules as list.
+        /// </summary>
+        /// <param name="id">The availability row identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The availability row if visible; otherwise <see cref="NotFoundResult"/>.</returns>
         [HttpGet("{id:int}")]
         public async Task<ActionResult<ProviderAvailabilityDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
             var dto = await _db.ProviderAvailabilities
-                .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .VisibleTo(OrganizationId, UserIdOrThrow, IsManager, IsProvider, IsClient)
                 .Where(a => a.Id == id)
                 .Select(ToDto())
                 .FirstOrDefaultAsync(ct);
@@ -63,17 +82,22 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return dto is null ? NotFound() : Ok(dto);
         }
 
-        // POST /api/provider-availability/providers/{providerId}/ensure-default
         /// <summary>
-        /// If the provider has no availability, create Mon–Fri using org business hours.
-        /// Uses OrganizationSettings.BusinessHoursStartLocal/EndLocal; falls back to 09:00–17:00.
+        /// Ensures a provider has default Mon–Fri availability using organization business hours.
         /// </summary>
+        /// <remarks>
+        /// Uses <see cref="OrganizationSettings.BusinessHoursStartLocal"/> and
+        /// <see cref="OrganizationSettings.BusinessHoursEndLocal"/> in the organization time zone;
+        /// falls back to 09:00 to 17:00 when not configured.
+        /// </remarks>
+        /// <param name="providerId">The target service provider user ID.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>An object indicating whether rows were created and how many.</returns>
         [HttpPost("providers/{providerId}/ensure-default")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> EnsureDefaultForProvider([FromRoute] string providerId, CancellationToken ct)
         {
-            // Providers may only seed their own defaults (managers can seed any)
-            if (IsProvider && !IsManager && providerId != UserId)
+            if (IsProvider && !IsManager && providerId != UserIdOrThrow)
                 return Forbid();
 
             var hasAny = await _db.ProviderAvailabilities
@@ -111,15 +135,19 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(new { created = true, count });
         }
 
-        // POST /api/provider-availability
+        /// <summary>
+        /// Creates a new availability row for a provider in the organization.
+        /// </summary>
+        /// <param name="dto">The availability details, including provider, day, local times, and effective dates.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created availability row.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ProviderAvailabilityDto>> Create(
             [FromBody] CreateProviderAvailabilityDto dto,
             CancellationToken ct)
         {
-            // Providers may only create for themselves
-            if (IsProvider && !IsManager && dto.ServiceProviderId != UserId)
+            if (IsProvider && !IsManager && dto.ServiceProviderId != UserIdOrThrow)
                 return Forbid();
 
             var (ok, error) = await ValidateAvailabilityAsync(
@@ -153,7 +181,13 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
-        // PUT /api/provider-availability/{id}
+        /// <summary>
+        /// Updates an existing availability row. Managers can edit any row; providers can edit their own.
+        /// </summary>
+        /// <param name="id">The availability row identifier.</param>
+        /// <param name="dto">The partial set of fields to update.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContentResult"/> on success; otherwise an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Update(
@@ -162,15 +196,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             CancellationToken ct)
         {
             var entity = await _db.ProviderAvailabilities
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
+                .EditableBy(OrganizationId, UserIdOrThrow, IsManager, IsProvider)
                 .FirstOrDefaultAsync(a => a.Id == id, ct);
 
             if (entity is null) return NotFound();
 
             var providerId = dto.ServiceProviderId ?? entity.ServiceProviderId;
 
-            // Providers may only update their own
-            if (IsProvider && !IsManager && providerId != UserId)
+            if (IsProvider && !IsManager && providerId != UserIdOrThrow)
                 return Forbid();
 
             var day = dto.DayOfWeek ?? entity.DayOfWeek;
@@ -195,13 +228,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // DELETE /api/provider-availability/{id}
+        /// <summary>
+        /// Soft-deletes an availability row. Managers can delete any row; providers can delete their own.
+        /// </summary>
+        /// <param name="id">The availability row identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContentResult"/> on success; otherwise an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
             var entity = await _db.ProviderAvailabilities
-                .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
+                .EditableBy(OrganizationId, UserIdOrThrow, IsManager, IsProvider)
                 .FirstOrDefaultAsync(a => a.Id == id, ct);
 
             if (entity is null) return NotFound();
@@ -211,117 +249,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        // (Optional) UPSERT for grid editing
-        // POST /api/provider-availability/upsert
-        [HttpPost("upsert")]
-        [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<ActionResult<ProviderAvailabilityDto>> Upsert(
-            [FromBody] UpsertProviderAvailabilityDto dto,
-            CancellationToken ct)
-        {
-            // Providers may only modify their own
-            if (IsProvider && !IsManager && dto.ServiceProviderId != UserId)
-                return Forbid();
-
-            // If Id was provided, fall back to Update semantics
-            if (dto.Id.HasValue)
-            {
-                var existing = await _db.ProviderAvailabilities
-                    .EditableBy(OrganizationId, UserId, IsManager, IsProvider)
-                    .FirstOrDefaultAsync(a => a.Id == dto.Id.Value, ct);
-                if (existing is null) return NotFound();
-
-                var (okU, errU) = await ValidateAvailabilityAsync(
-                    dto.ServiceProviderId, dto.DayOfWeek,
-                    dto.StartLocalTime, dto.EndLocalTime,
-                    dto.EffectiveFrom, dto.EffectiveTo,
-                    ignoreId: existing.Id, ct);
-                if (!okU) return BadRequest(errU);
-
-                existing.ServiceProviderId = dto.ServiceProviderId;
-                existing.DayOfWeek = dto.DayOfWeek;
-                existing.StartLocalTime = dto.StartLocalTime;
-                existing.EndLocalTime = dto.EndLocalTime;
-                existing.EffectiveFrom = dto.EffectiveFrom;
-                existing.EffectiveTo = dto.EffectiveTo;
-                existing.IsDeleted = false;
-
-                await _db.SaveChangesAsync(ct);
-
-                var updated = await _db.ProviderAvailabilities.AsNoTracking()
-                    .Where(a => a.Id == existing.Id)
-                    .Select(ToDto())
-                    .FirstAsync(ct);
-
-                return Ok(updated);
-            }
-
-            // Otherwise, try to find an identical (but soft-deleted) row to undelete
-            var match = await _db.ProviderAvailabilities.FirstOrDefaultAsync(a =>
-                a.OrganizationId == OrganizationId &&
-                a.ServiceProviderId == dto.ServiceProviderId &&
-                a.DayOfWeek == dto.DayOfWeek &&
-                a.StartLocalTime == dto.StartLocalTime &&
-                a.EndLocalTime == dto.EndLocalTime &&
-                a.EffectiveFrom == dto.EffectiveFrom &&
-                a.EffectiveTo == dto.EffectiveTo, ct);
-
-            if (match is not null)
-            {
-                // If another active row overlaps, validator will catch it
-                var (okM, errM) = await ValidateAvailabilityAsync(
-                    dto.ServiceProviderId, dto.DayOfWeek,
-                    dto.StartLocalTime, dto.EndLocalTime,
-                    dto.EffectiveFrom, dto.EffectiveTo,
-                    ignoreId: match.Id, ct);
-                if (!okM) return BadRequest(errM);
-
-                match.IsDeleted = false;
-                await _db.SaveChangesAsync(ct);
-
-                var revived = await _db.ProviderAvailabilities.AsNoTracking()
-                    .Where(a => a.Id == match.Id)
-                    .Select(ToDto())
-                    .FirstAsync(ct);
-
-                return Ok(revived);
-            }
-
-            // No match → create
-            var (ok, error) = await ValidateAvailabilityAsync(
-                dto.ServiceProviderId, dto.DayOfWeek,
-                dto.StartLocalTime, dto.EndLocalTime,
-                dto.EffectiveFrom, dto.EffectiveTo,
-                ignoreId: null, ct);
-            if (!ok) return BadRequest(error);
-
-            var entity = new ProviderAvailability
-            {
-                OrganizationId = OrganizationId,
-                ServiceProviderId = dto.ServiceProviderId,
-                DayOfWeek = dto.DayOfWeek,
-                StartLocalTime = dto.StartLocalTime,
-                EndLocalTime = dto.EndLocalTime,
-                EffectiveFrom = dto.EffectiveFrom,
-                EffectiveTo = dto.EffectiveTo,
-                IsDeleted = false
-            };
-
-            _db.ProviderAvailabilities.Add(entity);
-            await _db.SaveChangesAsync(ct);
-
-            var read = await _db.ProviderAvailabilities.AsNoTracking()
-                .Where(a => a.Id == entity.Id)
-                .Select(ToDto())
-                .FirstAsync(ct);
-
-            return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
-        }
-
-        // -------------------------
-        // Helpers
-        // -------------------------
-
+        /// <summary>
+        /// Projects a <see cref="ProviderAvailability"/> to <see cref="ProviderAvailabilityDto"/> for responses.
+        /// </summary>
+        /// <returns>An expression suitable for LINQ-to-Entities projections.</returns>
         private static Expression<Func<ProviderAvailability, ProviderAvailabilityDto>> ToDto() => a => new ProviderAvailabilityDto
         {
             Id = a.Id,
@@ -335,6 +266,18 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             IsDeleted = a.IsDeleted
         };
 
+        /// <summary>
+        /// Validates a weekly availability window within the organization.
+        /// </summary>
+        /// <param name="providerId">Target service provider user ID.</param>
+        /// <param name="day">Day of week for the weekly rule.</param>
+        /// <param name="start">Local start time of day (inclusive).</param>
+        /// <param name="end">Local end time of day (exclusive).</param>
+        /// <param name="from">First local date the rule is effective.</param>
+        /// <param name="to">Last local date the rule is effective.</param>
+        /// <param name="ignoreId">Optional row identifier to exclude from overlap checks.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><c>(true, null)</c> when valid; otherwise <c>(false, message)</c>.</returns>
         private async Task<(bool ok, string? error)> ValidateAvailabilityAsync(
             string providerId,
             DayOfWeek day,
@@ -348,7 +291,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (end <= start) return (false, "EndLocalTime must be after StartLocalTime.");
             if (to < from) return (false, "EffectiveTo must be on or after EffectiveFrom.");
 
-            // Overlap check: same provider/day + overlapping date windows + overlapping time windows
             var overlaps = await _db.ProviderAvailabilities
                 .Where(a => a.OrganizationId == OrganizationId &&
                             a.ServiceProviderId == providerId &&
@@ -356,12 +298,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                             !a.IsDeleted &&
                             (ignoreId == null || a.Id != ignoreId.Value))
                 .AnyAsync(a =>
-                    // date windows overlap?
-                    !(to < a.EffectiveFrom || from > a.EffectiveTo)
-                    &&
-                    // time windows overlap?
-                    !(end <= a.StartLocalTime || start >= a.EndLocalTime)
-                , ct);
+                    !(to < a.EffectiveFrom || from > a.EffectiveTo) &&
+                    !(end <= a.StartLocalTime || start >= a.EndLocalTime), ct);
 
             if (overlaps) return (false, "Overlaps an existing availability window for this provider and day.");
 

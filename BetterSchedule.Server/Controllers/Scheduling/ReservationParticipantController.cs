@@ -12,6 +12,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
+    /// <summary>
+    /// Reservation Participants API
+    ///
+    /// Responsibilities
+    /// - List, add, and remove participants for a reservation within the caller's organization.
+    /// - Enforce role payload rules (user-backed vs. guest).
+    /// - Enforce availability rules when adding ServiceProvider participants.
+    ///
+    /// Security
+    /// - All endpoints are org-scoped via <see cref="OrgControllerBase"/>.
+    /// - Requires Manager or ServiceProvider for mutating operations; visibility aligned with reservation visibility.
+    /// </summary>
     [ApiController]
     [Route("api/reservations/{reservationId:int}/participants")]
     [Authorize]
@@ -21,6 +33,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly ISchedulingConflictService _conflicts;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ReservationParticipantController"/> class.
+        /// </summary>
+        /// <param name="db">Database context for participant operations.</param>
+        /// <param name="userManager">Identity user manager for role checks.</param>
+        /// <param name="conflicts">Scheduling conflict service for provider availability checks.</param>
         public ReservationParticipantController(
             ApplicationDbContext db,
             UserManager<ApplicationUser> userManager,
@@ -31,6 +49,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             _conflicts = conflicts;
         }
 
+        /// <summary>
+        /// Lists non-deleted participants for a reservation the caller can see.
+        /// </summary>
+        /// <param name="reservationId">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Collection of <see cref="ReservationParticipantDto"/>.</returns>
         [HttpGet]
         public async Task<ActionResult<IEnumerable<ReservationParticipantDto>>> List(
             [FromRoute] int reservationId, CancellationToken ct)
@@ -60,6 +84,16 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return Ok(items);
         }
 
+        /// <summary>
+        /// Adds a participant to a reservation (Managers and Service Providers).
+        /// - For <c>Guest</c>, requires <see cref="AddReservationParticipantDto.GuestName"/> and forbids <see cref="AddReservationParticipantDto.UserId"/>.
+        /// - For <c>Client</c>/<c>ServiceProvider</c>, requires <see cref="AddReservationParticipantDto.UserId"/> and role membership.
+        /// - Adds conflict warnings/blocks for service provider additions.
+        /// </summary>
+        /// <param name="reservationId">Reservation identifier.</param>
+        /// <param name="dto">Participant payload.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created <see cref="ReservationParticipantDto"/> with <c>201 Created</c>, or an error result.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult<ReservationParticipantDto>> Add(
@@ -157,6 +191,15 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return CreatedAtAction(nameof(List), new { reservationId }, result);
         }
 
+        /// <summary>
+        /// Soft removes a participant from a reservation (Managers and Service Providers).
+        /// Ensures the reservation retains at least one client and one provider after removal
+        /// (counting both primary on the reservation and non-deleted participant rows).
+        /// </summary>
+        /// <param name="reservationId">Reservation identifier (route).</param>
+        /// <param name="id">Participant row identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><see cref="NoContentResult"/> on success; otherwise an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<IActionResult> Remove(

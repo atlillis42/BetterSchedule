@@ -8,12 +8,11 @@ using Microsoft.EntityFrameworkCore;
 namespace BetterSchedule.Server.Services.Scheduling
 {
     /// <summary>
-    /// Shared availability/conflict checks used by Reservations and BlockedTimes.
-    /// Overlap predicate: (start1 < end2 && end1 > start2).
-    /// Queries are scoped by OrganizationId and exclude soft-deleted rows.
-    /// Update variants exclude the current row by ID to avoid self-overlap.
-    /// Also validates that reservations lie within ProviderAvailability windows
-    /// (weekly rules in local org time).
+    /// Centralized availability/conflict checks used by Reservations and BlockedTimes.
+    /// Overlap predicate: <c>(start1 &lt; end2 &amp;&amp; end1 &gt; start2)</c>.
+    /// Queries are org-scoped and exclude soft-deleted rows. Update variants exclude the
+    /// current row by id to avoid self-overlap. Also validates that reservations lie
+    /// within ProviderAvailability windows (weekly rules in org-local time).
     /// </summary>
     public sealed class SchedulingConflictService : ISchedulingConflictService
     {
@@ -25,6 +24,7 @@ namespace BetterSchedule.Server.Services.Scheduling
         // Public API (thin wrappers)
         // --------------------------------------------------------------------
 
+        /// <inheritdoc />
         public Task<ReservationConflictResult> CheckReservationCreateAsync(
             string organizationId,
             string serviceProviderId,
@@ -41,6 +41,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreReservationId: null,
                 cancellationToken);
 
+        /// <inheritdoc />
         public Task<ReservationConflictResult> CheckReservationUpdateAsync(
             int reservationId,
             string organizationId,
@@ -58,6 +59,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreReservationId: reservationId,
                 cancellationToken);
 
+        /// <inheritdoc />
         public Task<BlockedTimeConflictResult> CheckBlockedTimeCreateAsync(
             string organizationId,
             string createdByUserId,
@@ -74,6 +76,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 ignoreBlockedTimeId: null,
                 cancellationToken);
 
+        /// <inheritdoc />
         public Task<BlockedTimeConflictResult> CheckBlockedTimeUpdateAsync(
             int blockedTimeId,
             string organizationId,
@@ -108,31 +111,49 @@ namespace BetterSchedule.Server.Services.Scheduling
             int? ignoreReservationId,
             CancellationToken ct)
         {
-            // Overlap with other reservations for the same provider (exclude self on update).
-            var reservations = _db.Reservations
+            // Provider-level overlaps (exclude self on update).
+            var providerReservations = _db.Reservations
                 .Where(r => r.OrganizationId == organizationId && !r.IsDeleted)
                 .Where(r => r.ServiceProviderId == serviceProviderId);
 
             if (ignoreReservationId is not null)
-                reservations = reservations.Where(r => r.Id != ignoreReservationId.Value);
+                providerReservations = providerReservations.Where(r => r.Id != ignoreReservationId.Value);
 
-            bool reservationOverlap = await reservations
+            var providerOverlap = await providerReservations
                 .Where(r => r.StartTime < end && r.EndTime > start)
                 .AnyAsync(ct);
 
+            // Resource-level reservation overlaps (if a resource is involved).
+            var resourceOverlap = false;
+            if (resourceId is not null)
+            {
+                var resourceReservations = _db.Reservations
+                    .Where(r => r.OrganizationId == organizationId && !r.IsDeleted)
+                    .Where(r => r.ResourceId != null && r.ResourceId == resourceId.Value);
+
+                if (ignoreReservationId is not null)
+                    resourceReservations = resourceReservations.Where(r => r.Id != ignoreReservationId.Value);
+
+                resourceOverlap = await resourceReservations
+                    .Where(r => r.StartTime < end && r.EndTime > start)
+                    .AnyAsync(ct);
+            }
+
+            var reservationOverlap = providerOverlap || resourceOverlap;
+
             // Provider-created blocked times conflict with this window.
-            bool providerBlocked = await _db.BlockedTimes
+            var providerBlocked = await _db.BlockedTimes
                 .Where(b => b.OrganizationId == organizationId && !b.IsDeleted)
                 .Where(b => b.CreatedByUserId == serviceProviderId)
                 .Where(b => b.StartTime < end && b.EndTime > start)
                 .AnyAsync(ct);
 
-            // Resource-level block (if a resource is involved).
-            bool resourceBlocked = await IsResourceBlockedAsync(
+            // Resource-level blocked times (if a resource is involved).
+            var resourceBlocked = await IsResourceBlockedAsync(
                 organizationId, resourceId, start, end, ct);
 
             // Availability window coverage (weekly rules, evaluated in org local time).
-            bool fullyWithinAvailability = await IsFullyWithinProviderAvailabilityAsync(
+            var fullyWithinAvailability = await IsFullyWithinProviderAvailabilityAsync(
                 organizationId, serviceProviderId, start, end, ct);
 
             return new ReservationConflictResult(
@@ -163,7 +184,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                     r.ServiceProviderId == createdByUserId
                     || (resourceId != null && r.ResourceId != null && r.ResourceId == resourceId));
 
-            bool overlapsReservations = await reservations
+            var overlapsReservations = await reservations
                 .Where(r => r.StartTime < end && r.EndTime > start)
                 .AnyAsync(ct);
 
@@ -177,7 +198,7 @@ namespace BetterSchedule.Server.Services.Scheduling
             if (ignoreBlockedTimeId is not null)
                 blocks = blocks.Where(b => b.Id != ignoreBlockedTimeId.Value);
 
-            bool overlapsOtherBlocks = await blocks
+            var overlapsOtherBlocks = await blocks
                 .Where(b => b.StartTime < end && b.EndTime > start)
                 .AnyAsync(ct);
 
@@ -212,9 +233,9 @@ namespace BetterSchedule.Server.Services.Scheduling
         // --------------------------------------------------------------------
 
         /// <summary>
-        /// Returns true if the [start, end) window is fully covered by one or more
-        /// ProviderAvailability rows for the given provider, evaluated in the org's local time.
-        /// Spanning midnight is supported: each day-segment must be covered by a matching row.
+        /// Returns true if the <c>[start, end)</c> window is fully covered by one or more
+        /// <c>ProviderAvailability</c> rows for the provider, evaluated in the org's local time.
+        /// Spanning midnight is supported: each local-day segment must be covered by a single row.
         /// </summary>
         private async Task<bool> IsFullyWithinProviderAvailabilityAsync(
             string organizationId,
@@ -228,7 +249,9 @@ namespace BetterSchedule.Server.Services.Scheduling
             var tzId = await _db.OrganizationSettings
                 .Where(x => x.OrganizationId == organizationId)
                 .Select(x => x.TimeZoneId)
-                .FirstOrDefaultAsync(ct) ?? "America/New_York";
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ct) ?? "UTC";
+
             var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
 
             var startLocal = TimeZoneInfo.ConvertTime(startUtc, tz);
@@ -239,8 +262,6 @@ namespace BetterSchedule.Server.Services.Scheduling
             {
                 // End of the current local day (next midnight in local time)
                 var nextMidnightLocalDate = cur.Date.AddDays(1);
-
-                // Build a DateTimeOffset at next midnight using that local day's offset
                 var nextMidnightOffset = new DateTimeOffset(
                     nextMidnightLocalDate,
                     tz.GetUtcOffset(nextMidnightLocalDate));
@@ -257,7 +278,7 @@ namespace BetterSchedule.Server.Services.Scheduling
                 var segDateOnly = DateOnly.FromDateTime(cur.Date);
                 var segDay = cur.DayOfWeek;
                 var segStartT = cur.TimeOfDay;
-                var segEndT = segEnd.TimeOfDay; // 00:00 is allowed (end-of-day)
+                var segEndT = segEnd.TimeOfDay; // 00:00 allowed (end-of-day)
 
                 // A single availability row must fully cover this local-day segment
                 var covered = await _db.ProviderAvailabilities

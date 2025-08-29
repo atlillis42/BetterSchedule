@@ -3,6 +3,7 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
+using BetterSchedule.Server.Models.Tenant.SettingsHelpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 

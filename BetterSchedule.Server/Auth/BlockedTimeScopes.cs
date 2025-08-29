@@ -3,9 +3,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.Auth
 {
+    /// <summary>
+    /// Scope helpers for <see cref="BlockedTime"/> visibility and modify-ability.
+    /// </summary>
     public static class BlockedTimeScopes
     {
-        // Visibility: Managers & Providers see org data; others see nothing
+        /// <summary>
+        /// Returns org-scoped, non-deleted blocked times visible to the caller.
+        /// Managers and Providers see blocks; other roles see none.
+        /// </summary>
         public static IQueryable<BlockedTime> VisibleTo(
             this IQueryable<BlockedTime> query,
             string orgId,
@@ -19,7 +25,9 @@ namespace BetterSchedule.Server.Auth
             return q.Where(_ => false);
         }
 
-        // Optional time overlap filter
+        /// <summary>
+        /// Optional temporal overlap filter using <c>[start, end)</c> semantics.
+        /// </summary>
         public static IQueryable<BlockedTime> Overlapping(
             this IQueryable<BlockedTime> query,
             DateTimeOffset? start,
@@ -30,7 +38,12 @@ namespace BetterSchedule.Server.Auth
             return query;
         }
 
-        // Modify Permissions
+        /// <summary>
+        /// Determines whether the caller can modify (create/update/delete) a block.
+        /// </summary>
+        /// <returns>
+        /// <c>true</c> for Managers; for Providers when they created the block; otherwise <c>false</c>.
+        /// </returns>
         public static bool CanModify(
             BlockedTime b,
             string? userId,
@@ -38,10 +51,7 @@ namespace BetterSchedule.Server.Auth
             bool isProvider)
         {
             if (isManager) return true;
-            if (isProvider)
-            {
-                return b.CreatedByUserId == userId;
-            }
+            if (isProvider) return b.CreatedByUserId == userId;
             return false;
         }
     }

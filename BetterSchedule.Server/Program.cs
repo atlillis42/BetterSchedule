@@ -1,29 +1,35 @@
+using System.Reflection;
+using System.Text.Json.Serialization;
 using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
-using BetterSchedule.Server.Services.Time;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Services.Scheduling;
+using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Controllers & Swagger
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
-    // Enable "Monday", "Tuesday", etc. string enums for System.DayOfWeek
     o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
-// Clock
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    }
+});
+
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 
-// AuthN/Z
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(options =>
 {
@@ -38,7 +44,7 @@ builder.Services.AddAuthentication(options =>
     options.LoginPath = "/login";
     options.Cookie.Name = ".BetterSchedule.Identity";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SameSite = SameSiteMode.None; // SPA cross-site in dev
+    options.Cookie.SameSite = SameSiteMode.None;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 
@@ -53,18 +59,13 @@ builder.Services
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
-// CORS (credentials require explicit origins)
 builder.Services.AddCors(options =>
 {
     var clientUrl = builder.Configuration["App:ClientUrl"] ?? "http://localhost:5173";
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins(clientUrl)
-              .AllowAnyHeader()
-              .AllowAnyMethod()
-              .AllowCredentials());
+        policy.WithOrigins(clientUrl).AllowAnyHeader().AllowAnyMethod().AllowCredentials());
 });
 
-// EF Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -74,7 +75,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseDevDiagnostics();
 
-    // Apply migrations + seed dev data
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
 
@@ -85,7 +85,6 @@ if (app.Environment.IsDevelopment())
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     await DbInitializer.SeedAsync(db, userManager, roleManager);
 
-    // Dev login endpoints
     app.MapPost("/api/dev/login", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
     {
         var user = await um.FindByEmailAsync("admin@dev.local");
@@ -119,7 +118,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Static files 
 app.UseDefaultFiles();
 app.UseStaticFiles();
 

@@ -3,9 +3,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.Auth
 {
+    /// <summary>
+    /// Scope helpers for <see cref="Reservation"/> visibility and modify-ability.
+    /// </summary>
     public static class ReservationScopes
     {
-        // Org + role filter
+        /// <summary>
+        /// Returns org-scoped, non-deleted reservations visible to the caller by role:
+        /// Managers → all; Providers → their own; Clients → their own; others → none.
+        /// </summary>
         public static IQueryable<Reservation> VisibleTo(
             this IQueryable<Reservation> query,
             string orgId,
@@ -17,15 +23,16 @@ namespace BetterSchedule.Server.Auth
             var q = query.AsNoTracking()
                 .Where(r => r.OrganizationId == orgId && !r.IsDeleted);
 
-            if (isManager) return q; // Managers see all in org
+            if (isManager) return q;
             if (isProvider) return q.Where(r => r.ServiceProviderId == userId);
             if (isClient) return q.Where(r => r.ClientId == userId);
 
-            // No recognized role → nothing
             return q.Where(_ => false);
         }
 
-        // Optional time-window overlap
+        /// <summary>
+        /// Optional temporal overlap filter using <c>[start, end)</c> semantics.
+        /// </summary>
         public static IQueryable<Reservation> Overlapping(
             this IQueryable<Reservation> query,
             DateTimeOffset? start,
@@ -36,7 +43,13 @@ namespace BetterSchedule.Server.Auth
             return query;
         }
 
-        // Modify Permissions
+        /// <summary>
+        /// Determines whether the caller can modify a reservation.
+        /// </summary>
+        /// <remarks>
+        /// Controllers may choose to disable client edits by passing <c>isClient: false</c>
+        /// even if the current principal has the Client role. See <c>ReservationController</c>.
+        /// </remarks>
         public static bool CanModify(
             Reservation r,
             string? userId,

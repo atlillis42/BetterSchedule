@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using Microsoft.Extensions.Primitives;
 
 namespace BetterSchedule.Server.Extensions
 {

@@ -38,9 +38,7 @@ namespace BetterSchedule.Server.Migrations
                     OwnerUserId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Email = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Phone = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    BookingLeadTime = table.Column<TimeSpan>(type: "time", nullable: true),
-                    CancellationWindow = table.Column<TimeSpan>(type: "time", nullable: true)
+                    Address = table.Column<string>(type: "nvarchar(max)", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -79,6 +77,7 @@ namespace BetterSchedule.Server.Migrations
                     FullName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: true),
+                    AvailabilityPublic = table.Column<bool>(type: "bit", nullable: false, defaultValue: false),
                     UserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "nvarchar(256)", maxLength: 256, nullable: true),
@@ -135,6 +134,7 @@ namespace BetterSchedule.Server.Migrations
                     MinLeadMinutes = table.Column<int>(type: "int", nullable: false),
                     CancelWindowHours = table.Column<int>(type: "int", nullable: false),
                     ProviderCancelPolicy = table.Column<int>(type: "int", nullable: false),
+                    ClientCancelPolicy = table.Column<int>(type: "int", nullable: false),
                     ShowWeekends = table.Column<bool>(type: "bit", nullable: false),
                     StartOfWeek = table.Column<int>(type: "int", nullable: false),
                     BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
@@ -467,7 +467,7 @@ namespace BetterSchedule.Server.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false, collation: "SQL_Latin1_General_CP1_CI_AS"),
                     AppointmentTypeId = table.Column<int>(type: "int", nullable: false),
                     TotalUses = table.Column<int>(type: "int", nullable: false),
                     ProviderLocked = table.Column<bool>(type: "bit", nullable: false),
@@ -714,10 +714,11 @@ namespace BetterSchedule.Server.Migrations
                 columns: new[] { "OrganizationId", "AppointmentTypeId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_AppointmentTypeResourceAccesses_OrganizationId_AppointmentTypeId_ResourceId_IsDeleted",
+                name: "IX_AppointmentTypeResourceAccesses_OrganizationId_AppointmentTypeId_ResourceId",
                 table: "AppointmentTypeResourceAccesses",
-                columns: new[] { "OrganizationId", "AppointmentTypeId", "ResourceId", "IsDeleted" },
-                unique: true);
+                columns: new[] { "OrganizationId", "AppointmentTypeId", "ResourceId" },
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_AppointmentTypeResourceAccesses_OrganizationId_ResourceId",
@@ -789,7 +790,13 @@ namespace BetterSchedule.Server.Migrations
                 column: "NormalizedEmail");
 
             migrationBuilder.CreateIndex(
-                name: "IX_AspNetUsers_OrganizationId",
+                name: "IX_Users_Org_IsDeleted",
+                schema: "identity",
+                table: "AspNetUsers",
+                columns: new[] { "OrganizationId", "IsDeleted" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_OrganizationId",
                 schema: "identity",
                 table: "AspNetUsers",
                 column: "OrganizationId");
@@ -855,9 +862,9 @@ namespace BetterSchedule.Server.Migrations
                 columns: new[] { "OrganizationId", "ClientId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_PackageAssignments_OrganizationId_ClientId_AppointmentTypeId_IsDeleted",
+                name: "IX_PackageAssignments_OrganizationId_ClientId_PackageId_IsDeleted",
                 table: "PackageAssignments",
-                columns: new[] { "OrganizationId", "ClientId", "AppointmentTypeId", "IsDeleted" });
+                columns: new[] { "OrganizationId", "ClientId", "PackageId", "IsDeleted" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_PackageAssignments_PackageId",
@@ -896,15 +903,15 @@ namespace BetterSchedule.Server.Migrations
                 columns: new[] { "OrganizationId", "IsActive" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Packages_OrganizationId_Name",
-                table: "Packages",
-                columns: new[] { "OrganizationId", "Name" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_Packages_ProviderId",
                 table: "Packages",
                 column: "ProviderId");
+
+            migrationBuilder.CreateIndex(
+                name: "UX_Packages_Org_Name_CI",
+                table: "Packages",
+                columns: new[] { "OrganizationId", "Name" },
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_ProviderAppointmentTypeAccesses_AppointmentTypeId",
@@ -922,10 +929,11 @@ namespace BetterSchedule.Server.Migrations
                 columns: new[] { "OrganizationId", "UserId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ProviderAppointmentTypeAccesses_OrganizationId_UserId_AppointmentTypeId_IsDeleted",
+                name: "IX_ProviderAppointmentTypeAccesses_OrganizationId_UserId_AppointmentTypeId",
                 table: "ProviderAppointmentTypeAccesses",
-                columns: new[] { "OrganizationId", "UserId", "AppointmentTypeId", "IsDeleted" },
-                unique: true);
+                columns: new[] { "OrganizationId", "UserId", "AppointmentTypeId" },
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ProviderAppointmentTypeAccesses_UserId",
@@ -960,10 +968,11 @@ namespace BetterSchedule.Server.Migrations
                 columns: new[] { "OrganizationId", "UserId" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_ProviderResourceAccesses_OrganizationId_UserId_ResourceId_IsDeleted",
+                name: "IX_ProviderResourceAccesses_OrganizationId_UserId_ResourceId",
                 table: "ProviderResourceAccesses",
-                columns: new[] { "OrganizationId", "UserId", "ResourceId", "IsDeleted" },
-                unique: true);
+                columns: new[] { "OrganizationId", "UserId", "ResourceId" },
+                unique: true,
+                filter: "[IsDeleted] = 0");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ProviderResourceAccesses_ResourceId",
