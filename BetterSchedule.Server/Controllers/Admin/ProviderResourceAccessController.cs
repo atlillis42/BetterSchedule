@@ -1,14 +1,19 @@
 ﻿using BetterSchedule.Server.Controllers.Organization;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Access;
-using BetterSchedule.Server.Models.Scheduling;
-using BetterSchedule.Server.Models.Tenant;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
+using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Controllers.Admin
 {
+    /// <summary>
+    /// Manage which <see cref="Models.Scheduling.CalendarResource"/>s a provider
+    /// (<see cref="Models.Identity.ApplicationUser"/>) may use within the org.
+    /// Links are soft-deletable for safe unassign.
+    /// </summary>
     [ApiController]
     [Route("api/provider-resource-access")]
     [Authorize(Roles = "Manager")]
@@ -17,27 +22,39 @@ namespace BetterSchedule.Server.Controllers.Admin
         private readonly ApplicationDbContext _db;
         public ProviderResourceAccessController(ApplicationDbContext db) => _db = db;
 
-        // GET /api/provider-resource-access/by-provider/{userId}
+        /// <summary>
+        /// Get permitted resource IDs for a provider (org-scoped).
+        /// Excludes deleted links and deleted resources.
+        /// </summary>
         [HttpGet("by-provider/{userId}")]
         public async Task<ActionResult<IEnumerable<int>>> ByProvider([FromRoute] string userId, CancellationToken ct)
         {
             var ids = await _db.ProviderResourceAccesses
                 .Where(x => x.OrganizationId == OrganizationId && x.UserId == userId && !x.IsDeleted)
-                .Select(x => x.ResourceId)
+                .Join(_db.CalendarResources.Where(r => r.OrganizationId == OrganizationId && !r.IsDeleted),
+                      l => l.ResourceId, r => r.Id, (l, r) => r.Id)
                 .ToListAsync(ct);
 
             return Ok(ids);
         }
 
-        public sealed record AssignDto(string UserId, int ResourceId);
+        /// <summary>Assigns a resource to a provider (idempotent).</summary>
+        public sealed record AssignDto(
+            [property: Required] string UserId,
+            [property: Required] int ResourceId
+        );
 
-        // POST /api/provider-resource-access/assign
+        /// <summary>
+        /// Create (or undelete) a link allowing the provider to use the resource.
+        /// 404 if either target does not exist in the org or is soft-deleted.
+        /// </summary>
         [HttpPost("assign")]
         public async Task<IActionResult> Assign([FromBody] AssignDto dto, CancellationToken ct)
         {
-            // Validate targets exist in org
-            var resourceExists = await _db.CalendarResources.AnyAsync(r => r.OrganizationId == OrganizationId && r.Id == dto.ResourceId && !r.IsDeleted, ct);
-            var userExists = await _db.Users.AnyAsync(u => u.OrganizationId == OrganizationId && u.Id == dto.UserId, ct);
+            var resourceExists = await _db.CalendarResources.AnyAsync(r =>
+                r.OrganizationId == OrganizationId && r.Id == dto.ResourceId && !r.IsDeleted, ct);
+            var userExists = await _db.Users.AnyAsync(u =>
+                u.OrganizationId == OrganizationId && u.Id == dto.UserId, ct);
             if (!resourceExists || !userExists) return NotFound();
 
             var existing = await _db.ProviderResourceAccesses.FirstOrDefaultAsync(x =>
@@ -58,11 +75,21 @@ namespace BetterSchedule.Server.Controllers.Admin
                 existing.IsDeleted = false;
             }
 
-            await _db.SaveChangesAsync(ct);
-            return NoContent();
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+                return NoContent();
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                return NoContent();
+            }
         }
 
-        // POST /api/provider-resource-access/unassign
+        /// <summary>
+        /// Soft-unassign a resource from a provider (sets link IsDeleted=true).
+        /// 404 if no active link is found.
+        /// </summary>
         [HttpPost("unassign")]
         public async Task<IActionResult> Unassign([FromBody] AssignDto dto, CancellationToken ct)
         {
@@ -75,5 +102,8 @@ namespace BetterSchedule.Server.Controllers.Admin
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
+
+        private static bool IsUniqueViolation(DbUpdateException ex)
+            => ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
     }
 }

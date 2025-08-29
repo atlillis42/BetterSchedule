@@ -2,25 +2,25 @@
 using BetterSchedule.Server.Models.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
-
 namespace BetterSchedule.Server.Controllers.Auth
 {
     /// <summary>
-    /// Provides endpoints for authentication and session management.
+    /// Authentication and session endpoints.
+    /// Exposes status, logout, and a dev-only login for local testing.
     /// </summary>
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IWebHostEnvironment _env;
 
+        /// <summary>Initializes a new instance of <see cref="AuthController"/>.</summary>
         public AuthController(
             SignInManager<ApplicationUser> signInManager,
             UserManager<ApplicationUser> userManager,
@@ -32,11 +32,11 @@ namespace BetterSchedule.Server.Controllers.Auth
         }
 
         /// <summary>
-        /// Gets the current authentication status including user information and roles.
+        /// Returns the caller's authentication state, roles, and organization id (if authenticated).
         /// </summary>
-        /// <returns>Information about the current user or anonymous status.</returns>
         [HttpGet("status")]
         [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Status()
         {
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
@@ -51,25 +51,21 @@ namespace BetterSchedule.Server.Controllers.Auth
             });
         }
 
-        /// <summary>
-        /// Signs the current user out of the application.
-        /// </summary>
-        /// <returns>A confirmation that the user has been logged out.</returns>
+        /// <summary>Signs the current user out of the application.</summary>
         [HttpPost("logout")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
             Response.Cookies.Delete(".AspNetCore.Identity.Application");
-            return Ok(new { message = "Logged out succesfully" });
+            return Ok(new { message = "Logged out successfully" });
         }
 
-        /// <summary>
-        /// Refreshes the authentication ticket and returns the current user claims.
-        /// </summary>
-        /// <returns>The refreshed user information.</returns>
+        /// <summary>Refreshes the authentication ticket and returns current claims info.</summary>
         [HttpPost("refresh")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Refresh()
         {
             var orgId = User.GetOrgIdOrThrow();
@@ -84,11 +80,17 @@ namespace BetterSchedule.Server.Controllers.Auth
 
         // ---------------------------
         // DEV ONLY: flexible login
-        // Summary: DEV-only login that accepts email OR username as "Identifier".
         // ---------------------------
 
+        /// <summary>
+        /// DEV-ONLY: login using username OR email in <c>Identifier</c>.
+        /// Not available outside development environments.
+        /// </summary>
         [HttpPost("dev-login")]
         [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DevLogin([FromBody] DevLoginRequest req)
         {
             if (!_env.IsDevelopment()) return NotFound();
@@ -99,14 +101,14 @@ namespace BetterSchedule.Server.Controllers.Auth
             if (user is null) return Unauthorized(new { success = false });
 
             var result = await _signInManager.PasswordSignInAsync(
-                user.UserName, req.Password, req.RememberMe, lockoutOnFailure: false);
+                user.UserName!, req.Password, req.RememberMe, lockoutOnFailure: false);
 
             if (!result.Succeeded) return Unauthorized(new { success = false });
 
             return Ok(new { success = true });
         }
 
+        /// <summary>Payload for dev-only login.</summary>
         public sealed record DevLoginRequest(string Identifier, string Password, bool RememberMe = false);
     }
 }
-

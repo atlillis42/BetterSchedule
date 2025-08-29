@@ -9,6 +9,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.Controllers.Users
 {
+    /// <summary>
+    /// Organization-scoped user utilities and role management.
+    /// Provides lightweight/detailed lists for Service Providers and Clients,
+    /// plus Manager-only full user listings and role assignment endpoints.
+    /// </summary>
     [ApiController]
     [Route("api/users")]
     [Authorize]
@@ -17,51 +22,51 @@ namespace BetterSchedule.Server.Controllers.Users
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
 
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="UsersController"/> class.
-        /// </summary>
-        /// <param name="userManager">Identity user manager for role assignments.</param>
         public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
         {
             _db = db;
             _userManager = userManager;
         }
 
+        private static readonly string[] AllowedRoles = { "Manager", "ServiceProvider", "Client" };
+
+        // ---------------------------------------------------------------------
+        // PROVIDERS
+        // ---------------------------------------------------------------------
+
         /// <summary>
         /// Returns a lightweight list of service providers for selection UIs.
+        /// Includes <see cref="ProviderLiteDto.AvailabilityPublic"/> for client visibility.
         /// </summary>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Collection of provider DTOs.</returns>
         [HttpGet("providers-lite")]
+        [ProducesResponseType(typeof(IEnumerable<ProviderLiteDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<ProviderLiteDto>>> GetProvidersLite(CancellationToken ct)
         {
-            var providers = await QueryProviders()
+            var providers = await QueryUsersByRole("ServiceProvider")
                 .Select(u => new ProviderLiteDto
                 {
                     Id = u.Id,
-                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.UserName ?? u.Email ?? u.Id) : u.FullName
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.UserName ?? u.Email ?? u.Id) : u.FullName,
+                    AvailabilityPublic = u.AvailabilityPublic
                 })
                 .OrderBy(p => p.Name)
                 .ToListAsync(ct);
 
             return Ok(providers);
         }
-       
+
         /// <summary>
         /// Returns detailed provider information with optional search and pagination.
+        /// Includes <see cref="ProviderLiteDto.AvailabilityPublic"/>.
         /// </summary>
-        /// <param name="q">Optional search term.</param>
-        /// <param name="take">Optional maximum number of records to return.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Collection of provider DTOs.</returns>
         [HttpGet("providers")]
+        [ProducesResponseType(typeof(IEnumerable<ProviderDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<ProviderDto>>> GetProviders(
             [FromQuery] string? q,
             [FromQuery] int? take,
             CancellationToken ct)
         {
-            var query = QueryProviders();
+            var query = QueryUsersByRole("ServiceProvider");
 
             if (!string.IsNullOrWhiteSpace(q))
             {
@@ -83,6 +88,127 @@ namespace BetterSchedule.Server.Controllers.Users
                     Id = u.Id,
                     Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.UserName ?? u.Email ?? u.Id) : u.FullName,
                     UserName = u.UserName,
+                    Email = u.Email,
+                    AvailabilityPublic = u.AvailabilityPublic
+                })
+                .ToListAsync(ct);
+
+            return Ok(items);
+        }
+
+        /// <summary>
+        /// Sets a provider’s <c>AvailabilityPublic</c> flag.
+        /// Managers may update any provider in the org; providers may update their own flag.
+        /// </summary>
+        /// <param name="userId">Target provider id.</param>
+        /// <param name="body">Payload with the desired boolean value.</param>
+        [HttpPut("providers/{userId}/availability-public")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> SetAvailabilityPublic([FromRoute] string userId, [FromBody] SetAvailabilityPublicDto body, CancellationToken ct)
+        {
+            // Providers may only change their own flag; managers can modify any provider
+            var actingIsManager = User.IsInRole("Manager");
+            var actingIsProvider = User.IsInRole("ServiceProvider");
+
+            if (actingIsProvider && !actingIsManager && UserId != userId)
+                return Forbid();
+
+            var user = await _db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.OrganizationId == OrganizationId, ct);
+            if (user is null) return NotFound();
+
+            // Must be a ServiceProvider
+            if (!await _userManager.IsInRoleAsync(user, "ServiceProvider"))
+                return BadRequest("User is not a ServiceProvider.");
+
+            user.AvailabilityPublic = body.Value;
+            await _db.SaveChangesAsync(ct);
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Request body for <see cref="SetAvailabilityPublic(string, SetAvailabilityPublicDto, CancellationToken)"/>.
+        /// </summary>
+        public sealed record SetAvailabilityPublicDto(
+            // TODO: <summary>Desired value for <c>AvailabilityPublic</c>.</summary>
+            bool Value
+        );
+
+        // ---------------------------------------------------------------------
+        // CLIENTS  
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// Returns a lightweight list of clients for selection UIs.
+        /// </summary>
+        [HttpGet("clients-lite")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(IEnumerable<ClientLiteDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<IEnumerable<ClientLiteDto>>> GetClientsLite(
+            [FromQuery] string? q,
+            [FromQuery] int? take,
+            CancellationToken ct)
+        {
+            var query = QueryUsersByRole("Client");
+
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = q.Trim();
+                query = query.Where(u =>
+                    (u.FullName != null && EF.Functions.Like(u.FullName, $"%{term}%")) ||
+                    (u.Email != null && EF.Functions.Like(u.Email, $"%{term}%")));
+            }
+
+            var pageSize = Math.Clamp(take ?? 100, 1, 500);
+
+            var items = await query
+                .OrderBy(u => u.FullName ?? u.Email ?? u.UserName ?? u.Id)
+                .Take(pageSize)
+                .Select(u => new ClientLiteDto
+                {
+                    Id = u.Id,
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.Email ?? u.UserName ?? u.Id) : u.FullName
+                })
+                .ToListAsync(ct);
+
+            return Ok(items);
+        }
+
+        /// <summary>
+        /// Returns detailed client information with optional search and pagination.
+        /// </summary>
+        [HttpGet("clients")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(IEnumerable<ClientDto>), StatusCodes.Status200OK)]
+        public async Task<ActionResult<IEnumerable<ClientDto>>> GetClients(
+            [FromQuery] string? q,
+            [FromQuery] int? take,
+            CancellationToken ct)
+        {
+            var query = QueryUsersByRole("Client");
+
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = q.Trim();
+                query = query.Where(u =>
+                    (u.FullName != null && EF.Functions.Like(u.FullName, $"%{term}%")) ||
+                    (u.UserName != null && EF.Functions.Like(u.UserName, $"%{term}%")) ||
+                    (u.Email != null && EF.Functions.Like(u.Email, $"%{term}%")));
+            }
+
+            var pageSize = Math.Clamp(take ?? 100, 1, 500);
+
+            var items = await query
+                .OrderBy(u => u.FullName ?? u.Email ?? u.UserName ?? u.Id)
+                .Take(pageSize)
+                .Select(u => new ClientDto
+                {
+                    Id = u.Id,
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.Email ?? u.UserName ?? u.Id) : u.FullName,
+                    UserName = u.UserName,
                     Email = u.Email
                 })
                 .ToListAsync(ct);
@@ -90,16 +216,16 @@ namespace BetterSchedule.Server.Controllers.Users
             return Ok(items);
         }
 
-
-        private static readonly string[] AllowedRoles = { "Manager", "ServiceProvider", "Client" };
+        // ---------------------------------------------------------------------
+        // USERS (Manager-only)
+        // ---------------------------------------------------------------------
 
         /// <summary>
-        /// Returns users in the current organization with their roles.
+        /// Returns users in the current organization with their roles (Manager-only).
         /// </summary>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Collection of user DTOs.</returns>
         [HttpGet]
         [Authorize(Roles = "Manager")]
+        [ProducesResponseType(typeof(IEnumerable<UserDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<UserDto>>> GetUsers(CancellationToken ct)
         {
             var users = await _db.Users
@@ -122,14 +248,13 @@ namespace BetterSchedule.Server.Controllers.Users
         }
 
         /// <summary>
-        /// Adds an allowed role to a user within the organization.
+        /// Adds an allowed role to a user within the organization (Manager-only).
         /// </summary>
-        /// <param name="userId">Target user identifier.</param>
-        /// <param name="role">Role to add.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>No content on success.</returns>
         [HttpPost("{userId}/roles/{role}")]
         [Authorize(Roles = "Manager")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> AddRole(string userId, string role, CancellationToken ct)
         {
             if (!AllowedRoles.Contains(role)) return BadRequest("Invalid role.");
@@ -144,14 +269,13 @@ namespace BetterSchedule.Server.Controllers.Users
         }
 
         /// <summary>
-        /// Removes an allowed role from a user within the organization.
+        /// Removes an allowed role from a user within the organization (Manager-only).
         /// </summary>
-        /// <param name="userId">Target user identifier.</param>
-        /// <param name="role">Role to remove.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>No content on success.</returns>
         [HttpDelete("{userId}/roles/{role}")]
         [Authorize(Roles = "Manager")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RemoveRole(string userId, string role, CancellationToken ct)
         {
             if (!AllowedRoles.Contains(role)) return BadRequest("Invalid role.");
@@ -165,21 +289,20 @@ namespace BetterSchedule.Server.Controllers.Users
             return NoContent();
         }
 
+        // ---------------------------------------------------------------------
+        // Helpers
+        // ---------------------------------------------------------------------
 
-        // -----------------------------
-        // Internal helpers
-        // -----------------------------
         /// <summary>
-        /// Builds the base query for service providers in the current organization.
+        /// Base query for users in the current org limited by role.
         /// </summary>
-        /// <returns>A queryable of <see cref="ApplicationUser"/> limited to providers.</returns>
-        private IQueryable<ApplicationUser> QueryProviders()
+        private IQueryable<ApplicationUser> QueryUsersByRole(string roleName)
         {
             var query =
                 from u in _db.Users
                 join ur in _db.UserRoles on u.Id equals ur.UserId
                 join r in _db.Roles on ur.RoleId equals r.Id
-                where u.OrganizationId == OrganizationId && r.Name == "ServiceProvider"
+                where u.OrganizationId == OrganizationId && r.Name == roleName
                 select u;
 
             return query.AsNoTracking();

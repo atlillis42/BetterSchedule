@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BetterSchedule.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250825033558_Initial_Create")]
+    [Migration("20250829175727_Initial_Create")]
     partial class Initial_Create
     {
         /// <inheritdoc />
@@ -59,8 +59,9 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("OrganizationId", "ResourceId");
 
-                    b.HasIndex("OrganizationId", "AppointmentTypeId", "ResourceId", "IsDeleted")
-                        .IsUnique();
+                    b.HasIndex("OrganizationId", "AppointmentTypeId", "ResourceId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("AppointmentTypeResourceAccesses");
                 });
@@ -100,8 +101,9 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("OrganizationId", "UserId");
 
-                    b.HasIndex("OrganizationId", "UserId", "AppointmentTypeId", "IsDeleted")
-                        .IsUnique();
+                    b.HasIndex("OrganizationId", "UserId", "AppointmentTypeId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("ProviderAppointmentTypeAccesses");
                 });
@@ -141,8 +143,9 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("OrganizationId", "UserId");
 
-                    b.HasIndex("OrganizationId", "UserId", "ResourceId", "IsDeleted")
-                        .IsUnique();
+                    b.HasIndex("OrganizationId", "UserId", "ResourceId")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("ProviderResourceAccesses");
                 });
@@ -170,7 +173,8 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasColumnType("nvarchar(200)")
+                        .UseCollation("SQL_Latin1_General_CP1_CI_AS");
 
                     b.Property<string>("OrganizationId")
                         .IsRequired()
@@ -196,7 +200,8 @@ namespace BetterSchedule.Server.Migrations
                     b.HasIndex("OrganizationId", "IsActive");
 
                     b.HasIndex("OrganizationId", "Name")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("UX_Packages_Org_Name_CI");
 
                     b.ToTable("Packages");
                 });
@@ -259,7 +264,7 @@ namespace BetterSchedule.Server.Migrations
 
                     b.HasIndex("OrganizationId", "ClientId");
 
-                    b.HasIndex("OrganizationId", "ClientId", "AppointmentTypeId", "IsDeleted");
+                    b.HasIndex("OrganizationId", "ClientId", "PackageId", "IsDeleted");
 
                     b.ToTable("PackageAssignments");
                 });
@@ -309,6 +314,11 @@ namespace BetterSchedule.Server.Migrations
 
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("int");
+
+                    b.Property<bool>("AvailabilityPublic")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
@@ -373,7 +383,11 @@ namespace BetterSchedule.Server.Migrations
                         .HasDatabaseName("UserNameIndex")
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
-                    b.HasIndex("OrganizationId");
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("IX_Users_OrganizationId");
+
+                    b.HasIndex("OrganizationId", "IsDeleted")
+                        .HasDatabaseName("IX_Users_Org_IsDeleted");
 
                     b.ToTable("AspNetUsers", "identity");
                 });
@@ -707,12 +721,6 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("Address")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<TimeSpan?>("BookingLeadTime")
-                        .HasColumnType("time");
-
-                    b.Property<TimeSpan?>("CancellationWindow")
-                        .HasColumnType("time");
-
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(max)");
 
@@ -750,6 +758,9 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("time");
 
                     b.Property<int>("CancelWindowHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ClientCancelPolicy")
                         .HasColumnType("int");
 
                     b.Property<int>("DefaultView")

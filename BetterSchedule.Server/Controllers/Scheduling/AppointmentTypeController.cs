@@ -5,111 +5,99 @@ using BetterSchedule.Server.Models.DTOs.AppointmentType;
 using BetterSchedule.Server.Models.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
 using static BetterSchedule.Server.Auth.AppointmentTypeScopes;
 
 namespace BetterSchedule.Server.Controllers.Scheduling
 {
+    /// <summary>
+    /// CRUD for appointment types within the current organization.
+    /// Visibility and modification are governed by <see cref="AppointmentTypeScopes"/>.
+    /// </summary>
     [ApiController]
     [Route("api/appointmenttype")]
     [Authorize]
     public sealed class AppointmentTypeController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="AppointmentTypeController"/> class.
-        /// </summary>
-        /// <param name="db">Database context used for appointment type queries.</param>
         public AppointmentTypeController(ApplicationDbContext db) => _db = db;
 
         /// <summary>
-        /// Lists appointment types visible to the current caller.
-        /// Manager sees all types, providers see public and their own, and clients see only public types.
+        /// Lists appointment types visible to the caller (org-scoped).
         /// </summary>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>Collection of appointment type DTOs.</returns>
         [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<AppointmentTypeDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<AppointmentTypeDto>>> List(CancellationToken ct)
         {
             var items = await _db.AppointmentTypes
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
                 .OrderBy(a => a.Name)
-                .Select(a => new AppointmentTypeDto
-                {
-                    Id = a.Id,
-                    Name = a.Name,
-                    Duration = a.Duration,
-                    Price = a.Price,
-                    Description = a.Description,
-                    CreatedByUserId = a.CreatedByUserId,
-                    CreatedByUserName = null,           // add Include if you want this
-                    AssignedResourceId = a.AssignedResourceId,
-                    AssignedResourceName = null,        // add join if you want this
-                    IsPublic = a.IsPublic,
-                    RequiresWaiver = a.RequiresWaiver,
-                    IsDeleted = a.IsDeleted,
-                    OrganizationId = a.OrganizationId
-                })
+                .Select(ToDto())
                 .ToListAsync(ct);
 
             return Ok(items);
         }
 
         /// <summary>
-        /// Retrieves a specific appointment type by identifier using the same visibility rules as <see cref="List"/>.
+        /// Retrieves a single appointment type if visible to the caller.
         /// </summary>
-        /// <param name="id">The appointment type identifier.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>The appointment type DTO if found; otherwise <see cref="NotFound"/>.</returns>
         [HttpGet("{id:int}")]
+        [ProducesResponseType(typeof(AppointmentTypeDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<AppointmentTypeDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
             var a = await _db.AppointmentTypes
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
                 .FirstOrDefaultAsync(x => x.Id == id, ct);
 
-            if (a is null) return NotFound();
-
-            return Ok(new AppointmentTypeDto
-            {
-                Id = a.Id,
-                Name = a.Name,
-                Duration = a.Duration,
-                Price = a.Price,
-                Description = a.Description,
-                CreatedByUserId = a.CreatedByUserId,
-                CreatedByUserName = null,
-                AssignedResourceId = a.AssignedResourceId,
-                AssignedResourceName = null,
-                IsPublic = a.IsPublic,
-                RequiresWaiver = a.RequiresWaiver,
-                IsDeleted = a.IsDeleted,
-                OrganizationId = a.OrganizationId
-            });
+            return a is null ? NotFound() : Ok(ToDto().Compile()(a));
         }
 
         /// <summary>
-        /// Creates a new appointment type. Managers can create for the organization and providers can create types for themselves.
+        /// Creates a new appointment type. Manager/Provider only.
+        /// Validates duration &gt; 0, optional assigned resource exists in org, and name non-empty.
         /// </summary>
-        /// <param name="dto">Values for the new appointment type.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns>The created appointment type DTO.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(AppointmentTypeDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<AppointmentTypeDto>> Create([FromBody] CreateAppointmentTypeDto dto, CancellationToken ct)
         {
+            if (string.IsNullOrWhiteSpace(dto.Name))
+                return BadRequest("Name is required.");
+
             if (dto.Duration <= TimeSpan.Zero)
                 return BadRequest("Duration must be greater than zero.");
 
+            if (dto.Price < 0)
+                return BadRequest("Price cannot be negative.");
+
+            if (dto.AssignedResourceId is not null)
+            {
+                var resourceExistsInOrg = await _db.CalendarResources
+                    .AnyAsync(r => r.Id == dto.AssignedResourceId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
+
+                if (!resourceExistsInOrg)
+                    return BadRequest("Assigned resource does not exist in your organization.");
+            }
+
+            // Case-insensitive uniqueness within org (aligned with DB collation)
+            var normalized = dto.Name.Trim().ToUpperInvariant();
+            var exists = await _db.AppointmentTypes
+                .AnyAsync(a => a.OrganizationId == OrganizationId && a.Name.ToUpper() == normalized, ct);
+            if (exists) return Conflict("An appointment type with this name already exists in this organization.");
+
             var entity = new AppointmentType
             {
-                OrganizationId = OrganizationId,       // stamp org
-                Name = dto.Name,
+                OrganizationId = OrganizationId,
+                Name = dto.Name.Trim(),
                 Duration = dto.Duration,
                 Price = dto.Price,
                 Description = dto.Description,
-                CreatedByUserId = UserId!,             // owner = caller
+                CreatedByUserId = UserId!, // stamp from auth; ignore dto.CreatedByUserId if provided by client
                 AssignedResourceId = dto.AssignedResourceId,
                 IsPublic = dto.IsPublic,
                 RequiresWaiver = dto.RequiresWaiver,
@@ -117,37 +105,31 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             };
 
             _db.AppointmentTypes.Add(entity);
-            await _db.SaveChangesAsync(ct);
 
-            var read = new AppointmentTypeDto
+            try
             {
-                Id = entity.Id,
-                Name = entity.Name,
-                Duration = entity.Duration,
-                Price = entity.Price,
-                Description = entity.Description,
-                CreatedByUserId = entity.CreatedByUserId,
-                CreatedByUserName = null,
-                AssignedResourceId = entity.AssignedResourceId,
-                AssignedResourceName = null,
-                IsPublic = entity.IsPublic,
-                RequiresWaiver = entity.RequiresWaiver,
-                IsDeleted = entity.IsDeleted,
-                OrganizationId = entity.OrganizationId
-            };
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                return Conflict("An appointment type with this name already exists in this organization.");
+            }
 
+            var read = ToDto().Compile()(entity);
             return CreatedAtAction(nameof(GetById), new { id = read.Id }, read);
         }
 
         /// <summary>
-        /// Updates an existing appointment type. Managers may update any type while providers may update types they own.
+        /// Updates an existing appointment type. Manager/Provider only.
+        /// Validates name/uniqueness, duration &gt; 0, and assigned resource existence (if provided).
         /// </summary>
-        /// <param name="id">The appointment type identifier.</param>
-        /// <param name="dto">Updated values for the appointment type.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<IActionResult> Update([FromRoute] int id, [FromBody] UpdateAppointmentTypeDto dto, CancellationToken ct)
         {
             var a = await _db.AppointmentTypes
@@ -156,30 +138,67 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (a is null) return NotFound();
             if (!AppointmentTypeScopes.CanModify(a, UserId, IsManager, IsProvider, IsClient)) return Forbid();
 
-            if (dto.Name is not null) a.Name = dto.Name;
+            if (dto.Name is not null)
+            {
+                var trimmed = dto.Name.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed)) return BadRequest("Name cannot be empty.");
+
+                var normalized = trimmed.ToUpperInvariant();
+                var exists = await _db.AppointmentTypes
+                    .AnyAsync(x => x.OrganizationId == OrganizationId && x.Id != id && x.Name.ToUpper() == normalized, ct);
+                if (exists) return Conflict("A different appointment type with this name already exists in this organization.");
+
+                a.Name = trimmed;
+            }
+
             if (dto.Duration.HasValue)
             {
                 if (dto.Duration.Value <= TimeSpan.Zero) return BadRequest("Duration must be greater than zero.");
                 a.Duration = dto.Duration.Value;
             }
-            if (dto.Price.HasValue) a.Price = dto.Price.Value;
+
+            if (dto.Price.HasValue)
+            {
+                if (dto.Price.Value < 0) return BadRequest("Price cannot be negative.");
+                a.Price = dto.Price.Value;
+            }
+
             if (dto.Description is not null) a.Description = dto.Description;
             if (dto.IsPublic.HasValue) a.IsPublic = dto.IsPublic.Value;
             if (dto.RequiresWaiver.HasValue) a.RequiresWaiver = dto.RequiresWaiver.Value;
-            if (dto.AssignedResourceId.HasValue) a.AssignedResourceId = dto.AssignedResourceId;
 
-            await _db.SaveChangesAsync(ct);
+            if (dto.AssignedResourceId.HasValue)
+            {
+                var targetResourceId = dto.AssignedResourceId.Value;
+                var resourceExistsInOrg = await _db.CalendarResources
+                    .AnyAsync(r => r.Id == targetResourceId && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
+
+                if (!resourceExistsInOrg)
+                    return BadRequest("Assigned resource does not exist in your organization.");
+
+                a.AssignedResourceId = targetResourceId;
+            }
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+            {
+                return Conflict("An appointment type with this name already exists in this organization.");
+            }
+
             return NoContent();
         }
 
         /// <summary>
-        /// Soft deletes an appointment type. Managers may delete any type while providers may delete types they own.
+        /// Soft-deletes an appointment type. Manager/Provider only.
         /// </summary>
-        /// <param name="id">The appointment type identifier.</param>
-        /// <param name="ct">Cancellation token.</param>
-        /// <returns><see cref="NoContent"/> on success, or an error result.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
             var a = await _db.AppointmentTypes
@@ -192,5 +211,26 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
+
+        /// <summary>Projection from <see cref="AppointmentType"/> to <see cref="AppointmentTypeDto"/>.</summary>
+        private static Expression<Func<AppointmentType, AppointmentTypeDto>> ToDto() => a => new AppointmentTypeDto
+        {
+            Id = a.Id,
+            Name = a.Name,
+            Duration = a.Duration,
+            Price = a.Price,
+            Description = a.Description,
+            CreatedByUserId = a.CreatedByUserId,
+            CreatedByUserName = null, // optional: hydrate display name via join if needed
+            AssignedResourceId = a.AssignedResourceId,
+            AssignedResourceName = null, // optional: hydrate resource name via join if needed
+            IsPublic = a.IsPublic,
+            RequiresWaiver = a.RequiresWaiver,
+            IsDeleted = a.IsDeleted,
+            OrganizationId = a.OrganizationId
+        };
+
+        private static bool IsUniqueViolation(DbUpdateException ex)
+            => ex.InnerException is SqlException sql && (sql.Number == 2601 || sql.Number == 2627);
     }
 }

@@ -2,44 +2,88 @@
 using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, ProviderAvailability
 using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization, OrganizationSettings
 using BetterSchedule.Server.Models.Access;
-using BetterSchedule.Server.Models.Business;        // Packages, PackageAssignments
+using BetterSchedule.Server.Models.Business;        // Packages, PackageAssignments, PackageRedemptions
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.Database
 {
+    /// <summary>
+    /// EF Core context for identity and domain entities.
+    /// Configures multi-tenant boundaries, soft-delete/index strategies, and common query indexes.
+    /// </summary>
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
         public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
+        // -------------------------
         // Domain sets
+        // -------------------------
+
+        /// <summary>Bookable physical/virtual resources like rooms, chairs, equipment.</summary>
         public DbSet<CalendarResource> CalendarResources { get; set; } = default!;
+
+        /// <summary>Ad-hoc blocks that prevent booking for a provider and/or resource.</summary>
         public DbSet<BlockedTime> BlockedTimes { get; set; } = default!;
+
+        /// <summary>Weekly availability rules expressed in local org time.</summary>
         public DbSet<ProviderAvailability> ProviderAvailabilities { get; set; } = default!;
+
+        /// <summary>Scheduled appointments.</summary>
         public DbSet<Reservation> Reservations { get; set; } = default!;
+
+        /// <summary>Catalog of services (duration/price/etc.).</summary>
         public DbSet<AppointmentType> AppointmentTypes { get; set; } = default!;
+
+        /// <summary>Additional participants (guests, extra providers) on a reservation.</summary>
         public DbSet<ReservationParticipant> ReservationParticipants { get; set; } = default!;
+
+        /// <summary>Organizations (tenants).</summary>
         public DbSet<Organization> Organizations { get; set; } = default!;
+
+        /// <summary>Client membership records allowing a user to belong to multiple orgs.</summary>
         public DbSet<ClientOrganization> ClientOrganizations { get; set; } = default!;
+
+        /// <summary>Organization-wide scheduling/booking policy configuration.</summary>
         public DbSet<OrganizationSettings> OrganizationSettings { get; set; } = default!;
 
+        // -------------------------
         // Access control sets
+        // -------------------------
+
+        /// <summary>Grants providers access to specific resources (when org policy requires).</summary>
         public DbSet<ProviderResourceAccess> ProviderResourceAccesses { get; set; } = default!;
+
+        /// <summary>Grants providers access to specific appointment types (when org policy requires).</summary>
         public DbSet<ProviderAppointmentTypeAccess> ProviderAppointmentTypeAccesses { get; set; } = default!;
+
+        /// <summary>Restricts which resources may be used with an appointment type.</summary>
         public DbSet<AppointmentTypeResourceAccess> AppointmentTypeResourceAccesses { get; set; } = default!;
 
+        // -------------------------
         // Packages
+        // -------------------------
+
+        /// <summary>Sellable “packs” of uses for an appointment type.</summary>
         public DbSet<Package> Packages { get; set; } = default!;
+
+        /// <summary>A client’s entitlement to a package (remaining uses, expiration).</summary>
         public DbSet<PackageAssignment> PackageAssignments { get; set; } = default!;
+
+        /// <summary>Consumption entries linking a reservation to a package assignment.</summary>
         public DbSet<PackageRedemption> PackageRedemptions { get; set; } = default!;
 
-
+        /// <summary>
+        /// Configure identity schemas, relationships, indexes, and uniqueness/soft-delete policies.
+        /// </summary>
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
 
+            // ----------------------------------------------------------------
             // Identity → explicit schema
+            // ----------------------------------------------------------------
             builder.Entity<ApplicationUser>().ToTable("AspNetUsers", "identity");
             builder.Entity<IdentityRole>().ToTable("AspNetRoles", "identity");
             builder.Entity<IdentityUserRole<string>>().ToTable("AspNetUserRoles", "identity");
@@ -48,7 +92,22 @@ namespace BetterSchedule.Server.Database
             builder.Entity<IdentityUserToken<string>>().ToTable("AspNetUserTokens", "identity");
             builder.Entity<IdentityRoleClaim<string>>().ToTable("AspNetRoleClaims", "identity");
 
+            // Helpful org-scoped indexes for users
+            builder.Entity<ApplicationUser>()
+                .HasIndex(u => u.OrganizationId)
+                .HasDatabaseName("IX_Users_OrganizationId");
+
+            builder.Entity<ApplicationUser>()
+                .HasIndex(u => new { u.OrganizationId, u.IsDeleted })
+                .HasDatabaseName("IX_Users_Org_IsDeleted");
+
+            builder.Entity<ApplicationUser>()
+                .Property<bool>("AvailabilityPublic")
+                .HasDefaultValue(false);
+
+            // ----------------------------------------------------------------
             // Relationships
+            // ----------------------------------------------------------------
             builder.Entity<ApplicationUser>()
                 .HasOne(u => u.Organization)
                 .WithMany(o => o.Users)
@@ -121,7 +180,7 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey(r => r.ServiceProviderId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // NEW: Reservation → PackageAssignment (nullable FK; restrict)
+            // Reservation → PackageAssignment (nullable FK; restrict)
             builder.Entity<Reservation>()
                 .HasOne<PackageAssignment>()
                 .WithMany()
@@ -159,7 +218,10 @@ namespace BetterSchedule.Server.Database
                 .HasForeignKey<OrganizationSettings>(os => os.OrganizationId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // ----------------------------------------------------------------
             // Indexes / constraints
+            // ----------------------------------------------------------------
+
             builder.Entity<ClientOrganization>()
                 .HasIndex(co => new { co.ClientId, co.OrganizationId })
                 .IsUnique();
@@ -213,7 +275,6 @@ namespace BetterSchedule.Server.Database
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.ServiceProviderId, r.StartTime, r.EndTime });
 
-            // Helpful for joins/filter on package usage
             builder.Entity<Reservation>()
                 .HasIndex(r => new { r.OrganizationId, r.PackageAssignmentId });
 
@@ -228,29 +289,30 @@ namespace BetterSchedule.Server.Database
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.StartLocalTime)
                 .HasColumnType("time");
-
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.EndLocalTime)
                 .HasColumnType("time");
-
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.EffectiveFrom)
                 .HasColumnType("date");
-
             builder.Entity<ProviderAvailability>()
                 .Property(pa => pa.EffectiveTo)
                 .HasColumnType("date");
 
-            // ---------------------------
+            // ----------------------------------------------------------------
             // Access control entities
-            // ---------------------------
+            // ----------------------------------------------------------------
 
             builder.Entity<ProviderResourceAccess>(e =>
             {
                 e.HasKey(x => x.Id);
                 e.HasIndex(x => new { x.OrganizationId, x.UserId });
                 e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
-                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                // Filtered unique: at most one ACTIVE link (IsDeleted=0)
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.ResourceId })
+                 .IsUnique()
+                 .HasFilter("[IsDeleted] = 0");
 
                 e.HasOne(x => x.User)
                     .WithMany()
@@ -268,7 +330,11 @@ namespace BetterSchedule.Server.Database
                 e.HasKey(x => x.Id);
                 e.HasIndex(x => new { x.OrganizationId, x.UserId });
                 e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
-                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.AppointmentTypeId, x.IsDeleted }).IsUnique();
+
+                // Filtered unique: at most one ACTIVE link
+                e.HasIndex(x => new { x.OrganizationId, x.UserId, x.AppointmentTypeId })
+                 .IsUnique()
+                 .HasFilter("[IsDeleted] = 0");
 
                 e.HasOne(x => x.User)
                     .WithMany()
@@ -286,7 +352,11 @@ namespace BetterSchedule.Server.Database
                 e.HasKey(x => x.Id);
                 e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
                 e.HasIndex(x => new { x.OrganizationId, x.ResourceId });
-                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId, x.ResourceId, x.IsDeleted }).IsUnique();
+
+                // Filtered unique: at most one ACTIVE link
+                e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId, x.ResourceId })
+                 .IsUnique()
+                 .HasFilter("[IsDeleted] = 0");
 
                 e.HasOne(x => x.AppointmentType)
                     .WithMany()
@@ -299,9 +369,9 @@ namespace BetterSchedule.Server.Database
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
-            // ---------------------------
+            // ----------------------------------------------------------------
             // Packages
-            // ---------------------------
+            // ----------------------------------------------------------------
 
             builder.Entity<Package>(e =>
             {
@@ -323,10 +393,12 @@ namespace BetterSchedule.Server.Database
                     .HasForeignKey(x => x.ProviderId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // Name uniqueness within org
-                e.HasIndex(x => new { x.OrganizationId, x.Name }).IsUnique();
+                // Case-insensitive uniqueness on Name within org (explicit CI collation)
+                e.Property(x => x.Name).UseCollation("SQL_Latin1_General_CP1_CI_AS");
+                e.HasIndex(x => new { x.OrganizationId, x.Name })
+                 .IsUnique()
+                 .HasDatabaseName("UX_Packages_Org_Name_CI");
 
-                // Helpful filters
                 e.HasIndex(x => new { x.OrganizationId, x.AppointmentTypeId });
                 e.HasIndex(x => new { x.OrganizationId, x.IsActive });
             });
@@ -349,10 +421,9 @@ namespace BetterSchedule.Server.Database
                     .WithMany()
                     .HasForeignKey(x => x.PackageId)
                     .OnDelete(DeleteBehavior.Restrict);
-
-                // Common query patterns used by Eligible endpoint
+   
                 e.HasIndex(x => new { x.OrganizationId, x.ClientId });
-                e.HasIndex(x => new { x.OrganizationId, x.ClientId, x.AppointmentTypeId, x.IsDeleted });
+                e.HasIndex(x => new { x.OrganizationId, x.ClientId, x.PackageId, x.IsDeleted });
                 e.HasIndex(x => x.ExpiresAtUtc);
             });
 
@@ -377,6 +448,7 @@ namespace BetterSchedule.Server.Database
 
                 // Prevent double-consumption on the same reservation
                 e.HasIndex(x => new { x.OrganizationId, x.ReservationId }).IsUnique();
+
                 // Fast lookups by assignment for reporting
                 e.HasIndex(x => x.PackageAssignmentId);
 

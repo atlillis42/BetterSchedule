@@ -5,51 +5,33 @@ using BetterSchedule.Server.Models.Scheduling;
 namespace BetterSchedule.Server.Models.Access
 {
     /// <summary>
-    /// Grants a provider access to perform a specific appointment type within an organization.
-    /// Policy/permission link (many-to-many): Provider (ApplicationUser) ↔ AppointmentType.
-    /// Soft-deletable to allow safe unassign without losing history.
+    /// Organization-scoped permission linking a provider (<see cref="ApplicationUser"/>) to a permitted <see cref="AppointmentType"/>.
+    /// Honors <see cref="Tenant.OrganizationSettings.LimitProvidersToAssignedAppointmentTypes"/>.
     /// </summary>
     public sealed class ProviderAppointmentTypeAccess
     {
-        /// <summary>
-        /// Surrogate primary key.
-        /// </summary>
+        /// <summary>Surrogate primary key.</summary>
         public int Id { get; set; }
 
-        /// <summary>
-        /// Owning organization (scope boundary).
-        /// </summary>
+        /// <summary>Identifier of the owning organization.</summary>
         public string OrganizationId { get; init; } = default!;
 
-        /// <summary>
-        /// Provider (ApplicationUser) who is granted access.
-        /// </summary>
+        /// <summary>Identifier of the provider who is granted access.</summary>
         public string UserId { get; init; } = default!;
 
-        /// <summary>
-        /// Navigation to the provider.
-        /// </summary>
+        /// <summary>Navigation to the provider.</summary>
         public ApplicationUser? User { get; set; }
 
-        /// <summary>
-        /// Appointment type that the provider may perform.
-        /// Works for both org-owned and provider-created types.
-        /// </summary>
+        /// <summary>Identifier of the appointment type the provider may perform.</summary>
         public int AppointmentTypeId { get; init; }
 
-        /// <summary>
-        /// Navigation to the appointment type.
-        /// </summary>
+        /// <summary>Navigation to the appointment type.</summary>
         public AppointmentType? AppointmentType { get; set; }
 
-        /// <summary>
-        /// Soft-delete flag for safe unassign.
-        /// </summary>
+        /// <summary>Whether this link is soft deleted (safe unassign).</summary>
         public bool IsDeleted { get; set; }
 
-        /// <summary>
-        /// Audit timestamp for creation.
-        /// </summary>
+        /// <summary>Creation timestamp (UTC).</summary>
         public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     }
 }

@@ -4,34 +4,27 @@ using Microsoft.AspNetCore.Mvc;
 namespace BetterSchedule.Server.Controllers.Organization
 {
     /// <summary>
-    /// Base controller that exposes convenience accessors for organization- and role-based claims.
+    /// Base controller exposing convenience accessors for organization- and role-based claims.
     /// </summary>
     [ApiController]
     public abstract class OrgControllerBase : ControllerBase
     {
-        /// <summary>
-        /// Gets the organization identifier from the current user's claims.
-        /// </summary>
+        /// <summary>Organization identifier from the current user's claims.</summary>
         protected string OrganizationId => User.GetOrgIdOrThrow();
 
-        /// <summary>
-        /// Gets the current user's identifier from the claims, if available.
-        /// </summary>
+        /// <summary>Current user's identifier (or <c>null</c> if unavailable).</summary>
         protected string? UserId => User.GetUserId();
 
-        /// <summary>
-        /// Determines whether the current user has the Manager role.
-        /// </summary>
+        /// <summary>Current user's identifier (null not allowed).</summary>
+        protected string UserIdOrThrow => User.GetUserIdOrThrow();
+
+        /// <summary>Whether the current user has the Manager role.</summary>
         protected bool IsManager => User.IsInRole("Manager");
 
-        /// <summary>
-        /// Determines whether the current user has the ServiceProvider role.
-        /// </summary>
+        /// <summary>Whether the current user has the ServiceProvider role.</summary>
         protected bool IsProvider => User.IsInRole("ServiceProvider");
 
-        /// <summary>
-        /// Determines whether the current user has the Client role.
-        /// </summary>
+        /// <summary>Whether the current user has the Client role.</summary>
         protected bool IsClient => User.IsInRole("Client");
     }
 }
