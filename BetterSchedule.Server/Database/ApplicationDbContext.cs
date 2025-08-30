@@ -127,7 +127,7 @@ namespace BetterSchedule.Server.Database
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<BlockedTime>()
-                .HasOne(bt => bt.CreatedByUser)
+                .HasOne<ApplicationUser>()
                 .WithMany()
                 .HasForeignKey(bt => bt.CreatedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);

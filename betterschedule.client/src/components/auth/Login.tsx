@@ -29,7 +29,7 @@ const Login: React.FC = () => {
     }, [loading, isAuthenticated, navigate]);
 
     const handleLogin = async () => {
-        // In DEV, always use the default All-Roles dev account for this button.
+        // In DEV, button uses the default All-Roles dev account
         const isDev = import.meta.env.MODE === "development";
         const identifier = isDev ? DEV_DEFAULT.email : email;
         const pwd = isDev ? DEV_DEFAULT.password : password;

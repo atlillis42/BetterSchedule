@@ -52,8 +52,8 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// Checks conflicts for a new blocked-time window.
         /// </summary>
         /// <param name="organizationId">Organization scope.</param>
-        /// <param name="createdByUserId">The creating user id (provider id when PTO).</param>
-        /// <param name="resourceId">Optional resource to block.</param>
+        /// <param name="createdByUserId">The creating user id (provider id when PTO/self-block).</param>
+        /// <param name="resourceId">Optional resource to block (null for provider self-block).</param>
         /// <param name="start">Start of the block (UTC).</param>
         /// <param name="end">End of the block (UTC).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
@@ -71,8 +71,8 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// </summary>
         /// <param name="blockedTimeId">Existing block id to ignore for self-overlap.</param>
         /// <param name="organizationId">Organization scope.</param>
-        /// <param name="createdByUserId">The creating user id (provider id when PTO).</param>
-        /// <param name="resourceId">Optional resource to block.</param>
+        /// <param name="createdByUserId">The creating user id (provider id when PTO/self-block).</param>
+        /// <param name="resourceId">Optional resource to block (null for provider self-block).</param>
         /// <param name="start">Effective start (UTC).</param>
         /// <param name="end">Effective end (UTC).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
@@ -92,7 +92,7 @@ namespace BetterSchedule.Server.Services.Scheduling
     /// </summary>
     /// <param name="ReservationOverlap">
     /// True when the window overlaps an existing reservation for the same provider
-    /// <b>or</b> (when a resource is specified) an existing reservation on that resource.
+    /// or (when a resource is specified) an existing reservation on that resource.
     /// </param>
     /// <param name="ProviderBlocked">True when a provider-created block overlaps the window.</param>
     /// <param name="ResourceBlocked">True when a resource-level block overlaps the window.</param>

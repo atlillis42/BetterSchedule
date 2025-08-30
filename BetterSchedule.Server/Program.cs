@@ -1,5 +1,3 @@
-using System.Reflection;
-using System.Text.Json.Serialization;
 using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
@@ -7,8 +5,11 @@ using BetterSchedule.Server.Extensions;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,11 +42,35 @@ builder.Services.AddAuthentication(options =>
 .AddCookie(IdentityConstants.ApplicationScheme, options =>
 {
     options.SlidingExpiration = true;
-    options.LoginPath = "/login";
+    options.LoginPath = "/api/login";
     options.Cookie.Name = ".BetterSchedule.Identity";
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.None;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+
+    options.Events = new CookieAuthenticationEvents
+    {
+        OnRedirectToLogin = ctx =>
+        {
+            if (ctx.Request.Path.StartsWithSegments("/api"))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            }
+            ctx.Response.Redirect(ctx.RedirectUri);
+            return Task.CompletedTask;
+        },
+        OnRedirectToAccessDenied = ctx =>
+        {
+            if (ctx.Request.Path.StartsWithSegments("/api"))
+            {
+                ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            }
+            ctx.Response.Redirect(ctx.RedirectUri);
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services
@@ -126,7 +151,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapIdentityApi<ApplicationUser>();
+app.MapGroup("/api").MapIdentityApi<ApplicationUser>();
 app.MapControllers();
 app.MapFallbackToFile("/index.html");
 

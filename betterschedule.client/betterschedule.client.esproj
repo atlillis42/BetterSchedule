@@ -15,6 +15,7 @@
     <TypeScriptConfiguration Remove="src\store\**" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="src\components\client\" />
     <Folder Include="src\__tests__\__mocks__\" />
   </ItemGroup>
 </Project>

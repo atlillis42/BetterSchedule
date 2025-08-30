@@ -4,13 +4,11 @@ using System.ComponentModel.DataAnnotations;
 namespace BetterSchedule.Server.Models.DTOs.AppointmentType
 {
     /// <summary>
-    /// Payload to update an existing appointment type. Optional fields may be supplied to change selected attributes.
+    /// Payload to update an existing appointment type. 
+    /// Provide only fields to change.
     /// </summary>
     public class UpdateAppointmentTypeDto
     {
-        /// <summary>Identifier of the appointment type to update.</summary>
-        [Required]
-        public int Id { get; init; }
 
         /// <summary>New display name, if changing.</summary>
         public string? Name { get; init; }
@@ -32,5 +30,7 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
 
         /// <summary>New assigned resource identifier, if changing.</summary>
         public int? AssignedResourceId { get; init; }
+        /// <summary>When true, clears any assigned resource.</summary>
+        public bool? ClearAssignedResource { get; init; }
     }
 }

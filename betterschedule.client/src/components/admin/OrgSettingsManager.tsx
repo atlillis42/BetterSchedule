@@ -3,27 +3,32 @@ import { toast } from "react-toastify";
 import {
     getOrgSettings,
     updateOrgSettings,
-    minutesToTimeSpan,
-    hoursToTimeSpan,
-    timeSpanToMinutes,
-    timeSpanToHours,
-    normalizeHHmmOrHHmmss,
     type DefaultCalendarView,
     type CalendarShadingMode,
     type AvailabilityEnforcement,
-    type ProviderCancelPolicy, 
+    type ProviderCancelPolicy,
+    type ClientCancelPolicy,
 } from "@/api/org-settings-api";
 import { useAuth } from "@auth/AuthContext";
 import ProviderAccessManager from "@/components/admin/ProviderAccessManager";
 
-/** Local form model (UI-friendly fields) */
+/**
+ * Organization Settings Manager (Manager-only).
+ * - Loads current organization settings.
+ * - Provides a UI for editing booking guardrails, cancel policies, calendar display,
+ *   availability policy/visuals, timezone/locale, and notifications.
+ * - Persists changes via PUT /org-settings.
+ */
+
+/** Local form model (UI-friendly fields). */
 type Form = {
-    // booking windows as numbers for easy editing
+    // booking windows (server uses authoritative integers)
     minLeadMinutes: number;
     cancelWindowHours: number;
 
-    // provider cancel policy
+    // cancel policies
     providerCancelPolicy: ProviderCancelPolicy;
+    clientCancelPolicy: ClientCancelPolicy;
 
     // calendar display
     showWeekends: boolean;
@@ -52,7 +57,10 @@ type Form = {
 
 type TabKey = "general" | "access";
 
-const hhmm = (ts: string) => ts.slice(0, 5); // "HH:mm:ss" -> "HH:mm"
+/** Ensures "HH:mm:ss" (appends ":00" when given "HH:mm"). */
+const normalizeHHmmOrHHmmss = (v: string) => (/^\d{1,2}:\d{2}$/.test(v) ? `${v}:00` : v);
+/** Trims a "HH:mm:ss" string to "HH:mm" for input[type=time]. */
+const hhmm = (ts: string) => ts.slice(0, 5);
 
 export default function OrgSettingsManager() {
     const { isManager } = useAuth();
@@ -68,10 +76,11 @@ export default function OrgSettingsManager() {
             try {
                 const s = await getOrgSettings();
                 setF({
-                    minLeadMinutes: timeSpanToMinutes(s.bookingLeadTime),
-                    cancelWindowHours: timeSpanToHours(s.cancellationWindow),
+                    minLeadMinutes: s.minLeadMinutes,
+                    cancelWindowHours: s.cancelWindowHours,
 
                     providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
+                    clientCancelPolicy: s.clientCancelPolicy ?? "RespectWindow",
 
                     showWeekends: s.showWeekends,
                     startOfWeek: s.startOfWeek,
@@ -104,7 +113,7 @@ export default function OrgSettingsManager() {
         if (!f) return false;
         const start = normalizeHHmmOrHHmmss(f.businessHoursStartLocal);
         const end = normalizeHHmmOrHHmmss(f.businessHoursEndLocal);
-        // simple lexicographic compare works for HH:mm:ss
+        // Lexicographic compare is valid for HH:mm:ss strings.
         return end <= start;
     }, [f]);
 
@@ -118,12 +127,13 @@ export default function OrgSettingsManager() {
         setSaving(true);
         try {
             await updateOrgSettings({
-                // booking windows (convert numeric -> TimeSpan strings)
-                bookingLeadTime: minutesToTimeSpan(f.minLeadMinutes),
-                cancellationWindow: hoursToTimeSpan(f.cancelWindowHours),
+                // booking windows
+                minLeadMinutes: f.minLeadMinutes,
+                cancelWindowHours: f.cancelWindowHours,
 
-                // provider cancel policy
+                // cancel policies
                 providerCancelPolicy: f.providerCancelPolicy,
+                clientCancelPolicy: f.clientCancelPolicy,
 
                 // calendar display
                 showWeekends: f.showWeekends,
@@ -224,6 +234,24 @@ export default function OrgSettingsManager() {
                                     <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
                                     <option value="None">None (managers only)</option>
                                 </select>
+                            </label>
+
+                            {/* Client cancel policy */}
+                            <label className="flex flex-col">
+                                <span>Client cancel policy</span>
+                                <select
+                                    className="border rounded px-2 py-1"
+                                    value={f.clientCancelPolicy}
+                                    onChange={(e) => setF({ ...f, clientCancelPolicy: e.target.value as ClientCancelPolicy })}
+                                    disabled={!canEdit}
+                                >
+                                    <option value="AnyTime">AnyTime</option>
+                                    <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
+                                    <option value="None">None (manager only)</option>
+                                </select>
+                                <span className="text-xs text-gray-500 mt-1">
+                                    Note: If Provider policy is <b>None</b>, client self-cancel is disabled regardless of this value.
+                                </span>
                             </label>
                         </div>
                     </section>
@@ -424,8 +452,7 @@ export default function OrgSettingsManager() {
                                     onChange={(e) =>
                                         setF({
                                             ...f,
-                                            reminderHoursBefore:
-                                                e.target.value === "" ? null : Math.max(0, Number(e.target.value || 0)),
+                                            reminderHoursBefore: e.target.value === "" ? null : Math.max(0, Number(e.target.value || 0)),
                                         })
                                     }
                                     disabled={!canEdit}

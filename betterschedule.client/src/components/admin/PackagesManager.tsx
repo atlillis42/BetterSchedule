@@ -13,8 +13,15 @@ import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmentt
 import { getProvidersLite } from "@/api/user-api";
 import { useAuth } from "@auth/AuthContext";
 
+/**
+ * Lightweight provider reference for form pickers.
+ */
 type ProviderLite = { id: string; name: string };
 
+/**
+ * Local form state for create/edit.
+ * Empty string values allow “unset” inputs that map cleanly to nullable payloads.
+ */
 type FormState = {
     id?: number;
     name: string;
@@ -22,10 +29,12 @@ type FormState = {
     totalUses: number | "";
     providerLocked: boolean;
     providerId: string | "";
-    expiresAfterDays: number | ""; // empty => null
+    /** Blank => no expiry (null) */
+    expiresAfterDays: number | "";
     isActive: boolean;
 };
 
+/** Factory for a pristine form. */
 const emptyForm = (): FormState => ({
     name: "",
     appointmentTypeId: "",
@@ -36,7 +45,14 @@ const emptyForm = (): FormState => ({
     isActive: true,
 });
 
-const PackagesAdmin: React.FC = () => {
+/**
+ * Manager UI for package templates.
+ *
+ * @remarks
+ * - Create/Update mirror server validation; errors are surfaced as toasts.
+ * - Delete maps to server soft-off (IsActive=false).
+ */
+const PackagesManager: React.FC = () => {
     const { isManager } = useAuth();
     const canEdit = isManager;
 
@@ -53,14 +69,17 @@ const PackagesAdmin: React.FC = () => {
     const [form, setForm] = useState<FormState>(emptyForm());
     const firstInputRef = useRef<HTMLInputElement | null>(null);
 
+    /** Map of appointment type id -> dto for quick lookup. */
     const typeById = useMemo(() => {
         const map = new Map<number, AppointmentTypeDto>();
         types.forEach((t) => map.set(t.id, t));
         return map;
     }, [types]);
 
+    /** Resolves a provider display name from its id (fallback to raw id). */
     const providerName = (id?: string | null) => providers.find((p) => p.id === id)?.name || id || "";
 
+    /** Loads reference data + filtered package list. */
     const load = async () => {
         setLoading(true);
         try {
@@ -88,16 +107,16 @@ const PackagesAdmin: React.FC = () => {
     }, [filterActiveOnly, filterTypeId]);
 
     useEffect(() => {
-        if (showModal && firstInputRef.current) {
-            firstInputRef.current.focus();
-        }
+        if (showModal && firstInputRef.current) firstInputRef.current.focus();
     }, [showModal]);
 
+    /** Opens the create dialog. */
     const openCreate = () => {
         setForm(emptyForm());
         setShowModal(true);
     };
 
+    /** Opens the edit dialog pre-filled with a row. */
     const openEdit = (pkg: PackageDto) => {
         setForm({
             id: pkg.id,
@@ -112,6 +131,7 @@ const PackagesAdmin: React.FC = () => {
         setShowModal(true);
     };
 
+    /** Validates and maps form -> create payload. */
     const toCreatePayload = (f: FormState): CreatePackageDto | null => {
         if (!f.name.trim()) {
             toast.error("Name is required.");
@@ -135,14 +155,13 @@ const PackagesAdmin: React.FC = () => {
             totalUses: Number(f.totalUses),
             providerLocked: !!f.providerLocked,
             providerId: f.providerLocked ? String(f.providerId) : null,
-            expiresAfterDays:
-                f.expiresAfterDays === "" ? null : Math.max(1, Number(f.expiresAfterDays || 0)),
+            expiresAfterDays: f.expiresAfterDays === "" ? null : Math.max(1, Number(f.expiresAfterDays || 0)),
             isActive: !!f.isActive,
         };
     };
 
+    /** Validates and maps form -> update payload (full patch for simplicity). */
     const toUpdatePayload = (f: FormState): UpdatePackageDto | null => {
-        // For simplicity, send full patch with current values; server will validate.
         const createLike = toCreatePayload(f);
         if (!createLike) return null;
         const patch: UpdatePackageDto = {
@@ -157,6 +176,7 @@ const PackagesAdmin: React.FC = () => {
         return patch;
     };
 
+    /** Persists the create/update operation. */
     const handleSave = async () => {
         if (!canEdit) return;
 
@@ -186,6 +206,7 @@ const PackagesAdmin: React.FC = () => {
         }
     };
 
+    /** Soft-off (IsActive=false) for a package. */
     const handleDelete = async (id: number) => {
         if (!canEdit) return;
         if (!window.confirm("Turn this package off (IsActive = false)?")) return;
@@ -214,9 +235,7 @@ const PackagesAdmin: React.FC = () => {
                     <select
                         className="border rounded px-2 py-1 text-sm"
                         value={filterTypeId === "" ? "" : String(filterTypeId)}
-                        onChange={(e) =>
-                            setFilterTypeId(e.target.value ? Number(e.target.value) : "")
-                        }
+                        onChange={(e) => setFilterTypeId(e.target.value ? Number(e.target.value) : "")}
                     >
                         <option value="">All types</option>
                         {types.map((t) => (
@@ -226,10 +245,7 @@ const PackagesAdmin: React.FC = () => {
                         ))}
                     </select>
                     {canEdit && (
-                        <button
-                            className="bg-blue-600 text-white px-3 py-1 rounded"
-                            onClick={openCreate}
-                        >
+                        <button className="bg-blue-600 text-white px-3 py-1 rounded" onClick={openCreate}>
                             New Package
                         </button>
                     )}
@@ -264,19 +280,14 @@ const PackagesAdmin: React.FC = () => {
                                     <tr key={p.id} className="border-t">
                                         <td className="px-3 py-2">{p.name}</td>
                                         <td className="px-3 py-2">
-                                            {typeById.get(p.appointmentTypeId)?.name ??
-                                                p.appointmentTypeId}
+                                            {p.appointmentTypeName ?? typeById.get(p.appointmentTypeId)?.name ?? p.appointmentTypeId}
                                         </td>
                                         <td className="px-3 py-2">{p.totalUses}</td>
                                         <td className="px-3 py-2">
                                             {p.providerLocked ? (
                                                 <span className="inline-flex items-center gap-1">
-                                                    <span className="rounded bg-gray-800 text-white text-[10px] px-1 py-0.5">
-                                                        locked
-                                                    </span>
-                                                    <span className="text-gray-700">
-                                                        {providerName(p.providerId)}
-                                                    </span>
+                                                    <span className="rounded bg-gray-800 text-white text-[10px] px-1 py-0.5">locked</span>
+                                                    <span className="text-gray-700">{p.providerName ?? providerName(p.providerId)}</span>
                                                 </span>
                                             ) : (
                                                 <span className="text-gray-500">—</span>
@@ -287,23 +298,16 @@ const PackagesAdmin: React.FC = () => {
                                         </td>
                                         <td className="px-3 py-2">
                                             {p.isActive ? (
-                                                <span className="rounded bg-green-100 text-green-700 px-2 py-0.5">
-                                                    Active
-                                                </span>
+                                                <span className="rounded bg-green-100 text-green-700 px-2 py-0.5">Active</span>
                                             ) : (
-                                                <span className="rounded bg-gray-100 text-gray-600 px-2 py-0.5">
-                                                    Inactive
-                                                </span>
+                                                <span className="rounded bg-gray-100 text-gray-600 px-2 py-0.5">Inactive</span>
                                             )}
                                         </td>
                                         <td className="px-3 py-2">
                                             <div className="flex items-center gap-2">
                                                 {canEdit && (
                                                     <>
-                                                        <button
-                                                            className="px-2 py-1 rounded border"
-                                                            onClick={() => openEdit(p)}
-                                                        >
+                                                        <button className="px-2 py-1 rounded border" onClick={() => openEdit(p)}>
                                                             Edit
                                                         </button>
                                                         <button
@@ -329,9 +333,7 @@ const PackagesAdmin: React.FC = () => {
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30">
                     <div className="w-full max-w-lg rounded-xl bg-white shadow-lg">
                         <div className="flex items-center justify-between px-4 py-3 border-b">
-                            <div className="font-medium">
-                                {form.id ? "Edit Package" : "New Package"}
-                            </div>
+                            <div className="font-medium">{form.id ? "Edit Package" : "New Package"}</div>
                             <button className="text-sm text-gray-600" onClick={() => setShowModal(false)}>
                                 Close
                             </button>
@@ -480,4 +482,4 @@ const PackagesAdmin: React.FC = () => {
     );
 };
 
-export default PackagesAdmin;
+export default PackagesManager;
