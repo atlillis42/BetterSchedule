@@ -1,5 +1,5 @@
 /**
- * Summary: Manager endpoints for Provider ↔ AppointmentType access.
+ * Manager endpoints for Provider ↔ AppointmentType access.
  * - List appointment type IDs granted to a provider.
  * - Assign/unassign specific types to a provider.
  */
@@ -10,24 +10,45 @@ import type {
     AssignProviderAppointmentTypeRequest,
 } from "@/types/accessTypes";
 
-/**
- * GET: appointment type IDs a provider can use.
- */
-export async function listAppointmentTypeIdsByProvider(userId: UserId): Promise<AppointmentTypeId[]> {
-    const { data } = await api.get<AppointmentTypeId[]>(`/provider-appointment-type-access/by-provider/${userId}`);
-    return data;
+type ApiErrorPayload = { code?: string; message?: string };
+const handle = (e: any, f: string): never => {
+    const p: ApiErrorPayload | undefined = e?.response?.data;
+    if (p?.message) throw new Error(p.message);
+    throw new Error(f);
+};
+
+/** Returns appointment type IDs a provider may perform (org-scoped). */
+export async function listAppointmentTypeIdsByProvider(
+    userId: UserId
+): Promise<AppointmentTypeId[]> {
+    try {
+        const { data } = await api.get<AppointmentTypeId[]>(
+            `/provider-appointment-type-access/by-provider/${userId}`
+        );
+        return data;
+    } catch (err: any) {
+        handle(err, "Failed to load permitted appointment types for provider.");
+    }
 }
 
-/**
- * POST: assign a provider to an appointment type.
- */
-export async function assignProviderAppointmentType(body: AssignProviderAppointmentTypeRequest): Promise<void> {
-    await api.post<void>("/provider-appointment-type-access/assign", body);
+/** Assigns an appointment type to a provider (idempotent; undeletes when needed). */
+export async function assignProviderAppointmentType(
+    body: AssignProviderAppointmentTypeRequest
+): Promise<void> {
+    try {
+        await api.post<void>("/provider-appointment-type-access/assign", body);
+    } catch (err: any) {
+        handle(err, "Failed to assign appointment type to provider.");
+    }
 }
 
-/**
- * POST: unassign a provider from an appointment type.
- */
-export async function unassignProviderAppointmentType(body: AssignProviderAppointmentTypeRequest): Promise<void> {
-    await api.post<void>("/provider-appointment-type-access/unassign", body);
+/** Soft-unassigns an appointment type from a provider. */
+export async function unassignProviderAppointmentType(
+    body: AssignProviderAppointmentTypeRequest
+): Promise<void> {
+    try {
+        await api.post<void>("/provider-appointment-type-access/unassign", body);
+    } catch (err: any) {
+        handle(err, "Failed to unassign appointment type from provider.");
+    }
 }
