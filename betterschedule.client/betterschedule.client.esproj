@@ -9,9 +9,7 @@
     <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="src\services\**" />
     <None Remove="src\store\**" />
-    <TypeScriptConfiguration Remove="src\services\**" />
     <TypeScriptConfiguration Remove="src\store\**" />
   </ItemGroup>
   <ItemGroup>

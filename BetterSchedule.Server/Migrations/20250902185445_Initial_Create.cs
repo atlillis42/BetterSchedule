@@ -372,6 +372,7 @@ namespace BetterSchedule.Server.Migrations
                     StartTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     EndTime = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     CreatedByUserId = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    CreatedByUserNameId = table.Column<string>(type: "nvarchar(450)", nullable: true),
                     ResourceId = table.Column<int>(type: "int", nullable: true),
                     BackColor = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
@@ -387,6 +388,12 @@ namespace BetterSchedule.Server.Migrations
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_BlockedTimes_AspNetUsers_CreatedByUserNameId",
+                        column: x => x.CreatedByUserNameId,
+                        principalSchema: "identity",
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id");
                     table.ForeignKey(
                         name: "FK_BlockedTimes_CalendarResources_ResourceId",
                         column: x => x.ResourceId,
@@ -813,6 +820,11 @@ namespace BetterSchedule.Server.Migrations
                 name: "IX_BlockedTimes_CreatedByUserId",
                 table: "BlockedTimes",
                 column: "CreatedByUserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_BlockedTimes_CreatedByUserNameId",
+                table: "BlockedTimes",
+                column: "CreatedByUserNameId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_BlockedTimes_OrganizationId_CreatedByUserId",

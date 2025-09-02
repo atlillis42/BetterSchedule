@@ -459,6 +459,9 @@ namespace BetterSchedule.Server.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<string>("CreatedByUserNameId")
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<DateTimeOffset>("EndTime")
                         .HasColumnType("datetimeoffset");
 
@@ -482,6 +485,8 @@ namespace BetterSchedule.Server.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CreatedByUserNameId");
 
                     b.HasIndex("ResourceId");
 
@@ -1115,11 +1120,15 @@ namespace BetterSchedule.Server.Migrations
 
             modelBuilder.Entity("BetterSchedule.Server.Models.Scheduling.BlockedTime", b =>
                 {
-                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", "CreatedByUser")
+                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("BetterSchedule.Server.Models.Identity.ApplicationUser", "CreatedByUserName")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserNameId");
 
                     b.HasOne("BetterSchedule.Server.Models.Tenant.Organization", "Organization")
                         .WithMany()
@@ -1132,7 +1141,7 @@ namespace BetterSchedule.Server.Migrations
                         .HasForeignKey("ResourceId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.Navigation("CreatedByUser");
+                    b.Navigation("CreatedByUserName");
 
                     b.Navigation("Organization");
 

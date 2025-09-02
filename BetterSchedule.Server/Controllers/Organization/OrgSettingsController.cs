@@ -16,7 +16,7 @@ namespace BetterSchedule.Server.Controllers.Organization
     /// </summary>
     [ApiController]
     [Route("api/org-settings")]
-    [Authorize(Roles = "Manager")]
+    [Authorize]
     public sealed class OrgSettingsController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
@@ -46,6 +46,7 @@ namespace BetterSchedule.Server.Controllers.Organization
         /// Only provided fields are applied. Enum parsing is case-insensitive.
         /// </summary>
         [HttpPut]
+        [Authorize(Roles = "Manager")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Update([FromBody] UpdateOrgSettingsDto dto, CancellationToken ct)
         {
