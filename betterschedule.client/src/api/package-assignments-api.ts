@@ -1,45 +1,73 @@
 import { api } from "@auth/axios";
 
 /**
- * A package owned by a specific client (mutable counters).
+ * Read model for a package assignment owned by a specific client.
+ * Carries snapshot fields from the package and mutable counters.
+ *
+ * @remarks
+ * - `totalUses` is the snapshot at grant time; `remainingUses` counts down with redemptions.
+ * - `expiresAtUtc` is an absolute UTC timestamp if the assignment is time-limited.
  */
 export type PackageAssignmentDto = {
+    /** Identifier of the assignment. */
     id: number;
+
+    /** Owning organization identifier. */
     organizationId: string;
 
+    /** Client identifier. */
     clientId: string;
 
+    /** Source package identifier. */
     packageId: number;
+
+    /** Snapshot of the package name at grant time. */
     packageName: string;
 
+    /** Snapshot: appointment type the package applies to. */
     appointmentTypeId: number;
 
-    /** Remaining uses after any redemptions */
+    /** Current remaining uses (never negative). */
     remainingUses: number;
 
-    /** Total uses at grant-time (copy of Package.totalUses for easy display) */
+    /** Snapshot of the total uses granted by the package. */
     totalUses: number;
 
-    grantedAt: string;      // ISO
-    expiresAtUtc?: string | null; // ISO absolute expiry (if any)
+    /** Grant timestamp (ISO). */
+    grantedAt: string;
 
+    /** Absolute expiry (ISO UTC) if the assignment expires. */
+    expiresAtUtc?: string | null;
+
+    /** Soft-delete flag. */
     isDeleted: boolean;
 };
 
-/** Input to grant/issue a package to a client */
+/**
+ * Command to grant a package to a client.
+ *
+ * @remarks
+ * - The server validates org membership, package activity, provider lock, and expiry policy.
+ */
 export type GrantPackageDto = {
+    /** Client identifier receiving the package. */
     clientId: string;
+
+    /** Package identifier to grant. */
     packageId: number;
 };
 
 /**
- * Eligible assignments response.
- * These are the client’s assignments that can be used
- * for a given appointment type (and optionally provider).
+ * Eligible assignments for a booking context.
+ * These are the client’s assignments that are usable for the given appointment type
+ * (and, when provided, the given provider).
  */
 export type EligibleAssignmentDto = PackageAssignmentDto;
 
-/** GET /package-assignments/eligible?clientId=&appointmentTypeId=&providerId= */
+/**
+ * Lists usable assignments for a client in a booking context.
+ * GET `/package-assignments/eligible?clientId=&appointmentTypeId=&providerId=`
+ */
 export async function listEligibleAssignments(params: {
     clientId: string;
     appointmentTypeId: number;
@@ -51,24 +79,33 @@ export async function listEligibleAssignments(params: {
     return data;
 }
 
-/** Convenience: list all assignments for a client (optional but handy in admin) */
-/** GET /package-assignments/by-client/{clientId} */
+/**
+ * Lists all assignments for a client (admin convenience).
+ * GET `/package-assignments/by-client/{clientId}`
+ */
 export async function listAssignmentsByClient(clientId: string): Promise<PackageAssignmentDto[]> {
     const { data } = await api.get<PackageAssignmentDto[]>(`/package-assignments/by-client/${clientId}`);
     return data;
 }
 
-/** POST /package-assignments/grant */
+/**
+ * Grants a package to a client.
+ * POST `/package-assignments/grant`
+ */
 export async function grantPackage(payload: GrantPackageDto): Promise<PackageAssignmentDto> {
     const { data } = await api.post<PackageAssignmentDto>("/package-assignments/grant", payload);
     return data;
 }
 
-/* -------------------- UI helpers (optional) -------------------- */
+/* ------------------------------------------------------------------ */
+/* UI helpers                                                         */
+/* ------------------------------------------------------------------ */
 
-/** Compact label for selects like the EventModal package dropdown */
+/**
+ * Formats a compact label for select controls (e.g., a booking modal).
+ * Example: `"10-Pack — 3/10 left • exp 12/31/2026"`.
+ */
 export function formatAssignmentLabel(a: PackageAssignmentDto): string {
-    const expires =
-        a.expiresAtUtc ? ` • exp ${new Date(a.expiresAtUtc).toLocaleDateString()}` : "";
+    const expires = a.expiresAtUtc ? ` • exp ${new Date(a.expiresAtUtc).toLocaleDateString()}` : "";
     return `${a.packageName} — ${a.remainingUses}/${a.totalUses} left${expires}`;
 }

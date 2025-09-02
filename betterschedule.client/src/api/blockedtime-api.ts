@@ -1,60 +1,92 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
 
-/**
- * Blocked time returned from the API.
- */
+/** Blocked time entry. */
 export type BlockedTimeDto = {
+    /** Identifier of the block. */
     id: number;
+    /** Owning organization id. */
     organizationId: string;
+    /** Reason shown to users. */
     reason: string;
-    startTime: string;       // ISO
-    endTime: string;         // ISO
-    resourceId: number;
+    /** Absolute start timestamp (ISO 8601). */
+    startTime: string;
+    /** Absolute end timestamp (ISO 8601). */
+    endTime: string;
+    /**
+     * Target resource id, or null for a provider self-block.
+     * When null, the block applies to the creator's schedule.
+     * When set, the block applies to the specified resource.
+     */
+    resourceId?: number | null;
+    /** Optional CSS hex color (e.g., "#3a87ad"). */
     backColor?: string | null;
-    createdByUserId: string;           // owner (read-only)
-    createdByUserName?: string | null; // optional display name
+    /** Creator user id (server-stamped). */
+    createdByUserId: string;
+    /** Creator display name, if available. */
+    createdByUserName?: string | null;
+    /** Soft-delete flag. */
     isDeleted: boolean;
 };
 
-/**
- * Payload for creating a new blocked time.
- */
+/** Payload to create a blocked time. */
 export type CreateBlockedTimeDto = {
+    /** Reason shown to users. */
     reason: string;
-    startTime: string; // ISO
-    endTime: string;   // ISO
-    resourceId: number;
+    /** Absolute start timestamp (ISO 8601). */
+    startTime: string;
+    /** Absolute end timestamp (ISO 8601). Must be after `startTime`. */
+    endTime: string;
+    /**
+     * Resource to block, or null for a provider self-block (creator's schedule).
+     * Omit to leave as a self-block.
+     */
+    resourceId?: number | null;
+    /** Optional CSS hex color (e.g., "#3a87ad"). */
     backColor?: string | null;
 };
 
 /**
- * Payload for updating an existing blocked time.
+ * Payload to update a blocked time.
+ * Provide only fields to change. Use `clearResource` to convert a resource block to a provider self-block.
  */
 export type UpdateBlockedTimeDto = {
+    /** New reason. */
     reason?: string | null;
-    startTime?: string; // ISO
-    endTime?: string;   // ISO
+    /** New start timestamp (ISO 8601). */
+    startTime?: string;
+    /** New end timestamp (ISO 8601). Must be after `startTime`. */
+    endTime?: string;
+    /**
+     * New resource id. Omit to leave unchanged.
+     * Conflicts with `clearResource` when both are sent.
+     */
     resourceId?: number | null;
+    /**
+     * When true, clears the resource assignment (becomes a provider self-block for the creator).
+     * Conflicts with `resourceId`.
+     */
+    clearResource?: boolean;
+    /** Optional CSS hex color. */
     backColor?: string | null;
 };
 
-/**
- * Retrieves blocked times within an optional range.
- * @param params - Optional start and end ISO timestamps.
- * @returns List of blocked times.
- */
-export async function getBlockedTimes(params: { start?: string; end?: string; }): Promise<BlockedTimeDto[]> {
+type ApiError = { code?: string; message?: string };
+
+function mapCreateUpdateError(err: any): never {
+    const p: ApiError | undefined = err?.response?.data;
+    if (p?.code === "RESERVATION_CONFLICT") throw new Error(p.message ?? "This block overlaps one or more reservations.");
+    if (p?.code === "BLOCK_OVERLAP") throw new Error(p.message ?? "This block overlaps an existing block.");
+    throw err;
+}
+
+/** Retrieves blocked times, optionally filtered by `[start, end)` range; results are ordered by start time. */
+export async function getBlockedTimes(params: { start?: string; end?: string }): Promise<BlockedTimeDto[]> {
     const { data } = await api.get("/blocked-times", { params });
     return data;
 }
 
-/**
- * Creates a new blocked time.
- * @param payload - Blocked time details.
- * @param opts - Optional behaviour flags.
- * @returns The created blocked time.
- */
+/** Creates a blocked time; creator and org are stamped server-side. */
 export async function createBlockedTime(
     payload: CreateBlockedTimeDto,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
@@ -64,25 +96,11 @@ export async function createBlockedTime(
         if (opts.toastSuccess) toast.success("Blocked time created.");
         return data;
     } catch (err: any) {
-        const code = err?.response?.data?.code;
-        const message =
-            err?.response?.data?.message ||
-            (code === "RESERVATIONS_EXIST"
-                ? "Existing reservations exist in this window. Adjust or reschedule first."
-                : code === "BLOCK_OVERLAP"
-                    ? "This block overlaps an existing block."
-                    : "Failed to create blocked time.");
-        if (code) throw new Error(message);
-        throw err;
+        mapCreateUpdateError(err);
     }
 }
 
-/**
- * Updates an existing blocked time.
- * @param id - Blocked time identifier.
- * @param payload - Updated fields for the block.
- * @param opts - Optional behaviour flags.
- */
+/** Updates a blocked time; partial update with optional `clearResource`. */
 export async function updateBlockedTime(
     id: number,
     payload: UpdateBlockedTimeDto,
@@ -92,24 +110,11 @@ export async function updateBlockedTime(
         await api.put(`/blocked-times/${id}`, payload);
         if (opts.toastSuccess) toast.success("Blocked time updated.");
     } catch (err: any) {
-        const code = err?.response?.data?.code;
-        const message =
-            err?.response?.data?.message ||
-            (code === "RESERVATIONS_EXIST"
-                ? "Existing reservations exist in this window. Adjust or reschedule first."
-                : code === "BLOCK_OVERLAP"
-                    ? "This block overlaps an existing block."
-                    : "Failed to update blocked time.");
-        if (code) throw new Error(message);
-        throw err;
+        mapCreateUpdateError(err);
     }
 }
 
-/**
- * Deletes a blocked time.
- * @param id - Blocked time identifier.
- * @param opts - Optional behaviour flags.
- */
+/** Soft-deletes a blocked time. */
 export async function deleteBlockedTime(
     id: number,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }

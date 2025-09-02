@@ -1,28 +1,26 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
 
 namespace BetterSchedule.Server.Models.DTOs.BlockedTime
 {
-    /// <summary>
-    /// Payload to update a blocked time window. All fields are required by this DTO shape.
-    /// </summary>
+    /// <summary>Payload to update a blocked time. Supply only fields to change.</summary>
     public class UpdateBlockedTimeDto
     {
-        /// <summary>Reason shown to users for why this time is blocked.</summary>
-        [Required]
-        public string Reason { get; init; } = default!;
+        /// <summary>New reason.</summary>
+        public string? Reason { get; init; }
 
-        /// <summary>Absolute start timestamp (UTC-capable) for the block window.</summary>
-        [Required]
-        public DateTimeOffset StartTime { get; init; }
+        /// <summary>New start timestamp.</summary>
+        public DateTimeOffset? StartTime { get; init; }
 
-        /// <summary>Absolute end timestamp (UTC-capable) for the block window.</summary>
-        [Required]
-        public DateTimeOffset EndTime { get; init; }
+        /// <summary>New end timestamp (must be after start).</summary>
+        public DateTimeOffset? EndTime { get; init; }
 
-        /// <summary>Identifier of the affected resource, if the block targets a specific resource.</summary>
+        /// <summary>New resource id; omit to leave unchanged.</summary>
         public int? ResourceId { get; init; }
 
-        /// <summary>Optional CSS hex color (e.g., "#3a87ad") used to render the block.</summary>
+        /// <summary>When true, clears the resource (becomes provider self-block for the creator).</summary>
+        public bool? ClearResource { get; init; }
+
+        /// <summary>Optional CSS hex color.</summary>
         public string? BackColor { get; init; }
     }
 }

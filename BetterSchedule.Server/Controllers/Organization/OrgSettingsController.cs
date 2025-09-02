@@ -20,12 +20,9 @@ namespace BetterSchedule.Server.Controllers.Organization
     public sealed class OrgSettingsController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-        public OrgSettingsController(ApplicationDbContext db)
-        {
-            _db = db;
-        }
+        public OrgSettingsController(ApplicationDbContext db) => _db = db;
 
-        /// <summary>Returns the current org's settings (creating defaults on first access).</summary>
+        /// <summary>Returns the current organization's settings (creating defaults on first access).</summary>
         [HttpGet]
         [ProducesResponseType(typeof(OrgSettingsDto), StatusCodes.Status200OK)]
         public async Task<ActionResult<OrgSettingsDto>> Get(CancellationToken ct)
@@ -45,8 +42,8 @@ namespace BetterSchedule.Server.Controllers.Organization
         }
 
         /// <summary>
-        /// Partially updates the current org's settings. Only provided fields are applied.
-        /// Authoritative booking fields: <c>MinLeadMinutes</c> and <c>CancelWindowHours</c>.
+        /// Partially updates the current organization's settings.
+        /// Only provided fields are applied. Enum parsing is case-insensitive.
         /// </summary>
         [HttpPut]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -61,28 +58,37 @@ namespace BetterSchedule.Server.Controllers.Organization
                 _db.OrganizationSettings.Add(s);
             }
 
-            // Booking windows (authoritative integer shapes)
+            // Booking windows
             if (dto.MinLeadMinutes.HasValue)
                 s.MinLeadMinutes = Clamp(dto.MinLeadMinutes.Value, 0, 10080); // up to 7 days
 
             if (dto.CancelWindowHours.HasValue)
                 s.CancelWindowHours = Clamp(dto.CancelWindowHours.Value, 0, 168); // up to 7 days
 
-            // Calendar display / prefs
+            // Cancel policies
+            if (!string.IsNullOrWhiteSpace(dto.ProviderCancelPolicy) &&
+                EnumTryParse(dto.ProviderCancelPolicy, out ProviderCancelPolicy pcp))
+                s.ProviderCancelPolicy = pcp;
+
+            if (!string.IsNullOrWhiteSpace(dto.ClientCancelPolicy) &&
+                EnumTryParse(dto.ClientCancelPolicy, out ClientCancelPolicy ccp))
+                s.ClientCancelPolicy = ccp;
+
+            // Calendar display
             if (dto.ShowWeekends.HasValue) s.ShowWeekends = dto.ShowWeekends.Value;
             if (dto.StartOfWeek.HasValue) s.StartOfWeek = Clamp(dto.StartOfWeek.Value, 0, 6);
-            if (dto.BusinessHoursStartLocal.HasValue) s.BusinessHoursStartLocal = dto.BusinessHoursStartLocal.Value;
-            if (dto.BusinessHoursEndLocal.HasValue) s.BusinessHoursEndLocal = dto.BusinessHoursEndLocal.Value;
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursStartLocal)) s.BusinessHoursStartLocal = TimeSpan.Parse(dto.BusinessHoursStartLocal!);
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursEndLocal)) s.BusinessHoursEndLocal = TimeSpan.Parse(dto.BusinessHoursEndLocal!);
             if (!string.IsNullOrWhiteSpace(dto.DefaultView) && EnumTryParse(dto.DefaultView, out DefaultCalendarView dv)) s.DefaultView = dv;
 
-            // Availability visualization / enforcement
+            // Availability policy & visuals
             if (!string.IsNullOrWhiteSpace(dto.ShadingMode) && EnumTryParse(dto.ShadingMode, out CalendarShadingMode sm)) s.ShadingMode = sm;
             if (!string.IsNullOrWhiteSpace(dto.AvailabilityEnforcement) && EnumTryParse(dto.AvailabilityEnforcement, out AvailabilityEnforcement ae)) s.AvailabilityEnforcement = ae;
             if (dto.RequireConfirmOnOverrides.HasValue) s.RequireConfirmOnOverrides = dto.RequireConfirmOnOverrides.Value;
             if (dto.AvailabilityPublic.HasValue) s.AvailabilityPublic = dto.AvailabilityPublic.Value;
             if (dto.ProvidersCanEditOwnAvailability.HasValue) s.ProvidersCanEditOwnAvailability = dto.ProvidersCanEditOwnAvailability.Value;
 
-            // Timezone / locale
+            // Locale / timezone
             if (!string.IsNullOrWhiteSpace(dto.TimeZoneId) && dto.TimeZoneId.Length <= 64) s.TimeZoneId = dto.TimeZoneId;
             if (!string.IsNullOrWhiteSpace(dto.Locale) && dto.Locale.Length <= 16) s.Locale = dto.Locale;
 
@@ -96,36 +102,38 @@ namespace BetterSchedule.Server.Controllers.Organization
             return NoContent();
         }
 
+        // Mapping
+
         private static OrgSettingsDto ToDto(OrganizationSettings s) => new()
         {
-            // Booking windows (authoritative integers)
             MinLeadMinutes = s.MinLeadMinutes,
             CancelWindowHours = s.CancelWindowHours,
 
-            // Calendar display
+            ProviderCancelPolicy = s.ProviderCancelPolicy.ToString(),
+            ClientCancelPolicy = s.ClientCancelPolicy.ToString(),
+
             ShowWeekends = s.ShowWeekends,
             StartOfWeek = s.StartOfWeek,
-            BusinessHoursStartLocal = s.BusinessHoursStartLocal,
-            BusinessHoursEndLocal = s.BusinessHoursEndLocal,
+            BusinessHoursStartLocal = s.BusinessHoursStartLocal.ToString(@"hh\:mm\:ss"),
+            BusinessHoursEndLocal = s.BusinessHoursEndLocal.ToString(@"hh\:mm\:ss"),
             DefaultView = s.DefaultView.ToString(),
 
-            // Availability visualization / enforcement
             ShadingMode = s.ShadingMode.ToString(),
             AvailabilityEnforcement = s.AvailabilityEnforcement.ToString(),
             RequireConfirmOnOverrides = s.RequireConfirmOnOverrides,
             AvailabilityPublic = s.AvailabilityPublic,
             ProvidersCanEditOwnAvailability = s.ProvidersCanEditOwnAvailability,
 
-            // Timezone / locale
             TimeZoneId = s.TimeZoneId,
             Locale = s.Locale,
 
-            // Notifications
             EmailEnabled = s.EmailEnabled,
             SmsEnabled = s.SmsEnabled,
             SendBookingConfirmation = s.SendBookingConfirmation,
             ReminderHoursBefore = s.ReminderHoursBefore
         };
+
+        // Helpers
 
         private static bool EnumTryParse<T>(string value, out T parsed) where T : struct, Enum
             => Enum.TryParse(value, ignoreCase: true, out parsed);

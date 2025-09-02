@@ -28,6 +28,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             <TopNav
                 canSeeProviderAvailability={canSeeProviderAvailability}
                 canManage={canManage}
+                isProvider={isProvider}
                 onLogout={handleLogout}
                 login={login}
                 logout={logout}

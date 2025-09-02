@@ -1,9 +1,7 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
 
-/**
- * Reservation returned from the API.
- */
+/** Reservation DTO returned by the API. */
 export type ReservationDto = {
     id: number;
     organizationId: string;
@@ -12,33 +10,29 @@ export type ReservationDto = {
     appointmentTypeId: number;
     startTime: string; // ISO
     endTime: string;   // ISO
-    status: string;    // "Booked" | "Completed" | "Canceled" | "NoShow"
+    status: "Booked" | "Completed" | "Canceled" | "NoShow";
     notes?: string | null;
     resourceId?: number | null;
     packageAssignmentId?: number | null;
     participants?: ReservationParticipantDto[];
-    createdAt: string;
-    updatedAt?: string | null;
+    createdAt: string;          // ISO
+    updatedAt?: string | null;  // ISO
     isDeleted: boolean;
 };
 
-/**
- * Participant information on a reservation.
- */
+/** Participant attached to a reservation. */
 export type ReservationParticipantDto = {
     id: number;
     reservationId: number;
-    userId: string;
+    userId: string; // empty string for guests
     guestName?: string | null;
     guestPhone?: string | null;
-    role: string;
+    role: "Client" | "ServiceProvider" | "Guest";
     organizationId: string;
     isDeleted: boolean;
 };
 
-/**
- * Payload for creating a reservation.
- */
+/** Payload for creating a reservation. */
 export type CreateReservationDto = {
     clientId: string;
     serviceProviderId: string;
@@ -50,43 +44,59 @@ export type CreateReservationDto = {
     packageAssignmentId?: number | null;
 };
 
-/**
- * Payload for updating an existing reservation.
- */
+/** Partial payload for updating a reservation. */
 export type UpdateReservationDto = {
     notes?: string | null;
     startTime?: string; // ISO
     endTime?: string;   // ISO
-    status?: string | null;
+    status?: "Booked" | "Completed" | "Canceled" | "NoShow" | null;
     resourceId?: number | null;
     packageAssignmentId?: number | null;
     serviceProviderId?: string | null;
     appointmentTypeId?: number | null;
 };
 
-/**
- * Retrieves reservations within an optional range.
- * @param params - Optional start and end ISO timestamps.
- */
-export async function getReservations(params: { start?: string; end?: string }): Promise<ReservationDto[]> {
-    const { data } = await api.get("/reservation", { params });
-    return data;
+/** API error payload contract. */
+type ApiErrorPayload = { code?: string; message?: string };
+
+/** Throws a normalized `Error(message)` using the API's `{ code, message }` payload when present. */
+function handleApiError(err: any, fallback: string): never {
+    const p: ApiErrorPayload | undefined = err?.response?.data;
+    if (p?.message) throw new Error(p.message);
+    throw new Error(fallback);
 }
 
 /**
- * Retrieves a single reservation by id.
+ * Lists reservations overlapping an optional [start, end) (ISO).
+ * Returns only reservations visible to the current principal.
  */
+export async function getReservations(params: {
+    start?: string;
+    end?: string;
+}): Promise<ReservationDto[]> {
+    try {
+        const { data } = await api.get<ReservationDto[]>("/reservation", { params });
+        return data;
+    } catch (err: any) {
+        handleApiError(err, "Failed to load reservations.");
+    }
+}
+
+/** Retrieves a single reservation by id if visible to the current principal. */
 export async function getReservation(id: number): Promise<ReservationDto> {
-    const { data } = await api.get(`/reservation/${id}`);
-    return data;
+    try {
+        const { data } = await api.get<ReservationDto>(`/reservation/${id}`);
+        return data;
+    } catch (err: any) {
+        handleApiError(err, "Failed to load reservation.");
+    }
 }
 
 /**
  * Creates a reservation.
- * @param payload - Reservation details.
- * @param opts - Optional behaviour flags.
- *   - overrideAvailability: allow managers or the provider to confirm and bypass availability rule
- *   - toastSuccess: show success toast on completion (default true)
+ * - When the server detects an overlap with the provider's existing reservations,
+ *   it may still succeed (for providers) and include `X-Warned-Double-Booking: true`.
+ * - Availability or block violations return `{ code: "OUTSIDE_AVAILABILITY" | "UNAVAILABLE", message }` with 409.
  */
 export async function createReservation(
     payload: CreateReservationDto,
@@ -106,28 +116,25 @@ export async function createReservation(
     } catch (err: any) {
         const code = err?.response?.data?.code as string | undefined;
         const message = (err?.response?.data?.message as string) ?? "Failed to create reservation.";
-
-        // Surface known conflict codes with a clean Error for upstream handling (e.g., confirmation flows)
-        if (code === "UNAVAILABLE" || code === "OUTSIDE_AVAILABILITY") {
+        if (code === "OUTSIDE_AVAILABILITY" || code === "UNAVAILABLE") {
             throw new Error(message);
         }
-        throw err;
+        handleApiError(err, message);
     }
 }
 
 /**
- * Updates an existing reservation.
- * @param id - Reservation identifier.
- * @param payload - Updated reservation fields.
- * @param opts - Optional behaviour flags.
- *   - overrideAvailability: allow managers or the provider to confirm and bypass availability rule
- *   - managerOverride: allow managers to bypass cancel window rule
- *   - toastSuccess: show success toast on completion (default true)
+ * Updates a reservation.
+ * - May set `overrideAvailability` and/or `managerOverride` via query params.
+ * - Availability or block violations return `{ code: "OUTSIDE_AVAILABILITY" | "UNAVAILABLE", message }` with 409.
+ * - On successful update with overlap, server may include `X-Warned-Double-Booking: true`.
  */
 export async function updateReservation(
     id: number,
     payload: UpdateReservationDto,
-    opts: { overrideAvailability?: boolean; managerOverride?: boolean; toastSuccess?: boolean } = { toastSuccess: true }
+    opts: { overrideAvailability?: boolean; managerOverride?: boolean; toastSuccess?: boolean } = {
+        toastSuccess: true,
+    }
 ): Promise<void> {
     try {
         const params: Record<string, any> = {};
@@ -144,27 +151,30 @@ export async function updateReservation(
     } catch (err: any) {
         const code = err?.response?.data?.code as string | undefined;
         const message = (err?.response?.data?.message as string) ?? "Failed to update reservation.";
-
-        if (code === "UNAVAILABLE" || code === "OUTSIDE_AVAILABILITY") {
+        if (code === "OUTSIDE_AVAILABILITY" || code === "UNAVAILABLE") {
             throw new Error(message);
         }
-        throw err;
+        handleApiError(err, message);
     }
 }
 
-/**
- * Deletes a reservation.
- * @param id - Reservation identifier.
- * @param opts - Optional behaviour flags.
- */
+/** Soft-deletes a reservation. */
 export async function deleteReservation(
     id: number,
     opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
-    await api.delete(`/reservation/${id}`);
-    if (opts.toastSuccess !== false) toast.success("Reservation deleted.");
+    try {
+        await api.delete(`/reservation/${id}`);
+        if (opts.toastSuccess !== false) toast.success("Reservation deleted.");
+    } catch (err: any) {
+        handleApiError(err, "Failed to delete reservation.");
+    }
 }
 
+/**
+ * Convenience: sets reservation status and optionally appends a reason to the notes.
+ * Uses `updateReservation` under the hood (and thus inherits the same error behavior).
+ */
 export async function setReservationStatus(
     id: number,
     status: "Completed" | "Canceled" | "NoShow",
@@ -177,12 +187,10 @@ export async function setReservationStatus(
 ): Promise<void> {
     const base = opts.currentNotes ?? "";
     const trimmed = (opts.reason ?? "").trim();
-
-    // Append a tagged line when a reason is supplied (MVP approach)
     const tag = trimmed ? `\n[status=${status}] ${trimmed}` : "";
     const notes = tag ? `${base ?? ""}${tag}` : undefined;
 
-    await updateReservation(
+    return updateReservation(
         id,
         { status, notes },
         { managerOverride: !!opts.managerOverride, toastSuccess: opts.toastSuccess }

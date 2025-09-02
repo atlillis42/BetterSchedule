@@ -12,13 +12,22 @@ import { resetDevDatabase } from "@/dev/devTools";
 type TopNavProps = {
     canSeeProviderAvailability: boolean;
     canManage: boolean;
+    isProvider: boolean;
     onLogout: () => Promise<void>;
     login: (identifier: string, password: string) => Promise<{ success: boolean } | { success?: boolean } | void>;
     logout: () => Promise<void>;
-    NavLinks: React.ComponentType<{ canSeeProviderAvailability: boolean; canManage: boolean }>;
+    NavLinks: React.ComponentType<{ canSeeProviderAvailability: boolean; canManage: boolean; isProvider: boolean }>;
 };
 
-const TopNav: React.FC<TopNavProps> = ({ canSeeProviderAvailability, canManage, onLogout, login, logout, NavLinks }) => {
+const TopNav: React.FC<TopNavProps> = ({
+    canSeeProviderAvailability,
+    canManage,
+    isProvider,
+    onLogout,
+    login,
+    logout,
+    NavLinks,
+}) => {
     const navigate = useNavigate();
 
     const handleResetDb = async () => {
@@ -34,7 +43,11 @@ const TopNav: React.FC<TopNavProps> = ({ canSeeProviderAvailability, canManage, 
                 <h1 className="text-xl font-bold cursor-pointer" onClick={() => navigate("/calendar")}>
                     BetterSchedule
                 </h1>
-                <NavLinks canSeeProviderAvailability={canSeeProviderAvailability} canManage={canManage} />
+                <NavLinks
+                    canSeeProviderAvailability={canSeeProviderAvailability}
+                    canManage={canManage}
+                    isProvider={isProvider}
+                />
             </div>
 
             <div className="flex items-center gap-2">

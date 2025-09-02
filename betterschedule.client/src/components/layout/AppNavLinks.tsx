@@ -9,18 +9,22 @@ import { NavLink } from "react-router-dom";
 type AppNavLinksProps = {
     canSeeProviderAvailability: boolean;
     canManage: boolean;
+    isProvider: boolean;
 };
 
-const AppNavLinks: React.FC<AppNavLinksProps> = ({ canSeeProviderAvailability, canManage }) => {
+const AppNavLinks: React.FC<AppNavLinksProps> = ({ canSeeProviderAvailability, canManage, isProvider }) => {
+    // Managers go to admin page; Providers to self page
+    const availabilityPath = canManage ? "/admin/provider-availability" : isProvider ? "/provider/availability" : null;
+
     return (
         <nav className="flex items-center gap-4 text-sm">
             <NavLink to="/calendar" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                 Calendar
             </NavLink>
 
-            {canSeeProviderAvailability && (
+            {canSeeProviderAvailability && availabilityPath && (
                 <NavLink
-                    to="/admin/provider-availability"
+                    to={availabilityPath}
                     className={({ isActive }) => (isActive ? "font-semibold" : "")}
                     title="Manage or view provider working hours"
                 >

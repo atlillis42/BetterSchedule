@@ -1,16 +1,20 @@
-import React from "react";
 import { Routes, Route } from "react-router-dom";
 import Login from "@auth/Login";
 import Calendar from "@calendar/Calendar";
 import MainLayout from "@layout/MainLayout";
 import RequireAuth from "@/routes/RequireAuth";
-import RequireAdmin from "@/routes/RequireAdmin";
+import RequireManager from "@/routes/RequireManager";
 import RequireManagerOrProvider from "@/routes/RequireManagerOrProvider";
+
+// Admin pages
 import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 import OrgSettingsPage from "@/pages/OrgSettings";
-import ProviderAvailabilityPage from "@/pages/ProviderAvailability";
 import UserRolesPage from "@/pages/UserRoles";
+import ProviderAvailabilityManager from "@/components/admin/ProviderAvailabilityManager";
+
+// Provider self page
+import ProviderAvailabilitySelf from "@/components/provider/ProviderAvailabilitySelf";
 
 export default function AppRoutes() {
     return (
@@ -30,16 +34,44 @@ export default function AppRoutes() {
                 }
             />
 
+            {/* Provider Availability (self) — Managers OR Providers */}
+            <Route
+                path="/provider/availability"
+                element={
+                    <RequireAuth>
+                        <RequireManagerOrProvider>
+                            <MainLayout>
+                                <ProviderAvailabilitySelf />
+                            </MainLayout>
+                        </RequireManagerOrProvider>
+                    </RequireAuth>
+                }
+            />
+
+            {/* Provider Availability (manager only) */}
+            <Route
+                path="/admin/provider-availability"
+                element={
+                    <RequireAuth>
+                        <RequireManager>
+                            <MainLayout>
+                                <ProviderAvailabilityManager />
+                            </MainLayout>
+                        </RequireManager>
+                    </RequireAuth>
+                }
+            />
+
             {/* Appointment Types (manager only) */}
             <Route
                 path="/admin/appointment-types"
                 element={
                     <RequireAuth>
-                        <RequireAdmin>
+                        <RequireManager>
                             <MainLayout>
                                 <AppointmentTypeManager />
                             </MainLayout>
-                        </RequireAdmin>
+                        </RequireManager>
                     </RequireAuth>
                 }
             />
@@ -49,25 +81,11 @@ export default function AppRoutes() {
                 path="/admin/resources"
                 element={
                     <RequireAuth>
-                        <RequireAdmin>
+                        <RequireManager>
                             <MainLayout>
                                 <CalendarResourcesPage />
                             </MainLayout>
-                        </RequireAdmin>
-                    </RequireAuth>
-                }
-            />
-
-            {/* Provider Availability (manager or provider) */}
-            <Route
-                path="/admin/provider-availability"
-                element={
-                    <RequireAuth>
-                        <RequireManagerOrProvider>
-                            <MainLayout>
-                                <ProviderAvailabilityPage />
-                            </MainLayout>
-                        </RequireManagerOrProvider>
+                        </RequireManager>
                     </RequireAuth>
                 }
             />
@@ -77,11 +95,11 @@ export default function AppRoutes() {
                 path="/admin/settings"
                 element={
                     <RequireAuth>
-                        <RequireAdmin>
+                        <RequireManager>
                             <MainLayout>
                                 <OrgSettingsPage />
                             </MainLayout>
-                        </RequireAdmin>
+                        </RequireManager>
                     </RequireAuth>
                 }
             />
@@ -91,11 +109,11 @@ export default function AppRoutes() {
                 path="/admin/users"
                 element={
                     <RequireAuth>
-                        <RequireAdmin>
+                        <RequireManager>
                             <MainLayout>
                                 <UserRolesPage />
                             </MainLayout>
-                        </RequireAdmin>
+                        </RequireManager>
                     </RequireAuth>
                 }
             />

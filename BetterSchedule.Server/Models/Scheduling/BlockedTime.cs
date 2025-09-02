@@ -30,7 +30,7 @@ namespace BetterSchedule.Server.Models.Scheduling
         public string CreatedByUserId { get; set; } = default!;
 
         /// <summary>Navigation to the <see cref="ApplicationUser"/> who created this block.</summary>
-        public ApplicationUser CreatedByUser { get; set; } = default!;
+        public ApplicationUser CreatedByUserName { get; set; } = default!;
 
         /// <summary>Identifier of the affected <see cref="CalendarResource"/>, if the block targets a specific resource.</summary>
         public int? ResourceId { get; set; }

@@ -5,6 +5,7 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
 {
     /// <summary>
     /// Payload to create a new <see cref="BetterSchedule.Server.Models.Scheduling.AppointmentType"/>.
+    /// Caller supplies core fields; the server stamps creator from the authenticated user.
     /// </summary>
     public class CreateAppointmentTypeDto
     {
@@ -21,10 +22,6 @@ namespace BetterSchedule.Server.Models.DTOs.AppointmentType
 
         /// <summary>Optional description shown to users.</summary>
         public string? Description { get; init; }
-
-        /// <summary>Identifier of the user creating this appointment type.</summary>
-        [Required]
-        public string CreatedByUserId { get; init; } = default!;
 
         /// <summary>Identifier of the assigned resource, if any.</summary>
         public int? AssignedResourceId { get; init; }

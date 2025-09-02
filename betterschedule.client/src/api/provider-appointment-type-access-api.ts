@@ -1,33 +1,68 @@
-/**
- * Summary: Manager endpoints for Provider ↔ AppointmentType access.
- * - List appointment type IDs granted to a provider.
- * - Assign/unassign specific types to a provider.
- */
 import { api } from "@auth/axios";
-import type {
-    AppointmentTypeId,
-    UserId,
-    AssignProviderAppointmentTypeRequest,
-} from "@/types/accessTypes";
 
 /**
- * GET: appointment type IDs a provider can use.
+ * Link between a provider (user) and an appointment type.
+ * Endpoints are org-scoped.
  */
-export async function listAppointmentTypeIdsByProvider(userId: UserId): Promise<AppointmentTypeId[]> {
-    const { data } = await api.get<AppointmentTypeId[]>(`/provider-appointment-type-access/by-provider/${userId}`);
-    return data;
+export type ProviderAppointmentTypeLink = {
+    /** Provider (user) identifier. */
+    userId: string;
+    /** Appointment type identifier. */
+    appointmentTypeId: number;
+};
+
+type ApiErrorPayload = { code?: string; message?: string };
+
+/**
+ * Converts axios error payloads into consistent `Error`s.
+ * @param err Unknown error from axios.
+ * @param fallback Message used when the server did not provide one.
+ * @throws Always throws an `Error` with a user-friendly message.
+ */
+function handleApiError(err: unknown, fallback: string): never {
+    const p: ApiErrorPayload | undefined = (err as any)?.response?.data;
+    const message = (p?.message as string) || fallback;
+    throw new Error(message);
 }
 
 /**
- * POST: assign a provider to an appointment type.
+ * Lists appointment type ids currently assigned to the given provider.
+ * @param userId Provider (user) identifier.
+ * @returns Array of appointment type identifiers; empty when none.
  */
-export async function assignProviderAppointmentType(body: AssignProviderAppointmentTypeRequest): Promise<void> {
-    await api.post<void>("/provider-appointment-type-access/assign", body);
+export async function listAppointmentTypeIdsByProvider(userId: string): Promise<number[]> {
+    try {
+        const { data } = await api.get<number[]>(
+            `/provider-appointment-type-access/by-provider/${encodeURIComponent(userId)}`
+        );
+        return Array.isArray(data) ? data : [];
+    } catch (err) {
+        handleApiError(err, "Unable to load type assignments for provider.");
+    }
 }
 
 /**
- * POST: unassign a provider from an appointment type.
+ * Assigns an appointment type to a provider.
+ * The checkbox updates immediately in the UI; on failure it is reverted.
+ * @param link Provider/appointment-type link payload.
  */
-export async function unassignProviderAppointmentType(body: AssignProviderAppointmentTypeRequest): Promise<void> {
-    await api.post<void>("/provider-appointment-type-access/unassign", body);
+export async function assignProviderAppointmentType(link: ProviderAppointmentTypeLink): Promise<void> {
+    try {
+        await api.post("/provider-appointment-type-access/assign", link);
+    } catch (err) {
+        handleApiError(err, "Unable to grant appointment type access.");
+    }
+}
+
+/**
+ * Removes an appointment type from a provider.
+ * The checkbox updates immediately in the UI; on failure it is reverted.
+ * @param link Provider/appointment-type link payload.
+ */
+export async function unassignProviderAppointmentType(link: ProviderAppointmentTypeLink): Promise<void> {
+    try {
+        await api.post("/provider-appointment-type-access/unassign", link);
+    } catch (err) {
+        handleApiError(err, "Unable to remove appointment type access.");
+    }
 }

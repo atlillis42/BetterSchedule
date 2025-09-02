@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { useAuth } from "@auth/AuthContext";
 
-import { getProvidersLite, type UserLite } from "@/api/user-api";
+import { getProvidersLite, type ProviderLite } from "@/api/user-api";
 import { getResources } from "@/api/calendar-resource-api";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
 
@@ -24,10 +24,14 @@ import {
     unassignAppointmentTypeResource,
 } from "@/api/appointment-type-resource-access-api";
 
-/** Local helpers */
+/** Compact resource shape for checklists. */
 type ResourceLite = { id: number; name: string };
+/** Tabs available in the access manager. */
 type TabKey = "provider-resources" | "provider-types" | "type-resources";
 
+/**
+ * Section container with title and optional actions.
+ */
 function SectionShell({
     title,
     children,
@@ -59,11 +63,16 @@ function ErrorText({ text = "Something went wrong." }: { text?: string }) {
 /* ------------------------------------------------------------------ */
 /* Provider ↔ Resources                                               */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Grants/removes resource access for a selected provider.
+ * The checkbox updates immediately; on failure it’s reverted and an error is shown.
+ */
 function ProviderResourceAccessPanel({
     providers,
     resources,
 }: {
-    providers: UserLite[];
+    providers: ProviderLite[];
     resources: ResourceLite[];
 }) {
     const [providerId, setProviderId] = useState<string>(providers[0]?.id ?? "");
@@ -93,18 +102,20 @@ function ProviderResourceAccessPanel({
 
     useEffect(() => {
         if (!providerId) return;
-        refresh();
+        // best effort refresh; ignore lint on missing deps (stable endpoints)
         // eslint-disable-next-line react-hooks/exhaustive-deps
+        refresh();
     }, [providerId]);
 
     const onToggle = async (resourceId: number, next: boolean) => {
         setSavingId(resourceId);
         setErr(null);
 
-        // optimistic
+        // update UI first
         setAssigned((prev) => {
             const copy = new Set(prev);
-            next ? copy.add(resourceId) : copy.delete(resourceId);
+            if (next) copy.add(resourceId);
+            else copy.delete(resourceId);
             return copy;
         });
 
@@ -117,10 +128,11 @@ function ProviderResourceAccessPanel({
                 toast.success("Access removed.");
             }
         } catch {
-            // revert on failure
+            // roll back on failure
             setAssigned((prev) => {
                 const copy = new Set(prev);
-                next ? copy.delete(resourceId) : copy.add(resourceId);
+                if (next) copy.delete(resourceId);
+                else copy.add(resourceId);
                 return copy;
             });
             toast.error("Update failed.");
@@ -128,6 +140,48 @@ function ProviderResourceAccessPanel({
             setSavingId(null);
         }
     };
+
+    // Build the right column content using statements (not short-circuit/ternary in JSX)
+    let rightColumnContent: React.ReactNode;
+    if (loading) {
+        rightColumnContent = <Loading />;
+    } else if (err) {
+        rightColumnContent = <ErrorText text={err} />;
+    } else {
+        rightColumnContent = (
+            <div className="grid md:grid-cols-2 gap-2">
+                {resources.map((r) => {
+                    const checked = assigned.has(r.id);
+                    const disabled = savingId === r.id;
+                    const checkedClass = checked ? "bg-green-50 border-green-200" : "";
+                    return (
+                        <label
+                            key={r.id}
+                            className={`flex items-center gap-2 border rounded px-3 py-2 ${checkedClass}`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={(e) => onToggle(r.id, e.target.checked)}
+                            />
+                            <span className="text-sm">{r.name}</span>
+                        </label>
+                    );
+                })}
+            </div>
+        );
+    }
+
+    let selectedInfo: React.ReactNode = null;
+    if (selectedProvider) {
+        selectedInfo = (
+            <div className="mt-3 text-xs text-gray-500">
+                Managing access for:{" "}
+                <span className="font-medium">{selectedProvider.name || selectedProvider.id}</span>
+            </div>
+        );
+    }
 
     return (
         <SectionShell
@@ -162,39 +216,10 @@ function ProviderResourceAccessPanel({
                     </div>
                 </div>
 
-                <div className="md:col-span-2">
-                    {loading && <Loading />}
-                    {err && <ErrorText text={err} />}
-                    {!loading && !err && (
-                        <div className="grid md:grid-cols-2 gap-2">
-                            {resources.map((r) => {
-                                const checked = assigned.has(r.id);
-                                const disabled = savingId === r.id;
-                                return (
-                                    <label
-                                        key={r.id}
-                                        className={`flex items-center gap-2 border rounded px-3 py-2 ${checked ? "bg-green-50 border-green-200" : ""}`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={disabled}
-                                            onChange={(e) => onToggle(r.id, e.target.checked)}
-                                        />
-                                        <span className="text-sm">{r.name}</span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <div className="md:col-span-2">{rightColumnContent}</div>
             </div>
 
-            {selectedProvider && (
-                <div className="mt-3 text-xs text-gray-500">
-                    Managing access for: <span className="font-medium">{selectedProvider.name || selectedProvider.id}</span>
-                </div>
-            )}
+            {selectedInfo}
         </SectionShell>
     );
 }
@@ -202,6 +227,11 @@ function ProviderResourceAccessPanel({
 /* ------------------------------------------------------------------ */
 /* Provider ↔ Appointment Types                                       */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Grants/removes appointment type access for a selected provider.
+ * The checkbox updates immediately; on failure it’s reverted and an error is shown.
+ */
 function ProviderAppointmentTypeAccessPanel({
     providers,
     appointmentTypes,
@@ -231,18 +261,19 @@ function ProviderAppointmentTypeAccessPanel({
 
     useEffect(() => {
         if (!providerId) return;
-        refresh();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+        refresh();
     }, [providerId]);
 
     const onToggle = async (appointmentTypeId: number, next: boolean) => {
         setSavingId(appointmentTypeId);
         setErr(null);
 
-        // optimistic
+        // update UI first
         setAssigned((prev) => {
             const copy = new Set(prev);
-            next ? copy.add(appointmentTypeId) : copy.delete(appointmentTypeId);
+            if (next) copy.add(appointmentTypeId);
+            else copy.delete(appointmentTypeId);
             return copy;
         });
 
@@ -255,10 +286,11 @@ function ProviderAppointmentTypeAccessPanel({
                 toast.success("Access removed.");
             }
         } catch {
-            // revert
+            // roll back on failure
             setAssigned((prev) => {
                 const copy = new Set(prev);
-                next ? copy.delete(appointmentTypeId) : copy.add(appointmentTypeId);
+                if (next) copy.delete(appointmentTypeId);
+                else copy.add(appointmentTypeId);
                 return copy;
             });
             toast.error("Update failed.");
@@ -266,6 +298,37 @@ function ProviderAppointmentTypeAccessPanel({
             setSavingId(null);
         }
     };
+
+    let rightColumnContent: React.ReactNode;
+    if (loading) {
+        rightColumnContent = <Loading />;
+    } else if (err) {
+        rightColumnContent = <ErrorText text={err} />;
+    } else {
+        rightColumnContent = (
+            <div className="grid md:grid-cols-2 gap-2">
+                {appointmentTypes.map((t) => {
+                    const checked = assigned.has(t.id);
+                    const disabled = savingId === t.id;
+                    const checkedClass = checked ? "bg-blue-50 border-blue-200" : "";
+                    return (
+                        <label
+                            key={t.id}
+                            className={`flex items-center gap-2 border rounded px-3 py-2 ${checkedClass}`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={(e) => onToggle(t.id, e.target.checked)}
+                            />
+                            <span className="text-sm">{t.name}</span>
+                        </label>
+                    );
+                })}
+            </div>
+        );
+    }
 
     return (
         <SectionShell
@@ -300,32 +363,7 @@ function ProviderAppointmentTypeAccessPanel({
                     </div>
                 </div>
 
-                <div className="md:col-span-2">
-                    {loading && <Loading />}
-                    {err && <ErrorText text={err} />}
-                    {!loading && !err && (
-                        <div className="grid md:grid-cols-2 gap-2">
-                            {appointmentTypes.map((t) => {
-                                const checked = assigned.has(t.id);
-                                const disabled = savingId === t.id;
-                                return (
-                                    <label
-                                        key={t.id}
-                                        className={`flex items-center gap-2 border rounded px-3 py-2 ${checked ? "bg-blue-50 border-blue-200" : ""}`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={disabled}
-                                            onChange={(e) => onToggle(t.id, e.target.checked)}
-                                        />
-                                        <span className="text-sm">{t.name}</span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <div className="md:col-span-2">{rightColumnContent}</div>
             </div>
         </SectionShell>
     );
@@ -334,6 +372,11 @@ function ProviderAppointmentTypeAccessPanel({
 /* ------------------------------------------------------------------ */
 /* Appointment Type ↔ Resources                                       */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Limits which resources can be used with a given appointment type.
+ * The checkbox updates immediately; on failure it’s reverted and an error is shown.
+ */
 function AppointmentTypeResourceAccessPanel({
     appointmentTypes,
     resources,
@@ -363,18 +406,19 @@ function AppointmentTypeResourceAccessPanel({
 
     useEffect(() => {
         if (!appointmentTypeId) return;
-        refresh();
         // eslint-disable-next-line react-hooks/exhaustive-deps
+        refresh();
     }, [appointmentTypeId]);
 
     const onToggle = async (resourceId: number, next: boolean) => {
         setSavingId(resourceId);
         setErr(null);
 
-        // optimistic
+        // update UI first
         setAssigned((prev) => {
             const copy = new Set(prev);
-            next ? copy.add(resourceId) : copy.delete(resourceId);
+            if (next) copy.add(resourceId);
+            else copy.delete(resourceId);
             return copy;
         });
 
@@ -387,10 +431,11 @@ function AppointmentTypeResourceAccessPanel({
                 toast.success("Access removed.");
             }
         } catch {
-            // revert
+            // roll back on failure
             setAssigned((prev) => {
                 const copy = new Set(prev);
-                next ? copy.delete(resourceId) : copy.add(resourceId);
+                if (next) copy.delete(resourceId);
+                else copy.add(resourceId);
                 return copy;
             });
             toast.error("Update failed.");
@@ -398,6 +443,37 @@ function AppointmentTypeResourceAccessPanel({
             setSavingId(null);
         }
     };
+
+    let rightColumnContent: React.ReactNode;
+    if (loading) {
+        rightColumnContent = <Loading />;
+    } else if (err) {
+        rightColumnContent = <ErrorText text={err} />;
+    } else {
+        rightColumnContent = (
+            <div className="grid md:grid-cols-2 gap-2">
+                {resources.map((r) => {
+                    const checked = assigned.has(r.id);
+                    const disabled = savingId === r.id;
+                    const checkedClass = checked ? "bg-purple-50 border-purple-200" : "";
+                    return (
+                        <label
+                            key={r.id}
+                            className={`flex items-center gap-2 border rounded px-3 py-2 ${checkedClass}`}
+                        >
+                            <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={(e) => onToggle(r.id, e.target.checked)}
+                            />
+                            <span className="text-sm">{r.name}</span>
+                        </label>
+                    );
+                })}
+            </div>
+        );
+    }
 
     return (
         <SectionShell
@@ -432,32 +508,7 @@ function AppointmentTypeResourceAccessPanel({
                     </div>
                 </div>
 
-                <div className="md:col-span-2">
-                    {loading && <Loading />}
-                    {err && <ErrorText text={err} />}
-                    {!loading && !err && (
-                        <div className="grid md:grid-cols-2 gap-2">
-                            {resources.map((r) => {
-                                const checked = assigned.has(r.id);
-                                const disabled = savingId === r.id;
-                                return (
-                                    <label
-                                        key={r.id}
-                                        className={`flex items-center gap-2 border rounded px-3 py-2 ${checked ? "bg-purple-50 border-purple-200" : ""}`}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            disabled={disabled}
-                                            onChange={(e) => onToggle(r.id, e.target.checked)}
-                                        />
-                                        <span className="text-sm">{r.name}</span>
-                                    </label>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                <div className="md:col-span-2">{rightColumnContent}</div>
             </div>
         </SectionShell>
     );
@@ -466,6 +517,15 @@ function AppointmentTypeResourceAccessPanel({
 /* ------------------------------------------------------------------ */
 /* Top-level page                                                     */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Manager page for controlling provider ↔ resource and provider ↔ appointment-type mappings,
+ * and optionally restricting resources per appointment type.
+ *
+ * Enforcement is controlled in Organization Settings via:
+ * `LimitProvidersToAssignedResources`, `LimitProvidersToAssignedAppointmentTypes`,
+ * and `EnforceAppointmentTypeResourceRules`.
+ */
 export default function ProviderAccessManager() {
     const { isManager } = useAuth();
 
@@ -502,8 +562,21 @@ export default function ProviderAccessManager() {
         return <div className="p-6 text-sm text-gray-700">You don’t have permission to view this page.</div>;
     }
 
-    if (loading) return <div className="p-6"><Loading text="Loading access manager…" /></div>;
-    if (err) return <div className="p-6"><ErrorText text={err} /></div>;
+    if (loading) {
+        return (
+            <div className="p-6">
+                <Loading text="Loading access manager…" />
+            </div>
+        );
+    }
+
+    if (err) {
+        return (
+            <div className="p-6">
+                <ErrorText text={err} />
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 space-y-6">
@@ -520,19 +593,22 @@ export default function ProviderAccessManager() {
             {/* Tabs */}
             <div className="flex gap-2 border-b">
                 <button
-                    className={`px-3 py-2 text-sm ${activeTab === "provider-resources" ? "border-b-2 border-black font-medium" : "text-gray-600"}`}
+                    className={`px-3 py-2 text-sm ${activeTab === "provider-resources" ? "border-b-2 border-black font-medium" : "text-gray-600"
+                        }`}
                     onClick={() => setActiveTab("provider-resources")}
                 >
                     Provider ↔ Resources
                 </button>
                 <button
-                    className={`px-3 py-2 text-sm ${activeTab === "provider-types" ? "border-b-2 border-black font-medium" : "text-gray-600"}`}
+                    className={`px-3 py-2 text-sm ${activeTab === "provider-types" ? "border-b-2 border-black font-medium" : "text-gray-600"
+                        }`}
                     onClick={() => setActiveTab("provider-types")}
                 >
                     Provider ↔ Appointment Types
                 </button>
                 <button
-                    className={`px-3 py-2 text-sm ${activeTab === "type-resources" ? "border-b-2 border-black font-medium" : "text-gray-600"}`}
+                    className={`px-3 py-2 text-sm ${activeTab === "type-resources" ? "border-b-2 border-black font-medium" : "text-gray-600"
+                        }`}
                     onClick={() => setActiveTab("type-resources")}
                 >
                     Appointment Type ↔ Resources
@@ -541,17 +617,17 @@ export default function ProviderAccessManager() {
 
             {/* Panels */}
             <div className="space-y-6">
-                {activeTab === "provider-resources" && (
+                {activeTab === "provider-resources" ? (
                     <ProviderResourceAccessPanel providers={providers} resources={resources} />
-                )}
+                ) : null}
 
-                {activeTab === "provider-types" && (
+                {activeTab === "provider-types" ? (
                     <ProviderAppointmentTypeAccessPanel providers={providers} appointmentTypes={appointmentTypes} />
-                )}
+                ) : null}
 
-                {activeTab === "type-resources" && (
+                {activeTab === "type-resources" ? (
                     <AppointmentTypeResourceAccessPanel appointmentTypes={appointmentTypes} resources={resources} />
-                )}
+                ) : null}
             </div>
 
             <footer className="text-xs text-gray-500">
