@@ -359,21 +359,21 @@ const EventModal: React.FC<EventModalProps> = ({
                     ) : (
                         // Blocked Time form
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="flex flex-col gap-1">
-                                <label className="text-sm font-medium">Resource</label>
-                                <select
-                                    className="border rounded-lg px-3 py-2"
-                                    value={values.resourceId != null ? String(values.resourceId) : ""}
-                                    onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
-                                >
-                                    <option value="">Select resource</option>
-                                    {resourceOptions.map((r) => (
-                                        <option key={r.id} value={String(r.id)}>
-                                            {r.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="text-sm font-medium">Resource (optional)</label>
+                                    <select
+                                        className="border rounded-lg px-3 py-2"
+                                        value={values.resourceId != null ? String(values.resourceId) : ""}
+                                        onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
+                                    >
+                                        <option value="">None</option>
+                                        {resourceOptions.map((r) => (
+                                            <option key={r.id} value={String(r.id)}>
+                                                {r.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
 
                             <div className="flex flex-col gap-1">
                                 <label className="text-sm font-medium">Reason</label>

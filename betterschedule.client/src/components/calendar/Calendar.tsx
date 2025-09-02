@@ -383,7 +383,12 @@ const Calendar = () => {
                     // Blocked time create — server enforces no overlaps (reservations or other blocks)
                     await createBlockedTime({
                         reason: modalValues.reason ?? "",
-                        resourceId: Number(modalValues.resourceId),
+                        resourceId:
+                            typeof modalValues.resourceId === "number"
+                                ? modalValues.resourceId
+                                : modalValues.resourceId
+                                    ? Number(modalValues.resourceId)
+                                    : undefined,
                         startTime: start,
                         endTime: end,
                         backColor: modalValues.backColor ?? undefined,
