@@ -35,7 +35,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                 NavLinks={AppNavLinks}
             />
 
-            <main className="flex-1 bg-blue-50 h-[calc(100vh-4rem)] overflow-hidden">
+            <main className="flex-1 min-h-0 overflow-hidden bg-blue-50">
                 {children}
             </main>
 

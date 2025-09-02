@@ -1,14 +1,10 @@
 /**
  * Helpers for `{ code, message }` API error payloads.
- * @remarks
- * - Avoids brittle string matching scattered through UI code.
- * - Works with axios-style `err.response.data`.
+ * Works with axios-style `err.response.data`.
  */
+
 type ApiErrorPayload = { code?: string; message?: string };
 
-/**
- * Extracts `{ code, message }` from an unknown error.
- */
 export function getApiPayload(err: unknown): ApiErrorPayload {
     const anyErr = err as any;
     const data = anyErr?.response?.data;
@@ -17,44 +13,64 @@ export function getApiPayload(err: unknown): ApiErrorPayload {
     return { code: data?.code, message: data?.message };
 }
 
-/**
- * Returns a user-facing message with optional fallback.
- */
 export function getApiMessage(err: unknown, fallback?: string): string | undefined {
-    const p = getApiPayload(err);
-    if (p.message) return p.message;
-    if ((err as any)?.message) return (err as any).message as string;
+    const { message } = getApiPayload(err);
+    if (message) return message;
+    const asError = err as any;
+    if (typeof asError?.message === "string") return asError.message as string;
     return fallback;
 }
 
-/**
- * Returns an API error code, if present.
- */
 export function getApiCode(err: unknown): string | undefined {
     return getApiPayload(err).code;
 }
 
-/**
- * Throws a normalized `Error(message)` using API shape or fallback.
- */
 export function throwNormalized(err: unknown, fallback = "Unexpected error"): never {
     const msg = getApiMessage(err, fallback) ?? fallback;
     throw new Error(msg);
 }
 
 /**
- * True when the error indicates an availability violation.
- * Matches `{ code: "OUTSIDE_AVAILABILITY" }` and common messages.
+ * Outside provider availability violations.
+ * Uses message heuristics since the server does not emit a dedicated code yet.
  */
-export function isAvailabilityViolation(errOrMsg: unknown): boolean {
+export function isOutsideAvailabilityError(errOrMsg: unknown): boolean {
     const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
-    if (code === "OUTSIDE_AVAILABILITY") return true;
+    if (code === "OUTSIDE_AVAILABILITY" || code === "OUTSIDE_PROVIDER_AVAILABILITY") return true;
     const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
-    return !!msg?.toLowerCase().includes("outside provider availability");
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return lower.includes("outside provider availability") || lower.includes("outside availability");
 }
 
 /**
- * True when the error indicates a generic “unavailable” slot/resource.
+ * Inside cancel/change window enforcement.
+ * Uses message heuristics since the server does not emit a dedicated code yet.
+ */
+export function isCancelWindowError(errOrMsg: unknown): boolean {
+    const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
+    if (code === "INSIDE_CANCEL_WINDOW" || code === "CHANGE_WINDOW") return true;
+    const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return lower.includes("cannot be modified within") || lower.includes("change window") || lower.includes("cancel window");
+}
+
+/**
+ * Overlap/conflict detection for reservations/blocks.
+ * Matches your server codes and common text.
+ */
+export function isOverlapError(errOrMsg: unknown): boolean {
+    const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
+    if (code === "RESERVATION_CONFLICT" || code === "BLOCK_OVERLAP" || code === "RESERVATION_OVERLAP") return true;
+    const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
+    if (!msg) return false;
+    const lower = msg.toLowerCase();
+    return lower.includes("overlap") || lower.includes("conflict");
+}
+
+/**
+ * Generic "unavailable" slots/resources.
  */
 export function isUnavailable(errOrMsg: unknown): boolean {
     const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
@@ -63,18 +79,7 @@ export function isUnavailable(errOrMsg: unknown): boolean {
     return !!msg?.toLowerCase().includes("unavailable");
 }
 
-/**
- * True when the error indicates change/cancel-window enforcement.
- */
-export function isInsideCancelWindow(errOrMsg: unknown): boolean {
-    const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
-    return !!msg?.toLowerCase().includes("cannot be modified within");
-}
-
-/**
- * True when the error indicates an overlap conflict (block/reservation).
- */
-export function isConflict(err: unknown): boolean {
-    const code = getApiCode(err);
-    return code === "RESERVATION_CONFLICT" || code === "BLOCK_OVERLAP";
-}
+/* Back-compat aliases if older imports exist */
+export const isAvailabilityViolation = isOutsideAvailabilityError;
+export const isInsideCancelWindow = isCancelWindowError;
+export const isConflict = isOverlapError;

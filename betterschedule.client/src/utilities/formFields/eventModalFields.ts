@@ -1,28 +1,25 @@
-import type { CalendarResource } from "@/types/calendarDataTypes";
+import type { CalendarResource } from "@/types";
 import { generateTimeOptions } from "@/utilities/conversions";
 
 export interface EventModalFieldOptions {
     resources: CalendarResource[];
     values?: {
-        id?: number | string;                 // present on edit
+        id?: number | string;
         type?: "reservation" | "blockedTime";
         startDate?: string;
         startTime?: string;
         endDate?: string;
         endTime?: string;
 
-        // Reservation
         clientId?: string;
-        serviceProviderId?: string;           // rendered from resources list
+        serviceProviderId?: string;
         appointmentTypeId?: string | number;
         notes?: string;
 
-        // Blocked Time
         reason?: string;
         resourceId?: number | string;
         backColor?: string;
 
-        // Meta
         delete?: boolean;
         formError?: string;
     };
@@ -30,16 +27,13 @@ export interface EventModalFieldOptions {
 }
 
 /**
- * Field schema for the event modal.
- * - Reservation (create): clientId, serviceProviderId, appointmentTypeId, notes
- * - Reservation (edit): immutable fields shown as read-only notes; notes still editable
- * - Blocked time: reason + resource
- * - Common: start/end date & time
+ * Returns a field schema for the Event modal, parameterized by current values and available resources.
+ * The returned structure is consumed by the modal renderer.
  */
 export function eventModalFields({
     resources,
     values = {},
-    includeDelete = false
+    includeDelete = false,
 }: EventModalFieldOptions) {
     const TIME_OPTIONS = generateTimeOptions();
     const type = values.type ?? "reservation";
@@ -53,7 +47,7 @@ export function eventModalFields({
             name: "",
             id: "formError",
             type: "note",
-            html: `<div style="color: red; font-weight: bold; margin-bottom: 8px;">${values.formError}</div>`
+            html: `<div style="color: red; font-weight: bold; margin-bottom: 8px;">${values.formError}</div>`,
         });
     }
 
@@ -63,9 +57,9 @@ export function eventModalFields({
         type: "radio",
         options: [
             { name: "Reservation", id: "reservation" },
-            { name: "Blocked Time", id: "blockedTime" }
+            { name: "Blocked Time", id: "blockedTime" },
         ],
-        value: type
+        value: type,
     });
 
     if (isReservation) {
@@ -76,13 +70,12 @@ export function eventModalFields({
                     name: "Service Provider",
                     id: "serviceProviderId",
                     type: "select",
-                    options: resources.map(r => ({ name: r.name, id: String(r.id) })),
-                    value: values.serviceProviderId ?? ""
+                    options: resources.map((r) => ({ name: r.name, id: String(r.id) })),
+                    value: values.serviceProviderId ?? "",
                 },
                 { name: "Appointment Type", id: "appointmentTypeId", type: "text", value: values.appointmentTypeId ?? "" },
             );
         } else {
-            // Read-only info for immutable fields during edit
             fields.push(
                 { name: "Client", id: "clientInfo", type: "note", html: `<div>Client: ${values.clientId ?? "-"}</div>` },
                 { name: "Provider", id: "providerInfo", type: "note", html: `<div>Provider: ${values.serviceProviderId ?? "-"}</div>` },
@@ -90,28 +83,25 @@ export function eventModalFields({
             );
         }
 
-        // Editable for both create & edit
         fields.push({ name: "Notes", id: "notes", type: "textarea", value: values.notes ?? "" });
     } else {
-        // Blocked time fields
         fields.push(
             { name: "Reason", id: "reason", type: "text", value: values.reason ?? "" },
             {
                 name: "Resource",
                 id: "resourceId",
                 type: "select",
-                options: [{ name: "(None)", id: "" }, ...resources.map(r => ({ name: r.name, id: r.id }))],
-                value: values.resourceId ?? ""
-            }
+                options: [{ name: "(None)", id: "" }, ...resources.map((r) => ({ name: r.name, id: r.id }))],
+                value: values.resourceId ?? "",
+            },
         );
     }
 
-    // Common date/time fields
     fields.push(
         { name: "Start Date", id: "startDate", type: "date", value: values.startDate ?? "" },
-        { name: "Start Time", id: "startTime", type: "select", options: TIME_OPTIONS.map(t => ({ name: t, id: t })), value: values.startTime ?? "" },
+        { name: "Start Time", id: "startTime", type: "select", options: TIME_OPTIONS.map((t) => ({ name: t, id: t })), value: values.startTime ?? "" },
         { name: "End Date", id: "endDate", type: "date", value: values.endDate ?? "" },
-        { name: "End Time", id: "endTime", type: "select", options: TIME_OPTIONS.map(t => ({ name: t, id: t })), value: values.endTime ?? "" },
+        { name: "End Time", id: "endTime", type: "select", options: TIME_OPTIONS.map((t) => ({ name: t, id: t })), value: values.endTime ?? "" },
     );
 
     if (includeDelete) {
