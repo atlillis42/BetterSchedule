@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "react-toastify";
 import { DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotNavigator, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
 
@@ -7,6 +7,8 @@ import { getBlockedTimes, createBlockedTime, updateBlockedTime, deleteBlockedTim
 import { getReservations, createReservation, updateReservation, deleteReservation } from "@/api/reservation-api";
 import { getProvidersLite } from "@/api/user-api";
 import { listAvailability } from "@/api/provider-availability-api";
+import { getOrgSettings } from "@/api/org-settings-api";
+import type { OrgSettingsDto, DefaultCalendarView, CalendarShadingMode } from "@/api/org-settings-api";
 
 import EventModal from "@/components/modals/EventModal";
 import { formatWeekHeader } from "@/utilities/calendarDisplay/formatWeekHeader";
@@ -15,7 +17,17 @@ import { getLocalDateString, getLocalTimeString, combineDateTime } from "@/utili
 import { extractEventFields } from "@/utilities/legacy/extractEventFields";
 import { blockedTimeToUiEvent } from "@/utilities/mapping/blockedTimeToUiEvent";
 import { reservationToUiEvent } from "@/utilities/mapping/reservationToUiEvent";
-import { validateReservation, validateBlockedTime } from "@/utilities/formFields";
+import { validateReservation } from "@/utilities/formFields/validateReservation";
+import { validateBlockedTime } from "@/utilities/formFields/validateBlockedTime";
+import {
+    isRangeAllowedForProvider,
+    isRangeInsideBusinessHours,
+} from "@/domain/calendar/availability";
+import {
+    isAvailabilityViolation,
+    isInsideCancelWindow,
+    isConflict,
+} from "@/domain/calendar/errors";
 
 import "@styles/Calendar.css";
 import type {
@@ -23,9 +35,7 @@ import type {
     UiEvent,
     CalendarTimeRangeSelectedArgs,
     ProviderAvailabilityDto,
-    DayOfWeek
 } from "@/types";
-
 import { useAuth } from "@/components/auth/AuthContext";
 import type { ReservationDto } from "@/api/reservation-api";
 
@@ -41,29 +51,29 @@ async function fetchAllEvents(startDate: DayPilot.Date, endDate: DayPilot.Date):
     return [...blockedEvents, ...reservationEvents];
 }
 
-const DAYS: DayOfWeek[] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const toHHmm = (t: string) => (t.length === 5 ? t : t.slice(0, 5)); // "HH:mm:ss" -> "HH:mm"
-
 const Calendar = () => {
     // Roles
     const { userId, isManager, isProvider } = useAuth();
     const canManageReservations = isManager || isProvider;
     const canManageBlocks = isManager || isProvider;
 
+    // Org settings (optional if 403)
+    const [org, setOrg] = useState<OrgSettingsDto | null>(null);
+    const appliedOrgDefaultView = useRef(false);
+
     // State
-    const [view, setView] = useState<"Day" | "Week" | "Month" | "Resources">("Week");
+    const [view, setView] = useState<DefaultCalendarView>("Week");
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
     const [events, setEvents] = useState<UiEvent[]>([]);
     const [resources, setResources] = useState<CalendarResource[]>([]);
     const [providers, setProviders] = useState<ProviderLite[]>([]);
-    const [showCanceled, setShowCanceled] = useState<boolean>(true); // toggle to hide/show canceled reservations
+    const [showCanceled, setShowCanceled] = useState<boolean>(true);
 
     // Availability (keyed by provider)
     const [availabilityByProvider, setAvailabilityByProvider] = useState<Map<string, ProviderAvailabilityDto[]>>(new Map());
-    // Which provider’s availability to overlay in the grid (for shading/disable)
     const [overlayProviderId, setOverlayProviderId] = useState<string | undefined>(isProvider ? userId ?? undefined : undefined);
 
-    // Modal state
+    // Modal
     const [showModal, setShowModal] = useState(false);
     const [modalMode, setModalMode] = useState<"create" | "edit">("create");
     const [modalType, setModalType] = useState<"reservation" | "blockedTime">("reservation");
@@ -78,72 +88,64 @@ const Calendar = () => {
         }
     }, []);
 
-    // --- Helpers ---
+    // Normalized org-driven presentation knobs with safe defaults
+    const shadingMode: CalendarShadingMode = org?.shadingMode ?? "ProviderAvailability";
+    const businessStart = org?.businessHoursStartLocal ?? "08:00:00";
+    const businessEnd = org?.businessHoursEndLocal ?? "18:00:00";
+
     const refreshVisibleEvents = async () => {
         const { start, end } = getVisibleRange(startDate, view);
         const all = await fetchAllEvents(start, end);
         setEvents(all);
     };
 
-    // Utility: does a range fall within provider availability?
-    const isRangeAvailableFor = (providerId: string | undefined, start: DayPilot.Date, end: DayPilot.Date) => {
-        if (!providerId) return true; // no overlay provider selected => don’t block selection
-        const rules = availabilityByProvider.get(providerId);
-        if (!rules || rules.length === 0) return false;
-
-        const dayIdx = start.toDate().getDay(); // local JS Date
-        const dayName = DAYS[dayIdx];
-
-        const dateYMD = start.toString("yyyy-MM-dd");
-        const tStart = start.toString("HH:mm");
-        const tEnd = end.toString("HH:mm");
-
-        // A range is valid if it fits fully within any single matching rule window for that day
-        return rules.some((r) => {
-            if (r.dayOfWeek !== dayName) return false;
-            if (dateYMD < r.effectiveFrom || dateYMD > r.effectiveTo) return false;
-
-            const rStart = toHHmm(r.startLocalTime);
-            const rEnd = toHHmm(r.endLocalTime);
-            return tStart >= rStart && tEnd <= rEnd; // inclusive start, exclusive end
-        });
-    };
-
-    // Cell shading/disable using the selected overlay provider
+    // Cell shading/disable via org setting
     const beforeCellRender = (args: any) => {
-        if (!overlayProviderId) return; // no overlay → no shading
+        let allowed = true;
+        if (shadingMode === "ProviderAvailability" && overlayProviderId) {
+            // gate by provider windows
+            allowed = isRangeAllowedForProvider(
+                availabilityByProvider,
+                overlayProviderId,
+                args.cell.start.toDate(),
+                args.cell.end.toDate()
+            );
+        } else if (shadingMode === "OrgBusinessHours") {
+            // gate by org business hours
+            allowed = isRangeInsideBusinessHours(
+                args.cell.start.toDate(),
+                args.cell.end.toDate(),
+                businessStart,
+                businessEnd
+            );
+        }
 
-        const allowed = isRangeAvailableFor(overlayProviderId, args.cell.start, args.cell.end);
         if (!allowed) {
             args.cell.cssClass = "unavailable-cell";
-            args.cell.toolTip = "Outside provider availability";
-            // Only block selection for providers (they can only book in their own windows).
-            // Managers can still select to override (they get a confirm on save).
-            if (isProvider && !isManager) {
-                args.cell.disabled = true;
-            }
+            args.cell.toolTip = shadingMode === "OrgBusinessHours"
+                ? "Outside business hours"
+                : "Outside provider availability";
+            // Providers are blocked; managers can still select to override in modal.
+            if (isProvider && !isManager) args.cell.disabled = true;
         }
     };
 
     // Reservation status → color + class
     const colorByStatus = (status?: string) => {
-        // defaults to Booked blue
         switch (status) {
-            case "Completed": return { backColor: "#10b981", cssClass: "res-status-completed" }; // emerald
-            case "Canceled": return { backColor: "#9ca3af", cssClass: "res-status-canceled" };  // gray
-            case "NoShow": return { backColor: "#f59e0b", cssClass: "res-status-noshow" };    // amber
-            default: return { backColor: "#3b82f6", cssClass: "res-status-booked" };    // blue
+            case "Completed": return { backColor: "#10b981", cssClass: "res-status-completed" };
+            case "Canceled": return { backColor: "#9ca3af", cssClass: "res-status-canceled" };
+            case "NoShow": return { backColor: "#f59e0b", cssClass: "res-status-noshow" };
+            default: return { backColor: "#3b82f6", cssClass: "res-status-booked" };
         }
     };
 
-    // Style events before render (applied to Day/Week/Scheduler/Month)
     const beforeEventRender = (args: any) => {
         const e = args.data;
         if (e?.type === "reservation" && e?.reservation) {
             const res: ReservationDto = e.reservation;
             const { backColor, cssClass } = colorByStatus(res.status);
             args.data.backColor = backColor;
-            // Provide a tooltip so status is visible on hover even if text is something else
             args.data.toolTip = `Reservation • ${res.status}`;
             args.data.cssClass = [e.cssClass, cssClass].filter(Boolean).join(" ");
         }
@@ -161,7 +163,6 @@ const Calendar = () => {
             endDate: getLocalDateString(args.end),
             endTime: getLocalTimeString(args.end),
             resourceId: args.resource ? Number(args.resource) : undefined,
-            // Providers preselect themselves; Managers choose in the modal
             serviceProviderId: isProvider && !isManager ? userId : "",
             type: "reservation",
             participants: [],
@@ -180,21 +181,13 @@ const Calendar = () => {
             (type === "reservation" && canManageReservations) ||
             (type === "blockedTime" && (isManager || isOwnBlockedTime));
 
-        // Nudge providers if they try to edit another provider’s reservation
         const res = args.e?.data?.reservation;
-        if (
-            type === "reservation" &&
-            isProvider &&
-            !isManager &&
-            res?.serviceProviderId &&
-            res.serviceProviderId !== userId
-        ) {
+        if (type === "reservation" && isProvider && !isManager && res?.serviceProviderId && res.serviceProviderId !== userId) {
             toast.info("You’re viewing another provider’s event. Switch provider or ask a manager to edit.");
         }
 
         setModalMode(canEdit ? "edit" : "create");
         setModalType(type);
-
         setModalValues({
             ...extractEventFields(args.e),
             id: args.e.id,
@@ -212,47 +205,33 @@ const Calendar = () => {
 
     // Save from modal (with override flows)
     const handleModalSubmit = async () => {
-        if (modalType === "reservation" && !canManageReservations) {
-            toast.info("You don’t have permission to save reservations.");
-            return;
-        }
-        if (modalType === "blockedTime" && !canManageBlocks) {
-            toast.info("You don’t have permission to save blocked times.");
-            return;
-        }
+        if (modalType === "reservation" && !canManageReservations) { toast.info("You don’t have permission to save reservations."); return; }
+        if (modalType === "blockedTime" && !canManageBlocks) { toast.info("You don’t have permission to save blocked times."); return; }
 
         const validationError = modalType === "reservation" ? validateReservation(modalValues) : validateBlockedTime(modalValues);
-        if (validationError) {
-            setModalFormError(validationError);
-            return;
-        }
+        if (validationError) { setModalFormError(validationError); return; }
 
         const start = combineDateTime(modalValues.startDate, modalValues.startTime).iso as string;
         const end = combineDateTime(modalValues.endDate, modalValues.endTime).iso as string;
 
-        const startDp = new DayPilot.Date(start);
-        const endDp = new DayPilot.Date(end);
-
-        // Determine which provider to validate against (client-side nudge only):
+        // Client-side nudge against provider availability; server remains source of truth.
         const providerForCheck =
             (isProvider && !isManager ? userId : undefined) ??
             (modalValues.serviceProviderId || undefined) ??
             overlayProviderId;
 
-        if (providerForCheck && !isRangeAvailableFor(providerForCheck, startDp, endDp)) {
-            const msg = "Selected time is outside provider availability.";
-            if (isProvider && !isManager) {
-                setModalFormError(msg);
-                toast.error(msg);
-                return;
+        if (providerForCheck) {
+            const allowed = isRangeAllowedForProvider(availabilityByProvider, providerForCheck, start, end);
+            if (!allowed) {
+                const msg = "Selected time is outside provider availability.";
+                if (isProvider && !isManager) { setModalFormError(msg); toast.error(msg); return; }
+                toast.warning(msg);
             }
-            toast.warning(msg); // managers can override
         }
 
         try {
             if (modalMode === "edit") {
                 if (modalType === "reservation") {
-                    // First attempt without overrides; if server rejects on availability/cancel-window we’ll confirm and retry.
                     try {
                         await updateReservation(
                             modalValues.id,
@@ -260,21 +239,14 @@ const Calendar = () => {
                                 notes: modalValues.notes ?? undefined,
                                 startTime: start,
                                 endTime: end,
-                                resourceId:
-                                    typeof modalValues.resourceId === "number"
-                                        ? modalValues.resourceId
-                                        : modalValues.resourceId
-                                            ? Number(modalValues.resourceId)
-                                            : undefined,
+                                resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                                    : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                                 serviceProviderId: modalValues.serviceProviderId || undefined,
                                 appointmentTypeId: modalValues.appointmentTypeId ? Number(modalValues.appointmentTypeId) : undefined,
                             }
                         );
                     } catch (err: any) {
-                        const msg = (err instanceof Error && err.message) ? err.message.toLowerCase() : (err?.response?.data?.message as string | undefined)?.toLowerCase();
-
-                        // Availability override (both manager and provider can confirm)
-                        if (msg && msg.includes("outside provider availability")) {
+                        if (isAvailabilityViolation(err)) {
                             const ok = window.confirm("This is outside provider availability. Proceed anyway?");
                             if (!ok) throw err;
                             await updateReservation(
@@ -283,20 +255,14 @@ const Calendar = () => {
                                     notes: modalValues.notes ?? undefined,
                                     startTime: start,
                                     endTime: end,
-                                    resourceId:
-                                        typeof modalValues.resourceId === "number"
-                                            ? modalValues.resourceId
-                                            : modalValues.resourceId
-                                                ? Number(modalValues.resourceId)
-                                                : undefined,
+                                    resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                                        : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                                     serviceProviderId: modalValues.serviceProviderId || undefined,
                                     appointmentTypeId: modalValues.appointmentTypeId ? Number(modalValues.appointmentTypeId) : undefined,
                                 },
                                 { overrideAvailability: true }
                             );
-                        }
-                        // Cancel window manager override
-                        else if (msg && msg.includes("cannot be modified within") && isManager) {
+                        } else if (isInsideCancelWindow(err) && isManager) {
                             const ok = window.confirm("This is inside the organization’s change window. Override and proceed?");
                             if (!ok) throw err;
                             await updateReservation(
@@ -305,12 +271,8 @@ const Calendar = () => {
                                     notes: modalValues.notes ?? undefined,
                                     startTime: start,
                                     endTime: end,
-                                    resourceId:
-                                        typeof modalValues.resourceId === "number"
-                                            ? modalValues.resourceId
-                                            : modalValues.resourceId
-                                                ? Number(modalValues.resourceId)
-                                                : undefined,
+                                    resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                                        : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                                     serviceProviderId: modalValues.serviceProviderId || undefined,
                                     appointmentTypeId: modalValues.appointmentTypeId ? Number(modalValues.appointmentTypeId) : undefined,
                                 },
@@ -321,15 +283,10 @@ const Calendar = () => {
                         }
                     }
                 } else {
-                    // Blocked time update — server enforces no overlaps (reservations or other blocks)
                     await updateBlockedTime(modalValues.id, {
                         reason: modalValues.reason ?? undefined,
-                        resourceId:
-                            typeof modalValues.resourceId === "number"
-                                ? modalValues.resourceId
-                                : modalValues.resourceId
-                                    ? Number(modalValues.resourceId)
-                                    : undefined,
+                        resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                            : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                         startTime: start,
                         endTime: end,
                         backColor: modalValues.backColor ?? undefined,
@@ -337,7 +294,6 @@ const Calendar = () => {
                 }
             } else {
                 if (modalType === "reservation") {
-                    // First attempt without override; on availability rejection ask to proceed and retry with override
                     try {
                         await createReservation({
                             clientId: modalValues.clientId,
@@ -346,16 +302,11 @@ const Calendar = () => {
                             startTime: start,
                             endTime: end,
                             notes: modalValues.notes ?? "",
-                            resourceId:
-                                typeof modalValues.resourceId === "number"
-                                    ? modalValues.resourceId
-                                    : modalValues.resourceId
-                                        ? Number(modalValues.resourceId)
-                                        : undefined,
+                            resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                                : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                         });
                     } catch (err: any) {
-                        const msg = (err instanceof Error && err.message) ? err.message.toLowerCase() : (err?.response?.data?.message as string | undefined)?.toLowerCase();
-                        if (msg && msg.includes("outside provider availability")) {
+                        if (isAvailabilityViolation(err)) {
                             const ok = window.confirm("This is outside provider availability. Proceed anyway?");
                             if (!ok) throw err;
                             await createReservation(
@@ -366,12 +317,8 @@ const Calendar = () => {
                                     startTime: start,
                                     endTime: end,
                                     notes: modalValues.notes ?? "",
-                                    resourceId:
-                                        typeof modalValues.resourceId === "number"
-                                            ? modalValues.resourceId
-                                            : modalValues.resourceId
-                                                ? Number(modalValues.resourceId)
-                                                : undefined,
+                                    resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                                        : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                                 },
                                 { overrideAvailability: true }
                             );
@@ -380,15 +327,10 @@ const Calendar = () => {
                         }
                     }
                 } else {
-                    // Blocked time create — server enforces no overlaps (reservations or other blocks)
                     await createBlockedTime({
                         reason: modalValues.reason ?? "",
-                        resourceId:
-                            typeof modalValues.resourceId === "number"
-                                ? modalValues.resourceId
-                                : modalValues.resourceId
-                                    ? Number(modalValues.resourceId)
-                                    : undefined,
+                        resourceId: typeof modalValues.resourceId === "number" ? modalValues.resourceId
+                            : modalValues.resourceId ? Number(modalValues.resourceId) : undefined,
                         startTime: start,
                         endTime: end,
                         backColor: modalValues.backColor ?? undefined,
@@ -399,23 +341,20 @@ const Calendar = () => {
             setShowModal(false);
             await refreshVisibleEvents();
         } catch (err: any) {
-            // Inline message for known server codes / wrapped errors
-            const code = err?.response?.data?.code as string | undefined;
-            const message =
-                (err instanceof Error && err.message) ||
-                (err?.response?.data?.message as string | undefined) ||
-                (typeof err?.response?.data === "string" ? err.response.data : undefined);
-
-            if (code === "RESERVATION_CONFLICT" || code === "BLOCK_OVERLAP") {
-                setModalFormError(message || "Time overlaps with another item.");
-                toast.error(message || "Time overlaps with another item.");
+            if (isConflict(err)) {
+                const message =
+                    (err?.response?.data?.message as string | undefined) ||
+                    (typeof err?.response?.data === "string" ? err.response.data : undefined) ||
+                    "Time overlaps with another item.";
+                setModalFormError(message);
+                toast.error(message);
                 return;
             }
 
             if (err?.response?.status === 403) {
                 toast.error("You don’t have permission to perform this action.");
-            } else if (message) {
-                setModalFormError(message);
+            } else if (typeof err?.message === "string" && err.message) {
+                setModalFormError(err.message);
             } else {
                 toast.error("Something went wrong. Please try again.");
             }
@@ -424,32 +363,33 @@ const Calendar = () => {
 
     // Delete from modal
     const handleModalDelete = async () => {
-        if (modalType === "reservation" && !canManageReservations) {
-            toast.info("You don’t have permission to delete reservations.");
-            return;
-        }
-        if (modalType === "blockedTime" && !canManageBlocks) {
-            toast.info("You don’t have permission to delete blocked times.");
-            return;
-        }
+        if (modalType === "reservation" && !canManageReservations) { toast.info("You don’t have permission to delete reservations."); return; }
+        if (modalType === "blockedTime" && !canManageBlocks) { toast.info("You don’t have permission to delete blocked times."); return; }
 
-        if (modalType === "reservation") {
-            await deleteReservation(modalValues.id);
-        } else {
-            await deleteBlockedTime(modalValues.id);
-        }
+        if (modalType === "reservation") await deleteReservation(modalValues.id);
+        else await deleteBlockedTime(modalValues.id);
+
         setShowModal(false);
         await refreshVisibleEvents();
     };
 
-    // Initial Load + whenever view/start change
+    // Initial load + view changes
     useEffect(() => {
         let cancelled = false;
-
         (async () => {
             try {
-                const { start, end } = getVisibleRange(startDate, view);
+                // Org settings (best-effort; ignore 403 so non-managers still see calendar)
+                try {
+                    const s = await getOrgSettings();
+                    if (!cancelled) setOrg(s);
+                } catch (err: any) {
+                    if (err?.response?.status !== 403 && !cancelled) {
+                        // eslint-disable-next-line no-console
+                        console.warn("Org settings fetch failed", err);
+                    }
+                }
 
+                const { start, end } = getVisibleRange(startDate, view);
                 const [resourceList, eventsList, providersTry] = await Promise.all([
                     getResources(),
                     fetchAllEvents(start, end),
@@ -477,26 +417,28 @@ const Calendar = () => {
                 if (!cancelled) console.error("⛔ Calendar API fetch failed", err);
             }
         })();
-
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [startDate, view]);
 
-    // Fetch availability whenever overlay provider changes
+    // Apply org default view once (when settings first arrive)
+    useEffect(() => {
+        if (org?.defaultView && !appliedOrgDefaultView.current) {
+            setView(org.defaultView as DefaultCalendarView);
+            appliedOrgDefaultView.current = true;
+        }
+    }, [org]);
+
+    // Fetch availability on overlay provider change
     useEffect(() => {
         let cancelled = false;
-
         (async () => {
             try {
                 if (!overlayProviderId) {
                     if (!cancelled) setAvailabilityByProvider(new Map());
                     return;
                 }
-
                 const list = await listAvailability(overlayProviderId);
                 if (cancelled) return;
-
                 const map = new Map<string, ProviderAvailabilityDto[]>();
                 map.set(overlayProviderId, list);
                 setAvailabilityByProvider(map);
@@ -504,10 +446,7 @@ const Calendar = () => {
                 console.error("⛔ Availability fetch failed", err);
             }
         })();
-
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [overlayProviderId]);
 
     // Filtered events for display (toggle canceled)
@@ -516,7 +455,6 @@ const Calendar = () => {
         return events.filter((e) => e.type !== "reservation" || e?.reservation?.status !== "Canceled");
     }, [events, showCanceled]);
 
-    // Read-only modal logic (disables save/delete)
     const readOnly =
         (modalType === "reservation" && !canManageReservations) ||
         (modalType === "blockedTime" && modalValues?.createdByUserId && modalValues.createdByUserId !== userId && !isManager);
@@ -536,7 +474,6 @@ const Calendar = () => {
                 error={modalFormError}
                 resources={resources}
                 providers={providers}
-                // NEW: let the modal ask us to refetch (used by quick status actions)
                 onRefreshRequested={refreshVisibleEvents}
             />
 
@@ -553,23 +490,12 @@ const Calendar = () => {
                 </div>
                 <div className="calendar-main flex flex-col flex-1 min-w-0">
                     <div className="calendar-toolbar flex items-center gap-2 p-2 border-b bg-gray-100">
-                        <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>
-                            Day
-                        </button>
-                        <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>
-                            Week
-                        </button>
-                        <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>
-                            Month
-                        </button>
-                        <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>
-                            Resources
-                        </button>
-                        <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">
-                            Today
-                        </button>
+                        <button onClick={() => setView("Day")} className={view === "Day" ? "selected" : ""}>Day</button>
+                        <button onClick={() => setView("Week")} className={view === "Week" ? "selected" : ""}>Week</button>
+                        <button onClick={() => setView("Month")} className={view === "Month" ? "selected" : ""}>Month</button>
+                        <button onClick={() => setView("Resources")} className={view === "Resources" ? "selected" : ""}>Resources</button>
+                        <button onClick={() => setStartDate(DayPilot.Date.today())} className="standalone">Today</button>
 
-                        {/* Availability overlay selector */}
                         <div className="ml-4 flex items-center gap-2">
                             <span className="text-xs text-gray-600">Availability overlay:</span>
                             <select
@@ -579,14 +505,11 @@ const Calendar = () => {
                             >
                                 <option value="">(none)</option>
                                 {providers.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                        {p.name || p.id}
-                                    </option>
+                                    <option key={p.id} value={p.id}>{p.name || p.id}</option>
                                 ))}
                             </select>
                         </div>
 
-                        {/* Legend + show/hide canceled */}
                         <div className="ml-4 flex items-center gap-3 text-xs">
                             <div className="flex items-center gap-1">
                                 <span className="inline-block w-3 h-3 rounded" style={{ background: "#3b82f6" }} />
