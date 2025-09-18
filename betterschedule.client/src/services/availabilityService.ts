@@ -11,7 +11,10 @@ export type AvailabilityMap = Map<string, ProviderAvailabilityDto[]>;
 /** Business-hours window expressed in "HH:mm". */
 export type BusinessHours = { startHHmm: string; endHHmm: string };
 
-/** Builds a one-entry availability map for an overlay provider. */
+/**
+ * Builds a one-entry availability map for an overlay provider.
+ * @param providerId - Provider user id.
+ */
 export async function fetchOverlayAvailabilityMap(providerId: string): Promise<AvailabilityMap> {
     const rules = await listAvailability(providerId);
     const map = new Map<string, ProviderAvailabilityDto[]>();
@@ -19,7 +22,10 @@ export async function fetchOverlayAvailabilityMap(providerId: string): Promise<A
     return map;
 }
 
-/** Extracts business-hours window from organization settings as "HH:mm". */
+/**
+ * Extracts business-hours window from organization settings as "HH:mm".
+ * @param org - Organization settings
+ */
 export function buildBusinessHours(org: OrgSettingsDto | null): BusinessHours | null {
     if (!org) return null;
     return {
@@ -28,16 +34,14 @@ export function buildBusinessHours(org: OrgSettingsDto | null): BusinessHours | 
     };
 }
 
-/** (Back-compat) Checks whether a time range is covered by rules in browser-local time. */
-export function isWithinProviderRules(
-    rules: ProviderAvailabilityDto[] | null | undefined,
-    start: DayPilot.Date | Date | string,
-    end: DayPilot.Date | Date | string
-): boolean {
-    return isRangeWithinAnyRule(rules, start, end);
-}
-
-/** Overlay-aware availability preflight in org-local time when TZ provided. */
+/**
+ * Overlay-aware availability preflight in org-local time when TZ provided.
+ * @param availabilityByProvider - Rules grouped by provider id.
+ * @param providerId - Provider to check (undefined = allow).
+ * @param start - Start date/time (DayPilot.Date/Date/ISO).
+ * @param end - End date/time (DayPilot.Date/Date/ISO).
+ * @param orgTimeZoneId - Org IANA TZ for local-time comparisons.
+ */
 export function preflightAvailability(
     availabilityByProvider: AvailabilityMap,
     providerId: string | undefined,
@@ -51,7 +55,13 @@ export function preflightAvailability(
     return ok ? { allowed: true } : { allowed: false, reason: Messages.OutsideProviderAvailability };
 }
 
-/** Optional: org-business-hours preflight. */
+/**
+ * Optional: org-business-hours preflight.
+ * @param start - Start date/time (DayPilot.Date/Date/ISO).
+ * @param end - End date/time (DayPilot.Date/Date/ISO).
+ * @param bh - Business hours window or null to skip.
+ * @param orgTimeZoneId - Org IANA TZ for local-time comparisons.
+ */
 export function preflightBusinessHours(
     start: DayPilot.Date | Date | string,
     end: DayPilot.Date | Date | string,

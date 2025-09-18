@@ -5,6 +5,7 @@ import type { ViewMode } from "@/types/calendarView";
 
 /**
  * Main calendar body rendering Day/Week/Month/Resources views.
+ * @public
  */
 export default function CalendarBody(props: {
     view: ViewMode;
@@ -16,6 +17,17 @@ export default function CalendarBody(props: {
     beforeCellRender: (args: any) => void;
     beforeSchedulerCellRender: (args: any) => void;
     beforeEventRender: (args: any) => void;
+    /** Optional: business-hours start (hour, local or org-local), applied to Day/Week. */
+    businessBeginsHour?: number;
+    /** Optional: business-hours end (hour, local or org-local), applied to Day/Week. */
+    businessEndsHour?: number;
+    /**
+     * Optional height spec for Day/Week. Common values:
+     * - "BusinessHoursNoScroll" (hide off-hours)
+     * - "BusinessHours" (scrollable)
+     * - "Full" (shows all no Scroll)
+     */
+    heightSpec?: string;
 }) {
     const {
         view,
@@ -27,6 +39,9 @@ export default function CalendarBody(props: {
         beforeCellRender,
         beforeSchedulerCellRender,
         beforeEventRender,
+        businessBeginsHour,
+        businessEndsHour,
+        heightSpec,
     } = props;
 
     return (
@@ -42,7 +57,11 @@ export default function CalendarBody(props: {
                     onEventClick={onEventClick}
                     onBeforeCellRender={beforeCellRender}
                     onBeforeEventRender={beforeEventRender}
+                    allowEventOverlap={false}
                     headerHeight={40}
+                    businessBeginsHour={businessBeginsHour}
+                    businessEndsHour={businessEndsHour}
+                    heightSpec={heightSpec}
                     onBeforeHeaderRender={(args) => {
                         const { weekday, short } = formatWeekHeader(args.header.start);
                         args.header.html = `
@@ -65,7 +84,11 @@ export default function CalendarBody(props: {
                     onEventClick={onEventClick}
                     onBeforeCellRender={beforeCellRender}
                     onBeforeEventRender={beforeEventRender}
+                    allowEventOverlap={false}
                     headerHeight={40}
+                    businessBeginsHour={businessBeginsHour}
+                    businessEndsHour={businessEndsHour}
+                    heightSpec={heightSpec}
                     onBeforeHeaderRender={(args) => {
                         const { weekday, short } = formatWeekHeader(args.header.start);
                         args.header.html = `
@@ -105,6 +128,7 @@ export default function CalendarBody(props: {
                     onEventClick={onEventClick}
                     onBeforeEventRender={beforeEventRender}
                     onBeforeCellRender={beforeSchedulerCellRender}
+                    allowEventOverlap={false}
                     cellWidth={50}
                     headerHeight={30}
                     rowHeaderWidth={150}
