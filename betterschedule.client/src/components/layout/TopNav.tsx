@@ -1,20 +1,21 @@
 /**
  * Summary: Top navigation bar.
  * - Left: app title + primary navigation.
- * - Right: DEV user switcher (DEV only) + Logout.
+ * - Right: DEV identity summary + DEV user switcher (DEV only) + Logout.
  * - Orchestrates dev DB reset via devTools helper.
  */
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import DevUserSwitcher from "@/components/dev/DevUserSwitcher";
 import { resetDevDatabase } from "@/dev/devTools";
+import { useAuth } from "@auth/AuthContext";
 
 type TopNavProps = {
     canSeeProviderAvailability: boolean;
     canManage: boolean;
     isProvider: boolean;
     onLogout: () => Promise<void>;
-    login: (identifier: string, password: string) => Promise<{ success: boolean } | { success?: boolean } | void>;
+    login: (identifier: string, password: string) => Promise<{ success: boolean; message: string }>;
     logout: () => Promise<void>;
     NavLinks: React.ComponentType<{ canSeeProviderAvailability: boolean; canManage: boolean; isProvider: boolean }>;
 };
@@ -29,6 +30,16 @@ const TopNav: React.FC<TopNavProps> = ({
     NavLinks,
 }) => {
     const navigate = useNavigate();
+    const { organizationId, user, roles, isProvider: ctxIsProvider } = useAuth();
+
+    // Adapter to satisfy DevUserSwitcher’s narrower login type
+    const loginForSwitcher = React.useCallback(
+        async (identifier: string, password: string) => {
+            const res = await login(identifier, password); // { success: boolean; message: string }
+            return { success: res.success };               // narrow to { success: boolean }
+        },
+        [login]
+    );
 
     const handleResetDb = async () => {
         if (!window.confirm("Are you sure you want to reset all demo data?")) return;
@@ -52,7 +63,19 @@ const TopNav: React.FC<TopNavProps> = ({
 
             <div className="flex items-center gap-2">
                 {import.meta.env.DEV && (
-                    <DevUserSwitcher login={login} logout={logout} onResetDb={handleResetDb} />
+                    <div
+                        className="hidden md:flex items-center gap-2 mr-2 px-2 py-1 rounded bg-white/90 text-blue-700 border border-blue-100"
+                        title="Development identity summary"
+                    >
+                        <span className="text-xs"><span className="font-semibold">Org</span>: {organizationId ?? "—"}</span>
+                        <span className="text-xs"><span className="font-semibold">User</span>: {user ?? "—"}</span>
+                        <span className="text-xs"><span className="font-semibold">Roles</span>: {roles?.length ? roles.join(", ") : "—"}</span>
+                        <span className="text-xs"><span className="font-semibold">Provider</span>: {ctxIsProvider ? "Yes" : "No"}</span>
+                    </div>
+                )}
+
+                {import.meta.env.DEV && (
+                    <DevUserSwitcher login={loginForSwitcher} logout={logout} onResetDb={handleResetDb} />
                 )}
                 <button
                     onClick={onLogout}

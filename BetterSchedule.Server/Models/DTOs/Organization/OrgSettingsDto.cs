@@ -1,28 +1,28 @@
 ﻿using System;
 using System.ComponentModel.DataAnnotations;
+using BetterSchedule.Server.Models.Tenant.SettingsHelpers;
 
 namespace BetterSchedule.Server.Models.DTOs.Organization
 {
     /// <summary>
     /// Read model for <see cref="BetterSchedule.Server.Models.Tenant.OrganizationSettings"/>.
-    /// Enum values are exposed as strings for API clarity/compatibility.
+    /// Enums and time/date types are strongly typed; JSON converters format them as strings.
     /// </summary>
     public sealed class OrgSettingsDto
     {
-
         /// <summary>Minimum lead time to create or reschedule a reservation, in minutes.</summary>
         public int MinLeadMinutes { get; init; }
 
         /// <summary>Hours before start after which a reservation cannot be modified or canceled without an override.</summary>
         public int CancelWindowHours { get; init; }
 
-        /// <summary>Organization policy controlling whether providers may cancel their own reservations (AnyTime | RespectWindow | None).</summary>
+        /// <summary>Organization policy controlling whether providers may cancel their own reservations.</summary>
         [Required]
-        public string ProviderCancelPolicy { get; init; } = "AnyTime";
+        public ProviderCancelPolicy ProviderCancelPolicy { get; init; } = ProviderCancelPolicy.AnyTime;
 
-        /// <summary>Organization policy controlling whether clients may cancel their own reservations (AnyTime | RespectWindow | None).</summary>
+        /// <summary>Organization policy controlling whether clients may cancel their own reservations.</summary>
         [Required]
-        public string ClientCancelPolicy { get; init; } = "RespectWindow";
+        public ClientCancelPolicy ClientCancelPolicy { get; init; } = ClientCancelPolicy.RespectWindow;
 
         /// <summary>Whether weekend columns are shown by default.</summary>
         public bool ShowWeekends { get; init; }
@@ -30,25 +30,25 @@ namespace BetterSchedule.Server.Models.DTOs.Organization
         /// <summary>First day of week for week/month views: 0 = Sunday, …, 6 = Saturday.</summary>
         public int StartOfWeek { get; init; }
 
-        /// <summary>Start of organization business hours, interpreted in <see cref="TimeZoneId"/>. Serialized as "HH:mm:ss".</summary>
+        /// <summary>Start of organization business hours, interpreted in <see cref="TimeZoneId"/>.</summary>
         [Required]
-        public string BusinessHoursStartLocal { get; init; } = "08:00:00";
+        public TimeSpan BusinessHoursStartLocal { get; init; } = new(8, 0, 0);
 
-        /// <summary>End of organization business hours, interpreted in <see cref="TimeZoneId"/>. Serialized as "HH:mm:ss".</summary>
+        /// <summary>End of organization business hours, interpreted in <see cref="TimeZoneId"/>.</summary>
         [Required]
-        public string BusinessHoursEndLocal { get; init; } = "18:00:00";
+        public TimeSpan BusinessHoursEndLocal { get; init; } = new(18, 0, 0);
 
-        /// <summary>Default calendar view (Day | Week | Month | Resources).</summary>
+        /// <summary>Default calendar view for new sessions.</summary>
         [Required]
-        public string DefaultView { get; init; } = "Week";
+        public DefaultCalendarView DefaultView { get; init; } = DefaultCalendarView.Week;
 
-        /// <summary>Calendar shading mode (None | OrgBusinessHours | ProviderAvailability).</summary>
+        /// <summary>Calendar background shading mode.</summary>
         [Required]
-        public string ShadingMode { get; init; } = "ProviderAvailability";
+        public CalendarShadingMode ShadingMode { get; init; } = CalendarShadingMode.ProviderAvailability;
 
-        /// <summary>Availability enforcement level (None | Warn | BlockProvidersWarnManagers | BlockAllRequireOverride).</summary>
+        /// <summary>Server-side enforcement level for provider availability checks.</summary>
         [Required]
-        public string AvailabilityEnforcement { get; init; } = "BlockProvidersWarnManagers";
+        public AvailabilityEnforcement AvailabilityEnforcement { get; init; } = AvailabilityEnforcement.BlockProvidersWarnManagers;
 
         /// <summary>Require explicit confirmation when performing an override.</summary>
         public bool RequireConfirmOnOverrides { get; init; }

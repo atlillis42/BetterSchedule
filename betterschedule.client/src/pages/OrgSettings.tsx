@@ -1,5 +1,5 @@
-import OrgSettingsManager from "@/components/admin/OrgSettingsManager";
+import OrganizationSettingsManager from "@/components/admin/OrganizationSettingsManager";
 
-export default function OrgSettingsPage() {
-    return <OrgSettingsManager />;
+export default function OrganizationSettingsPage() {
+    return <OrganizationSettingsManager />;
 }

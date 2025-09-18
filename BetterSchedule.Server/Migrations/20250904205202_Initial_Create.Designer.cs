@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BetterSchedule.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20250902185445_Initial_Create")]
+    [Migration("20250904205202_Initial_Create")]
     partial class Initial_Create
     {
         /// <inheritdoc />

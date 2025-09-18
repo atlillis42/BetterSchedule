@@ -6,17 +6,28 @@ import {
 } from "@/domain/calendar/availability";
 import { Messages } from "@/domain/calendar/messages";
 
+type BusinessHours = { startHHmm: string; endHHmm: string };
+
 /**
- * Produces a DayPilot Calendar `onBeforeCellRender` handler
- * that applies availability/business-hours shading.
+ * Produces a DayPilot Day/Week cell shading callback.
+ * Applies provider-availability or business-hours rules, comparing in organization time when provided.
  */
 export function createBeforeCellRender(opts: {
     shadingMode: CalendarShadingMode;
     availabilityByProvider: Map<string, ProviderAvailabilityDto[]>;
     overlayProviderId?: string;
-    businessHours?: { startHHmm: string; endHHmm: string } | null;
+    businessHours?: BusinessHours | null;
     isProvider: boolean;
     isManager: boolean;
+    /** Organization IANA time zone identifier, e.g., "America/New_York". */
+    orgTimeZoneId?: string;
+    /** Optional debug toggles used in development. */
+    debug?: {
+        /** Paints all cells to visually confirm the callback runs. */
+        paintAll?: boolean;
+        /** Logs a sample cell per column for quick inspection. */
+        log?: boolean;
+    };
 }) {
     const {
         shadingMode,
@@ -25,9 +36,16 @@ export function createBeforeCellRender(opts: {
         businessHours,
         isProvider,
         isManager,
+        orgTimeZoneId,
+        debug,
     } = opts;
 
     return (args: any) => {
+        if (debug?.paintAll) {
+            args.cell.backColor = "#fee2e2";
+            return;
+        }
+
         let allowed: boolean | null = null;
         let reason: string | null = null;
 
@@ -36,22 +54,45 @@ export function createBeforeCellRender(opts: {
             const rules = availabilityByProvider.get(overlayProviderId);
             if (!rules || rules.length === 0) return;
 
-            allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
+            allowed = isRangeWithinProviderAvailability(
+                rules,
+                args.cell.start,
+                args.cell.end,
+                orgTimeZoneId
+            );
             if (!allowed) reason = Messages.OutsideProviderAvailability;
+
+            if (debug?.log) {
+                const s = args.cell.start?.toString?.("HH:mm");
+                if (s === "09:00") {
+                    const day = args.cell.start?.toString?.("yyyy-MM-dd ddd");
+                    // eslint-disable-next-line no-console
+                    console.log(
+                        "[beforeCellRender] overlay=%s rules=%d sampleCell=%s allowed=%s tz=%s",
+                        overlayProviderId,
+                        rules.length,
+                        `${day} ${s}`,
+                        String(allowed),
+                        orgTimeZoneId ?? "(browser)"
+                    );
+                }
+            }
         } else if (shadingMode === "OrgBusinessHours") {
             if (!businessHours) return;
             allowed = isWithinBusinessHours(
                 args.cell.start,
                 args.cell.end,
                 businessHours.startHHmm,
-                businessHours.endHHmm
+                businessHours.endHHmm,
+                orgTimeZoneId
             );
             if (!allowed) reason = Messages.OutsideOrgBusinessHours;
         } else {
-            return; // "None"
+            return;
         }
 
         if (allowed === false) {
+            args.cell.backColor = "#f1f5f9";
             args.cell.cssClass = "unavailable-cell";
             if (reason) args.cell.toolTip = reason;
             if (isProvider && !isManager) args.cell.disabled = true;
@@ -60,58 +101,10 @@ export function createBeforeCellRender(opts: {
 }
 
 /**
- * Produces a DayPilot Scheduler `onBeforeCellRender` handler
- * mirroring `createBeforeCellRender` for the Resources view.
- *
- * Notes:
- * - Scheduler cells expose the same `start`/`end` range on `args.cell`.
- * - Provider overlay logic is time-based only; resource dimension is not considered here.
+ * Produces a DayPilot Scheduler cell shading callback using the same rules as Day/Week.
  */
-export function createBeforeSchedulerCellRender(opts: {
-    shadingMode: CalendarShadingMode;
-    availabilityByProvider: Map<string, ProviderAvailabilityDto[]>;
-    overlayProviderId?: string;
-    businessHours?: { startHHmm: string; endHHmm: string } | null;
-    isProvider: boolean;
-    isManager: boolean;
-}) {
-    const {
-        shadingMode,
-        availabilityByProvider,
-        overlayProviderId,
-        businessHours,
-        isProvider,
-        isManager,
-    } = opts;
-
-    return (args: any) => {
-        let allowed: boolean | null = null;
-        let reason: string | null = null;
-
-        if (shadingMode === "ProviderAvailability") {
-            if (!overlayProviderId) return;
-            const rules = availabilityByProvider.get(overlayProviderId);
-            if (!rules || rules.length === 0) return;
-
-            allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
-            if (!allowed) reason = Messages.OutsideProviderAvailability;
-        } else if (shadingMode === "OrgBusinessHours") {
-            if (!businessHours) return;
-            allowed = isWithinBusinessHours(
-                args.cell.start,
-                args.cell.end,
-                businessHours.startHHmm,
-                businessHours.endHHmm
-            );
-            if (!allowed) reason = Messages.OutsideOrgBusinessHours;
-        } else {
-            return; // "None"
-        }
-
-        if (allowed === false) {
-            args.cell.cssClass = "unavailable-cell";
-            if (reason) args.cell.toolTip = reason;
-            if (isProvider && !isManager) args.cell.disabled = true;
-        }
-    };
+export function createBeforeSchedulerCellRender(
+    opts: Parameters<typeof createBeforeCellRender>[0]
+) {
+    return createBeforeCellRender(opts);
 }

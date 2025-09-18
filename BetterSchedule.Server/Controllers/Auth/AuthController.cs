@@ -10,7 +10,7 @@ namespace BetterSchedule.Server.Controllers.Auth
 {
     /// <summary>
     /// Authentication and session endpoints.
-    /// Exposes status, logout, and a dev-only login for local testing.
+    /// Includes status, login, register, logout, refresh, and a dev-only flexible login.
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
@@ -20,7 +20,6 @@ namespace BetterSchedule.Server.Controllers.Auth
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IWebHostEnvironment _env;
 
-        /// <summary>Initializes a new instance of <see cref="AuthController"/>.</summary>
         public AuthController(
             SignInManager<ApplicationUser> signInManager,
             UserManager<ApplicationUser> userManager,
@@ -31,16 +30,14 @@ namespace BetterSchedule.Server.Controllers.Auth
             _env = env;
         }
 
-        /// <summary>
-        /// Returns the caller's authentication state, roles, and organization id (if authenticated).
-        /// </summary>
+        // --------------------------------------------------------------------
+        // Status / Logout / Refresh
+        // --------------------------------------------------------------------
         [HttpGet("status")]
         [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Status()
         {
             var isAuthenticated = User.Identity?.IsAuthenticated ?? false;
-
             return Ok(new
             {
                 authenticated = isAuthenticated,
@@ -51,25 +48,19 @@ namespace BetterSchedule.Server.Controllers.Auth
             });
         }
 
-        /// <summary>Signs the current user out of the application.</summary>
         [HttpPost("logout")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
-            Response.Cookies.Delete(".AspNetCore.Identity.Application");
             return Ok(new { message = "Logged out successfully" });
         }
 
-        /// <summary>Refreshes the authentication ticket and returns current claims info.</summary>
         [HttpPost("refresh")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Refresh()
         {
             var orgId = User.GetOrgIdOrThrow();
-
             return Ok(new
             {
                 userId = User.FindFirstValue(ClaimTypes.NameIdentifier),
@@ -78,19 +69,77 @@ namespace BetterSchedule.Server.Controllers.Auth
             });
         }
 
-        // ---------------------------
-        // DEV ONLY: flexible login
-        // ---------------------------
-
+        // --------------------------------------------------------------------
+        // Standard LOGIN (non-dev)
+        // --------------------------------------------------------------------
         /// <summary>
-        /// DEV-ONLY: login using username OR email in <c>Identifier</c>.
-        /// Not available outside development environments.
+        /// Username-or-email + password login. Sets the auth cookie.
         /// </summary>
+        [HttpPost("login")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Login([FromBody] LoginRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Identifier) || string.IsNullOrWhiteSpace(req.Password))
+                return BadRequest(new { message = "Identifier and password are required." });
+
+            var user = await _userManager.FindByEmailAsync(req.Identifier)
+                       ?? await _userManager.FindByNameAsync(req.Identifier);
+            if (user is null)
+                return Unauthorized(new { message = "Invalid credentials." });
+
+            var result = await _signInManager.PasswordSignInAsync(
+                user.UserName!, req.Password, req.RememberMe, lockoutOnFailure: false);
+
+            if (!result.Succeeded)
+                return Unauthorized(new { message = "Invalid credentials." });
+
+            return Ok(new { message = "Logged in." });
+        }
+
+        public sealed record LoginRequest(string Identifier, string Password, bool RememberMe = false);
+
+        // --------------------------------------------------------------------
+        // Standard REGISTER (non-dev)
+        // --------------------------------------------------------------------
+        /// <summary>
+        /// Creates a new user (no org, no roles), confirms email in Development, and signs them in.
+        /// </summary>
+        [HttpPost("register")]
+        [AllowAnonymous]
+        public async Task<IActionResult> Register([FromBody] RegisterRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password))
+                return BadRequest(new { message = "Email and password are required." });
+
+            var existing = await _userManager.FindByEmailAsync(req.Email);
+            if (existing is not null)
+                return Conflict(new { message = "An account with this email already exists." });
+
+            var user = new ApplicationUser
+            {
+                UserName = req.Email,                 
+                Email = req.Email,
+                EmailConfirmed = _env.IsDevelopment(),
+                FullName = string.IsNullOrWhiteSpace(req.FullName) ? null : req.FullName,
+                OrganizationId = null,                // user joins org later
+                AvailabilityPublic = false
+            };
+
+            var result = await _userManager.CreateAsync(user, req.Password);
+            if (!result.Succeeded)
+                return BadRequest(new { message = "Registration failed.", errors = result.Errors.Select(e => e.Description) });
+
+            await _signInManager.SignInAsync(user, isPersistent: false);
+            return Ok(new { message = "Registered.", userId = user.Id });
+        }
+
+        public sealed record RegisterRequest(string Email, string Password, string? FullName);
+
+        // --------------------------------------------------------------------
+        // DEV-ONLY flexible login (identifier = username OR email)
+        // --------------------------------------------------------------------
         [HttpPost("dev-login")]
         [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DevLogin([FromBody] DevLoginRequest req)
         {
             if (!_env.IsDevelopment()) return NotFound();
@@ -108,7 +157,6 @@ namespace BetterSchedule.Server.Controllers.Auth
             return Ok(new { success = true });
         }
 
-        /// <summary>Payload for dev-only login.</summary>
         public sealed record DevLoginRequest(string Identifier, string Password, bool RememberMe = false);
     }
 }

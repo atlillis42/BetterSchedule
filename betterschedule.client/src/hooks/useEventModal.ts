@@ -6,24 +6,30 @@ import { getLocalDateString, getLocalTimeString, combineDateTime } from "@/utili
 import { extractEventFields } from "@/utilities/legacy/extractEventFields";
 import { validateReservation, validateBlockedTime } from "@/utilities/formFields";
 
-import {
-    createReservation,
-    updateReservation,
-    deleteReservation,
-} from "@/api/reservation-api";
-import {
-    createBlockedTime,
-    updateBlockedTime,
-    deleteBlockedTime,
-} from "@/api/blockedtime-api";
+import { createReservation, updateReservation, deleteReservation } from "@/api/reservation-api";
+import { createBlockedTime, updateBlockedTime, deleteBlockedTime } from "@/api/blockedtime-api";
 
 import { preflightAvailability, type AvailabilityMap } from "@/services/availabilityService";
 import { isOutsideAvailabilityError, isCancelWindowError, isOverlapError } from "@/domain/calendar/errors";
 import type { OrgSettingsDto } from "@/api/org-settings-api";
 
 /**
- * Coordinates Event modal state and actions (create/edit reservation or blocked time).
- * Encapsulates validation, availability preflight, and API mutation flows.
+ * useEventModal
+ * -----------------------
+ * Orchestrates the Event modal state and actions for creating/editing:
+ *   - reservations (client/provider/appointment/resource)
+ *   - blocked time (reason/resource)
+ *
+ * Responsibilities:
+ * - Hold UI state for modal (open/mode/type/values/error)
+ * - Convert date+time fields to ISO instants for API calls
+ * - Run client-side validation
+ * - Run availability preflight in the **organization time zone**
+ * - Handle server-side errors & override flows (availability/cancel window)
+ *
+ * Time & TZ:
+ * - The modal always **sends ISO instants** to the server.
+ * - Availability preflight uses org-local evaluation by passing `org.timeZoneId`.
  */
 export function useEventModal(params: {
     canManageReservations: boolean;
@@ -60,6 +66,10 @@ export function useEventModal(params: {
 
     const canDelete = !readOnly && mode === "edit";
 
+    /**
+     * Called by DayPilot when a user drags to select a time range.
+     * Pre-fills a Reservation draft for that range.
+     */
     function onTimeRangeSelected(args: { start: DayPilot.Date; end: DayPilot.Date; resource?: number | string }) {
         if (!canManageReservations) return;
 
@@ -79,6 +89,10 @@ export function useEventModal(params: {
         setFormError(null);
     }
 
+    /**
+     * Opens the modal for an existing UI event (reservation or blocked time).
+     * Derives editability based on roles and ownership.
+     */
     function onEventClick(args: any) {
         const t = args.e?.type || args.e?.data?.type || "reservation";
         const createdByUserId = args.e?.createdByUserId || args.e?.data?.createdByUserId;
@@ -110,6 +124,10 @@ export function useEventModal(params: {
         setFormError(null);
     }
 
+    /**
+     * Validates, preflights availability (org-local), and calls the appropriate API.
+     * Applies server override flows for availability/cancel-window with confirmations.
+     */
     async function submit() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to save reservations.");
@@ -127,19 +145,28 @@ export function useEventModal(params: {
             return;
         }
 
+        // Build ISO instants for API + preflight
         const start = combineDateTime(values.startDate, values.startTime).iso as string;
         const end = combineDateTime(values.endDate, values.endTime).iso as string;
 
         const startDp = new DayPilot.Date(start);
         const endDp = new DayPilot.Date(end);
 
+        // Decide which provider ID to validate against
         const providerForCheck =
             (isProvider && !isManager ? userId ?? undefined : undefined) ??
             (values.serviceProviderId || undefined) ??
             overlayProviderId;
 
+        // Availability preflight in **org-local time**
         if (org?.shadingMode === "ProviderAvailability" && providerForCheck && providerForCheck === overlayProviderId) {
-            const { allowed } = preflightAvailability(availabilityByProvider, providerForCheck, startDp, endDp);
+            const { allowed } = preflightAvailability(
+                availabilityByProvider,
+                providerForCheck,
+                startDp,
+                endDp,
+                org?.timeZoneId // ⟵ org TZ drives local comparison
+            );
             if (!allowed) {
                 const msg = "Selected time is outside provider availability.";
                 if (isProvider && !isManager) {
@@ -308,6 +335,9 @@ export function useEventModal(params: {
         }
     }
 
+    /**
+     * Deletes the current item after permission checks.
+     */
     async function remove() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to delete reservations.");

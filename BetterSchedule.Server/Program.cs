@@ -1,21 +1,29 @@
 using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.DevTools;
+using BetterSchedule.Server.DevTools.Seeding; 
 using BetterSchedule.Server.Extensions;
+using BetterSchedule.Server.Extensions.Json.Converters;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Reflection;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// MVC + enum-as-string JSON
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
+    // Enums as strings (e.g., DayOfWeek, CalendarShadingMode, etc.)
     o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+
+    // Strongly-typed TimeSpan/DateOnly with readable wire formats
+    o.JsonSerializerOptions.Converters.Add(new TimeSpanJsonConverter());   // "HH:mm:ss"
+    o.JsonSerializerOptions.Converters.Add(new DateOnlyJsonConverter());   // "yyyy-MM-dd"
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -31,6 +39,7 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 
+// AuthN/AuthZ
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(options =>
 {
@@ -45,8 +54,8 @@ builder.Services.AddAuthentication(options =>
     options.LoginPath = "/api/login";
     options.Cookie.Name = ".BetterSchedule.Identity";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SameSite = SameSiteMode.None;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SameSite = SameSiteMode.None;                 // cross-site SPA
+    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;     // requires HTTPS on SPA origin
 
     options.Events = new CookieAuthenticationEvents
     {
@@ -81,18 +90,28 @@ builder.Services
     .AddDefaultTokenProviders()
     .AddApiEndpoints();
 
+// Ensure org_id claim is minted
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
+
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
+// CORS: use HTTPS SPA origin so secure cookies can flow
 builder.Services.AddCors(options =>
 {
-    var clientUrl = builder.Configuration["App:ClientUrl"] ?? "http://localhost:5173";
+    var clientUrl = builder.Configuration["App:ClientUrl"] ?? "https://localhost:5173";
     options.AddDefaultPolicy(policy =>
-        policy.WithOrigins(clientUrl).AllowAnyHeader().AllowAnyMethod().AllowCredentials());
+        policy.WithOrigins(clientUrl)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
 
+// DB
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Seed options binding
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seeding"));
 
 var app = builder.Build();
 
@@ -108,36 +127,11 @@ if (app.Environment.IsDevelopment())
     var db = services.GetRequiredService<ApplicationDbContext>();
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-    await DbInitializer.SeedAsync(db, userManager, roleManager);
+    var seedOptions = services.GetRequiredService<IOptions<SeedOptions>>().Value;
 
-    app.MapPost("/api/dev/login", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("admin@dev.local");
-        if (user is null) return Results.NotFound("Developer user not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as dev user with all roles");
-    });
-    app.MapPost("/api/dev/login/serviceprovider", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("provider@dev.local");
-        if (user is null) return Results.NotFound("Developer ServiceProvider not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Service Provider");
-    });
-    app.MapPost("/api/dev/login/client", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("client@dev.local");
-        if (user is null) return Results.NotFound("Developer Client not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Client");
-    });
-    app.MapPost("/api/dev/login/hybrid", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("hybrid@dev.local");
-        if (user is null) return Results.NotFound("Developer hybrid user not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Hybrid (ServiceProvider + Client)");
-    });
+    // Run tiny Base seed (+ optional scenarios) via SeedRunner
+    if (seedOptions.Enabled)
+        await SeedRunner.ExecuteAsync(db, userManager, roleManager, seedOptions);
 
     app.UseSwagger();
     app.UseSwaggerUI();

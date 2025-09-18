@@ -18,8 +18,8 @@ export type AuthContextType = {
 
     /**
      * Logs in the user.
-     * - DEV: posts to /api/auth/dev-login with { identifier, password, rememberMe }
-     * - PROD: posts to /login (Identity) at the site root with fetch (bypasses /api baseURL)
+     * - DEV: POST /api/auth/dev-login with { identifier, password, rememberMe:false }
+     * - PROD: POST /api/auth/login with { identifier, password, rememberMe:false }
      */
     login: (identifierOrEmail: string, password: string) => Promise<{ success: boolean; message: string }>;
 
@@ -27,7 +27,7 @@ export type AuthContextType = {
     logout: () => Promise<void>;
 
     /** Re-fetches auth/claims from /api/auth/status. */
-    refreshAuth: () => void;
+    refreshAuth: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -62,8 +62,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const login = async (identifierOrEmail: string, password: string) => {
         try {
             if (import.meta.env.DEV) {
-                // DEV path: your AuthController
-                const res = await api.post("/auth/dev-login", { identifier: identifierOrEmail, password, rememberMe: false });
+                // DEV path: flexible login
+                const res = await api.post("/auth/dev-login", {
+                    identifier: identifierOrEmail,
+                    password,
+                    rememberMe: false,
+                });
                 if (res.status >= 200 && res.status < 300) {
                     await refreshAuth();
                     toast.success("Logged in.");
@@ -74,28 +78,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 return { success: false, message: msg };
             }
 
-            // PROD path: Identity endpoints live at the site root (/login), not under /api
-            const resp = await fetch("/login", {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: identifierOrEmail, password }),
+            // PROD path: standard login
+            const res = await api.post("/auth/login", {
+                identifier: identifierOrEmail,
+                password,
+                rememberMe: false,
             });
 
-            if (resp.ok) {
+            if (res.status >= 200 && res.status < 300) {
                 await refreshAuth();
                 toast.success("Logged in.");
                 return { success: true, message: "Logged in." };
             }
 
-            // Try to surface server message when possible
-            let msg = "Login failed.";
-            try {
-                const data = await resp.json();
-                msg = data?.message || data?.error || msg;
-            } catch {
-                /* ignore body parse */
-            }
+            const msg = typeof res.data === "string" ? res.data : "Login failed.";
             toast.error(msg);
             return { success: false, message: msg };
         } catch (err: any) {
@@ -123,6 +119,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     useEffect(() => {
+        // initial auth fetch
         refreshAuth();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -130,7 +127,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Role helpers
     const roleSet = useMemo(() => new Set(roles.map((r) => r.toLowerCase())), [roles]);
     const isManager = roleSet.has("manager");
-    const isProvider = roleSet.has("serviceprovider") || roleSet.has("provider"); // tolerate either label
+    const isProvider = roleSet.has("serviceprovider") || roleSet.has("provider");
     const isClient = roleSet.has("client");
     const hasRole = (role: string) => roleSet.has(role.toLowerCase());
 
