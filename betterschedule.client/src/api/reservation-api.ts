@@ -1,5 +1,6 @@
 import { api } from "@auth/axios";
 import { toast } from "react-toastify";
+import type { ReservationParticipantDto } from "@/api/reservation-participants-api";
 
 /** Reservation DTO returned by the API. */
 export type ReservationDto = {
@@ -8,27 +9,15 @@ export type ReservationDto = {
     clientId: string;
     serviceProviderId: string;
     appointmentTypeId: number;
-    startTime: string; // ISO
-    endTime: string;   // ISO
+    startTime: string; // ISO instant
+    endTime: string;   // ISO instant
     status: "Booked" | "Completed" | "Canceled" | "NoShow";
     notes?: string | null;
     resourceId?: number | null;
     packageAssignmentId?: number | null;
     participants?: ReservationParticipantDto[];
-    createdAt: string;          // ISO
-    updatedAt?: string | null;  // ISO
-    isDeleted: boolean;
-};
-
-/** Participant attached to a reservation. */
-export type ReservationParticipantDto = {
-    id: number;
-    reservationId: number;
-    userId: string; // empty string for guests
-    guestName?: string | null;
-    guestPhone?: string | null;
-    role: "Client" | "ServiceProvider" | "Guest";
-    organizationId: string;
+    createdAt: string;          // ISO instant
+    updatedAt?: string | null;  // ISO instant
     isDeleted: boolean;
 };
 
@@ -37,8 +26,8 @@ export type CreateReservationDto = {
     clientId: string;
     serviceProviderId: string;
     appointmentTypeId: number;
-    startTime: string; // ISO
-    endTime: string;   // ISO
+    startTime: string; // ISO instant
+    endTime: string;   // ISO instant
     notes?: string | null;
     resourceId?: number | null;
     packageAssignmentId?: number | null;
@@ -47,8 +36,8 @@ export type CreateReservationDto = {
 /** Partial payload for updating a reservation. */
 export type UpdateReservationDto = {
     notes?: string | null;
-    startTime?: string; // ISO
-    endTime?: string;   // ISO
+    startTime?: string; // ISO instant
+    endTime?: string;   // ISO instant
     status?: "Booked" | "Completed" | "Canceled" | "NoShow" | null;
     resourceId?: number | null;
     packageAssignmentId?: number | null;
@@ -67,7 +56,7 @@ function handleApiError(err: any, fallback: string): never {
 }
 
 /**
- * Lists reservations overlapping an optional [start, end) (ISO).
+ * Lists reservations overlapping an optional [start, end) (ISO date or instant).
  * Returns only reservations visible to the current principal.
  */
 export async function getReservations(params: {

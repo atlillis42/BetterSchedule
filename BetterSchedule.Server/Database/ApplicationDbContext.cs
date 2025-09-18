@@ -101,8 +101,9 @@ namespace BetterSchedule.Server.Database
                 .HasIndex(u => new { u.OrganizationId, u.IsDeleted })
                 .HasDatabaseName("IX_Users_Org_IsDeleted");
 
+            // AvailabilityPublic is a real property on ApplicationUser
             builder.Entity<ApplicationUser>()
-                .Property<bool>("AvailabilityPublic")
+                .Property(u => u.AvailabilityPublic)
                 .HasDefaultValue(false);
 
             // ----------------------------------------------------------------
@@ -112,6 +113,7 @@ namespace BetterSchedule.Server.Database
                 .HasOne(u => u.Organization)
                 .WithMany(o => o.Users)
                 .HasForeignKey(u => u.OrganizationId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
             builder.Entity<CalendarResource>()
@@ -421,7 +423,7 @@ namespace BetterSchedule.Server.Database
                     .WithMany()
                     .HasForeignKey(x => x.PackageId)
                     .OnDelete(DeleteBehavior.Restrict);
-   
+
                 e.HasIndex(x => new { x.OrganizationId, x.ClientId });
                 e.HasIndex(x => new { x.OrganizationId, x.ClientId, x.PackageId, x.IsDeleted });
                 e.HasIndex(x => x.ExpiresAtUtc);

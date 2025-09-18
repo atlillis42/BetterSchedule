@@ -5,115 +5,137 @@ import MainLayout from "@layout/MainLayout";
 import RequireAuth from "@/routes/RequireAuth";
 import RequireManager from "@/routes/RequireManager";
 import RequireManagerOrProvider from "@/routes/RequireManagerOrProvider";
+import RequireOrganization from "@/routes/RequireOrganization";
 
-// Admin pages
+import JoinOrganizationPage from "@/pages/JoinOrganization";
+import RegisterPage from "@/pages/Register";
+
 import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 import OrgSettingsPage from "@/pages/OrgSettings";
 import UserRolesPage from "@/pages/UserRoles";
 import ProviderAvailabilityManager from "@/components/admin/ProviderAvailabilityManager";
-
-// Provider self page
 import ProviderAvailabilitySelf from "@/components/provider/ProviderAvailabilitySelf";
+
+
 
 export default function AppRoutes() {
     return (
         <Routes>
             {/* Public */}
             <Route path="/" element={<Login />} />
+            <Route path="/register" element={<RegisterPage />} />
 
-            {/* Calendar */}
+            {/* Join (auth but no org yet) */}
             <Route
-                path="/calendar"
+                path="/join"
                 element={
                     <RequireAuth>
                         <MainLayout>
-                            <Calendar />
+                            <JoinOrganizationPage />
                         </MainLayout>
                     </RequireAuth>
                 }
             />
 
-            {/* Provider Availability (self) — Managers OR Providers */}
+            {/* Calendar (auth + org) */}
+            <Route
+                path="/calendar"
+                element={
+                    <RequireAuth>
+                        <RequireOrganization>
+                            <MainLayout>
+                                <Calendar />
+                            </MainLayout>
+                        </RequireOrganization>
+                    </RequireAuth>
+                }
+            />
+
+            {/* Provider self (auth + org) */}
             <Route
                 path="/provider/availability"
                 element={
                     <RequireAuth>
-                        <RequireManagerOrProvider>
-                            <MainLayout>
-                                <ProviderAvailabilitySelf />
-                            </MainLayout>
-                        </RequireManagerOrProvider>
+                        <RequireOrganization>
+                            <RequireManagerOrProvider>
+                                <MainLayout>
+                                    <ProviderAvailabilitySelf />
+                                </MainLayout>
+                            </RequireManagerOrProvider>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />
 
-            {/* Provider Availability (manager only) */}
+            {/* Admin (auth + org + manager) */}
             <Route
                 path="/admin/provider-availability"
                 element={
                     <RequireAuth>
-                        <RequireManager>
-                            <MainLayout>
-                                <ProviderAvailabilityManager />
-                            </MainLayout>
-                        </RequireManager>
+                        <RequireOrganization>
+                            <RequireManager>
+                                <MainLayout>
+                                    <ProviderAvailabilityManager />
+                                </MainLayout>
+                            </RequireManager>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />
-
-            {/* Appointment Types (manager only) */}
             <Route
                 path="/admin/appointment-types"
                 element={
                     <RequireAuth>
-                        <RequireManager>
-                            <MainLayout>
-                                <AppointmentTypeManager />
-                            </MainLayout>
-                        </RequireManager>
+                        <RequireOrganization>
+                            <RequireManager>
+                                <MainLayout>
+                                    <AppointmentTypeManager />
+                                </MainLayout>
+                            </RequireManager>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />
-
-            {/* Resources (manager only) */}
             <Route
                 path="/admin/resources"
                 element={
                     <RequireAuth>
-                        <RequireManager>
-                            <MainLayout>
-                                <CalendarResourcesPage />
-                            </MainLayout>
-                        </RequireManager>
+                        <RequireOrganization>
+                            <RequireManager>
+                                <MainLayout>
+                                    <CalendarResourcesPage />
+                                </MainLayout>
+                            </RequireManager>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />
-
-            {/* Organization Settings (manager only) */}
             <Route
                 path="/admin/settings"
                 element={
                     <RequireAuth>
-                        <RequireManager>
-                            <MainLayout>
-                                <OrgSettingsPage />
-                            </MainLayout>
-                        </RequireManager>
+                        <RequireOrganization>
+                            <RequireManager>
+                                <MainLayout>
+                                    <OrgSettingsPage />
+                                </MainLayout>
+                            </RequireManager>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />
-
-            {/* Users (manager only) */}
             <Route
                 path="/admin/users"
                 element={
                     <RequireAuth>
-                        <RequireManager>
-                            <MainLayout>
-                                <UserRolesPage />
-                            </MainLayout>
-                        </RequireManager>
+                        <RequireOrganization>
+                            <RequireManager>
+                                <MainLayout>
+                                    <UserRolesPage />
+                                </MainLayout>
+                            </RequireManager>
+                        </RequireOrganization>
                     </RequireAuth>
                 }
             />

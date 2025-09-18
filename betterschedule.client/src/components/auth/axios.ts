@@ -12,7 +12,6 @@ export const api = axios.create({
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // No global toasts — features own UX.
         // Keep a concise dev log to aid debugging without noisy production logs.
         if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console

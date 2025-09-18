@@ -5,7 +5,13 @@
       "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES": "Microsoft.AspNetCore.SpaProxy"
+        "ASPNETCORE_HOSTINGSTARTUPASSEMBLIES": "Microsoft.AspNetCore.SpaProxy",
+
+        "Seeding:Enabled": "true",
+        "Seeding:Profile": "Base",
+        "Seeding:RollingDates": "false",
+        "Seeding:AnchorLocalDate": "2025-09-03",
+        "Seeding:Reset": "false"
       },
       "dotnetRunMessages": true,
       "applicationUrl": "https://localhost:7248;http://localhost:5285"
@@ -14,7 +20,13 @@
       "commandName": "IISExpress",
       "launchBrowser": true,
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development",
+
+        "Seeding:Enabled": "true",
+        "Seeding:Profile": "Base",
+        "Seeding:RollingDates": "false",
+        "Seeding:AnchorLocalDate": "2025-09-03",
+        "Seeding:Reset": "false"
       }
     }
   },
