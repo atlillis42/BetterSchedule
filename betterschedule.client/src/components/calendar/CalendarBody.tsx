@@ -4,7 +4,9 @@ import type { CalendarResource, UiEvent, CalendarTimeRangeSelectedArgs } from "@
 import type { ViewMode } from "@/types/calendarView";
 
 /**
- * Main calendar body rendering Day/Week/Month/Resources views.
+ * Renders Day/Week/Month/Resources views using DayPilot components.
+ * Supports gating callbacks for selection/move/resize and optional business-hours clamping.
+ *
  * @public
  */
 export default function CalendarBody(props: {
@@ -13,21 +15,26 @@ export default function CalendarBody(props: {
     events: UiEvent[];
     resources: CalendarResource[];
     onTimeRangeSelected: (args: CalendarTimeRangeSelectedArgs) => void;
+    onTimeRangeSelecting?: (args: any) => void;
     onEventClick: (args: any) => void;
-    beforeCellRender: (args: any) => void;
-    beforeSchedulerCellRender: (args: any) => void;
-    beforeEventRender: (args: any) => void;
-    /** Optional: business-hours start (hour, local or org-local), applied to Day/Week. */
+    onEventMove?: (args: any) => void;
+    onEventResize?: (args: any) => void;
+    /** Optional (unused when avoiding shading). */
+    beforeCellRender?: (args: any) => void;
+    /** Optional (unused when avoiding shading). */
+    beforeSchedulerCellRender?: (args: any) => void;
+    /** Optional: event decoration hook. */
+    beforeEventRender?: (args: any) => void;
+    /** Optional: business-hours start hour (0..23). */
     businessBeginsHour?: number;
-    /** Optional: business-hours end (hour, local or org-local), applied to Day/Week. */
+    /** Optional: business-hours end hour (1..24). */
     businessEndsHour?: number;
     /**
      * Optional height spec for Day/Week. Common values:
      * - "BusinessHoursNoScroll" (hide off-hours)
      * - "BusinessHours" (scrollable)
-     * - "Full" (shows all no Scroll)
+     * - "Full" (shows all, no scroll)
      */
-    heightSpec?: string;
 }) {
     const {
         view,
@@ -35,13 +42,15 @@ export default function CalendarBody(props: {
         events,
         resources,
         onTimeRangeSelected,
+        onTimeRangeSelecting,
         onEventClick,
+        onEventMove,
+        onEventResize,
         beforeCellRender,
         beforeSchedulerCellRender,
         beforeEventRender,
         businessBeginsHour,
         businessEndsHour,
-        heightSpec,
     } = props;
 
     return (
@@ -55,13 +64,14 @@ export default function CalendarBody(props: {
                     durationBarVisible={false}
                     onTimeRangeSelected={onTimeRangeSelected}
                     onEventClick={onEventClick}
+                    onEventMove={onEventMove}
+                    onEventResize={onEventResize}
                     onBeforeCellRender={beforeCellRender}
                     onBeforeEventRender={beforeEventRender}
                     allowEventOverlap={false}
                     headerHeight={40}
                     businessBeginsHour={businessBeginsHour}
                     businessEndsHour={businessEndsHour}
-                    heightSpec={heightSpec}
                     onBeforeHeaderRender={(args) => {
                         const { weekday, short } = formatWeekHeader(args.header.start);
                         args.header.html = `
@@ -82,13 +92,14 @@ export default function CalendarBody(props: {
                     durationBarVisible={false}
                     onTimeRangeSelected={onTimeRangeSelected}
                     onEventClick={onEventClick}
+                    onEventMove={onEventMove}
+                    onEventResize={onEventResize}
                     onBeforeCellRender={beforeCellRender}
                     onBeforeEventRender={beforeEventRender}
                     allowEventOverlap={false}
                     headerHeight={40}
                     businessBeginsHour={businessBeginsHour}
                     businessEndsHour={businessEndsHour}
-                    heightSpec={heightSpec}
                     onBeforeHeaderRender={(args) => {
                         const { weekday, short } = formatWeekHeader(args.header.start);
                         args.header.html = `
@@ -128,6 +139,10 @@ export default function CalendarBody(props: {
                     onEventClick={onEventClick}
                     onBeforeEventRender={beforeEventRender}
                     onBeforeCellRender={beforeSchedulerCellRender}
+                    onTimeRangeSelected={onTimeRangeSelected}
+                    onTimeRangeSelecting={onTimeRangeSelecting}
+                    onEventMove={onEventMove}
+                    onEventResize={onEventResize}
                     allowEventOverlap={false}
                     cellWidth={50}
                     headerHeight={30}

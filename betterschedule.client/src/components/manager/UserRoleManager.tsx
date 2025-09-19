@@ -20,7 +20,7 @@ function friendlyError(err: unknown, fallback: string): string {
 }
 
 /**
- * Admin UI for managing organization user roles.
+ * Manager UI for managing organization user roles.
  * Presents users with current roles and allows toggling the allowed set:
  * Manager, ServiceProvider, Client.
  *

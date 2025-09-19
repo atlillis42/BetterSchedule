@@ -10,11 +10,11 @@ import RequireOrganization from "@/routes/RequireOrganization";
 import JoinOrganizationPage from "@/pages/JoinOrganization";
 import RegisterPage from "@/pages/Register";
 
-import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
+import AppointmentTypeManager from "@/components/manager/AppointmentTypeManager";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 import OrgSettingsPage from "@/pages/OrgSettings";
 import UserRolesPage from "@/pages/UserRoles";
-import ProviderAvailabilityManager from "@/components/admin/ProviderAvailabilityManager";
+import ProviderAvailabilityManager from "@/components/manager/ProviderAvailabilityManager";
 import ProviderAvailabilitySelf from "@/components/provider/ProviderAvailabilitySelf";
 
 
@@ -68,9 +68,9 @@ export default function AppRoutes() {
                 }
             />
 
-            {/* Admin (auth + org + manager) */}
+            {/* Manager (auth + org + manager) */}
             <Route
-                path="/admin/provider-availability"
+                path="/manager/provider-availability"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -84,7 +84,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/appointment-types"
+                path="/manager/appointment-types"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -98,7 +98,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/resources"
+                path="/manager/resources"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -112,7 +112,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/settings"
+                path="/manager/settings"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -126,7 +126,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/users"
+                path="/manager/users"
                 element={
                     <RequireAuth>
                         <RequireOrganization>

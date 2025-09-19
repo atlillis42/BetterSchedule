@@ -11,10 +11,9 @@ export const api = axios.create({
 
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        // Keep a concise dev log to aid debugging without noisy production logs.
+    (error) => {        
         if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
+            
             console.debug("[api] error", {
                 url: error?.config?.url,
                 status: error?.response?.status,

@@ -1,5 +1,6 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import "@styles/Calendar.css";
+import { toast } from "react-toastify";
 
 import { useAuth } from "@/components/auth/AuthContext";
 import CalendarNavigatorPane from "./CalendarNavigatorPane";
@@ -14,7 +15,13 @@ import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
 import { filterEventsByCanceled } from "@/services/eventsService";
 import { buildBusinessHours } from "@/services/availabilityService";
-import { useCalendarShading } from "@/hooks/useCalendarShading";
+
+import {
+    isWithinBusinessHours,
+    isRangeAllowedForProvider,
+    deriveBusinessHoursFromAvailability,
+} from "@/domain/calendar/availability";
+import { Messages } from "@/domain/calendar/messages";
 
 import type { UiEvent, CalendarResource, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
@@ -22,7 +29,8 @@ import type { ProviderLite } from "@/services/providersService";
 
 /**
  * Root calendar component that composes data sources, DayPilot callbacks, and modal handlers.
- * Renders navigator, toolbar, legend, and the main calendar body for all views.
+ * Enforces provider availability without cell shading by combining DayPilot business-hours clamping
+ * with interaction gating (selecting/move/resize) and concise toasts explaining rejections.
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
@@ -46,7 +54,7 @@ const Calendar = () => {
         formError,
         readOnly,
         canDelete,
-        onTimeRangeSelected,
+        onTimeRangeSelected: onTimeRangeSelectedFromModal,
         onEventClick,
         submit,
         remove,
@@ -65,23 +73,137 @@ const Calendar = () => {
     const visibleEvents = useMemo(() => filterEventsByCanceled(events, false), [events]);
 
     const orgBusiness = useMemo(() => buildBusinessHours(org), [org]);
-    const businessBeginsHour = useMemo(
-        () => (orgBusiness ? parseInt(orgBusiness.startHHmm.slice(0, 2), 10) : undefined),
-        [orgBusiness]
-    );
-    const businessEndsHour = useMemo(
-        () => (orgBusiness ? parseInt(orgBusiness.endHHmm.slice(0, 2), 10) : undefined),
-        [orgBusiness]
+
+    // Provider context: overlay wins; otherwise the logged-in provider (if applicable).
+    const activeProviderId = useMemo(
+        () => overlayProviderId ?? (isProvider ? userId ?? undefined : undefined),
+        [overlayProviderId, isProvider, userId]
     );
 
-    const { beforeCellRender, beforeSchedulerCellRender, beforeEventRender, showOverlaySelector } = useCalendarShading({
-        org,
-        availabilityByProvider,
-        overlayProviderId,
-        isProvider,
-        isManager,
-        businessHours: orgBusiness,
-    });
+    // Optional: tighten visible business hours using provider rules (still gated at interaction).
+    const effectiveBusinessBand = useMemo(() => {
+        const providerRules = activeProviderId ? availabilityByProvider.get(activeProviderId) : undefined;
+        const band = deriveBusinessHoursFromAvailability(
+            providerRules ?? null,
+            orgBusiness?.startHHmm,
+            orgBusiness?.endHHmm
+        );
+        return band ?? orgBusiness ?? null;
+    }, [activeProviderId, availabilityByProvider, orgBusiness]);
+
+    const businessBeginsHour = useMemo(
+        () => (effectiveBusinessBand ? parseInt(effectiveBusinessBand.startHHmm.slice(0, 2), 10) : undefined),
+        [effectiveBusinessBand]
+    );
+    const businessEndsHour = useMemo(
+        () => (effectiveBusinessBand ? parseInt(effectiveBusinessBand.endHHmm.slice(0, 2), 10) : undefined),
+        [effectiveBusinessBand]
+    );
+
+    type DisallowReason = "org" | "provider";
+
+    /**
+     * Resolve the provider ID to validate for a given DayPilot callback.
+     * Prefers the event's own provider (for move/resize), then falls back to the active context (overlay/self).
+     */
+    const resolveProviderForArgs = useCallback(
+        (args: any): string | undefined => {
+            const data = args?.e?.data ?? args?.event?.data ?? args?.data;
+            const fromEvent: string | undefined =
+                data?.providerId ?? data?.provider?.id ?? undefined;
+            return fromEvent ?? activeProviderId;
+        },
+        [activeProviderId]
+    );
+
+    /**
+     * Determines allow/deny and reason for a proposed time range for a specific provider.
+     */
+    const checkRangeAllowed = useCallback(
+        (
+            start: unknown,
+            end: unknown,
+            providerIdOverride?: string
+        ): { allowed: true } | { allowed: false; reason: DisallowReason } => {
+            if (orgBusiness) {
+                const withinBusiness = isWithinBusinessHours(
+                    start,
+                    end,
+                    orgBusiness.startHHmm,
+                    orgBusiness.endHHmm,
+                    org?.timeZoneId
+                );
+                if (!withinBusiness) return { allowed: false, reason: "org" };
+            }
+            const targetProviderId = providerIdOverride ?? activeProviderId;
+            const providerOk = isRangeAllowedForProvider(
+                availabilityByProvider,
+                targetProviderId,
+                start,
+                end,
+                org?.timeZoneId
+            );
+            if (!providerOk) return { allowed: false, reason: "provider" };
+            return { allowed: true };
+        },
+        [orgBusiness, org?.timeZoneId, availabilityByProvider, activeProviderId]
+    );
+
+    /**
+     * Emits a concise toast based on the disallow reason.
+     */
+    const notifyBlock = useCallback((reason: DisallowReason) => {
+        if (reason === "org") {
+            toast.info(Messages.OutsideOrgBusinessHours);
+        } else {
+            toast.info(Messages.OutsideProviderAvailability);
+        }
+    }, []);
+
+    // Selection guard for Month/Day/Week (toast only on commit). Provider is unknown at selection time; use context.
+    const onTimeRangeSelectedGuarded = useCallback(
+        (args: CalendarTimeRangeSelectedArgs) => {
+            const result = checkRangeAllowed(args.start, args.end, activeProviderId);
+            if (result.allowed) {
+                onTimeRangeSelectedFromModal(args);
+            } else {
+                notifyBlock(result.reason);
+            }
+        },
+        [checkRangeAllowed, notifyBlock, onTimeRangeSelectedFromModal, activeProviderId]
+    );
+
+    // Live selection gating (no toast here to avoid spam).
+    const onTimeRangeSelecting = useCallback(
+        (args: any) => {
+            const result = checkRangeAllowed(args.start, args.end, activeProviderId);
+            args.allowed = result.allowed;
+        },
+        [checkRangeAllowed, activeProviderId]
+    );
+
+    // Drag/resize gating for existing events (toast on commit). Validate against the event's provider.
+    const onEventMove = useCallback(
+        (args: any) => {
+            const providerId = resolveProviderForArgs(args);
+            const result = checkRangeAllowed(args.newStart, args.newEnd, providerId);
+            args.allowed = result.allowed;
+            if (!result.allowed) notifyBlock(result.reason);
+        },
+        [checkRangeAllowed, notifyBlock, resolveProviderForArgs]
+    );
+
+    const onEventResize = useCallback(
+        (args: any) => {
+            const providerId = resolveProviderForArgs(args);
+            const result = checkRangeAllowed(args.newStart, args.newEnd, providerId);
+            args.allowed = result.allowed;
+            if (!result.allowed) notifyBlock(result.reason);
+        },
+        [checkRangeAllowed, notifyBlock, resolveProviderForArgs]
+    );
+
+    const showOverlaySelector = (providers?.length ?? 0) > 0;
 
     return (
         <>
@@ -127,14 +249,13 @@ const Calendar = () => {
                         startDate={startDate}
                         resources={resources}
                         events={visibleEvents}
-                        onTimeRangeSelected={onTimeRangeSelected as (args: CalendarTimeRangeSelectedArgs) => void}
+                        onTimeRangeSelected={onTimeRangeSelectedGuarded}
+                        onTimeRangeSelecting={onTimeRangeSelecting}
                         onEventClick={onEventClick}
-                        beforeCellRender={beforeCellRender}
-                        beforeSchedulerCellRender={beforeSchedulerCellRender}
-                        beforeEventRender={beforeEventRender}
+                        onEventMove={onEventMove}
+                        onEventResize={onEventResize}
                         businessBeginsHour={businessBeginsHour}
                         businessEndsHour={businessEndsHour}
-                        heightSpec="BusinessHours"
                     />
                 </div>
             </div>

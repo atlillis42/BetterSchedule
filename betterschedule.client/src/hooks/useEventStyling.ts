@@ -1,6 +1,4 @@
 import { useMemo } from "react";
-import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
-import { createBeforeEventRender } from "@/adapters/daypilot/beforeEventRenderFactory";
 import type { OrgSettingsDto } from "@/api/org-settings-api";
 import { buildBusinessHours } from "@/services/availabilityService";
 import type { AvailabilityMap } from "@/services/availabilityService";

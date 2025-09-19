@@ -80,7 +80,7 @@ export async function listEligibleAssignments(params: {
 }
 
 /**
- * Lists all assignments for a client (admin convenience).
+ * Lists all assignments for a client (manager convenience).
  * GET `/package-assignments/by-client/{clientId}`
  */
 export async function listAssignmentsByClient(clientId: string): Promise<PackageAssignmentDto[]> {
