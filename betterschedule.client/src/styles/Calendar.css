@@ -1142,3 +1142,27 @@ Theme Designer Version: 2025.06.18.39140
     opacity: 0.7;
     border-left: 3px solid #d97706; /* amber-600 */
 }
+
+/* 3-line event body */
+.bs-event {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.15;
+}
+
+.bs-line1 {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.bs-line2 {
+    font-size: 11px;
+    font-style: italic;
+    opacity: .9;
+}
+
+.bs-line3 {
+    font-size: 11px;
+    opacity: .9;
+}

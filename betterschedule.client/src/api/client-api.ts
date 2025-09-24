@@ -39,3 +39,15 @@ export async function searchClients(
 
     return data;
 }
+
+/**
+ * Resolves a single client by ID (GUID) to a lightweight display record.
+ * Requires a backend route `GET /users/clients-lite/{id}` returning { id, name }.
+ *
+ * @param id - Client user identifier (GUID).
+ * @returns A `ClientSearchItem` with display name.
+ */
+export async function getClientLiteById(id: string): Promise<ClientSearchItem> {
+    const { data } = await api.get<ClientSearchItem>(`/users/clients-lite/${encodeURIComponent(id)}`);
+    return data;
+}

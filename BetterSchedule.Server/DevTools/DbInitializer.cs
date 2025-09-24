@@ -28,8 +28,12 @@ namespace BetterSchedule.Server.DevTools
             // -----------------------------
             var roles = new[] { "Manager", "ServiceProvider", "Client" };
             foreach (var role in roles)
+            {
                 if (!await roleManager.RoleExistsAsync(role))
+                {
                     await roleManager.CreateAsync(new IdentityRole(role));
+                }
+            }
 
             // -----------------------------
             // Optional reset (domain data only)
@@ -135,35 +139,40 @@ namespace BetterSchedule.Server.DevTools
 
             // -----------------------------
             // Reservations (org1) — use org1 timezone
+            //   GUARDRAILS: clientId must be a Client; providerId must be a ServiceProvider.
             // -----------------------------
-            // Helpers to build local times in org tz:
             DateOnly org1Today = LocalToday(now, org1Tz);
             DateTimeOffset L1(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org1Tz, org1Today, daysFromToday, hour, minute);
 
-            await EnsureReservationAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id,
+            // Completed past yoga session — client: Carla (Client), provider: Bob (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, yogaType.Id,
                 L1(-7, 9), L1(-7, 10),
                 arena.Id, ReservationStatus.Completed, "Completed past yoga session.", now);
 
-            await EnsureReservationAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
+            // No-show massage — client: Carla (Client), provider: Bob (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, massageType.Id,
                 L1(-3, 14), L1(-3, 15).AddMinutes(30),
                 studio2.Id, ReservationStatus.NoShow, "Missed massage, client did not show.", now);
 
-            await EnsureReservationAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id,
+            // Soccer clinic — client: Carla (Client), provider: Bob (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, soccerType.Id,
                 L1(0, 17), L1(0, 19),
                 outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.", now);
 
-            await EnsureReservationAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id,
+            // Morning soccer camp — client: Carla (Client), provider: Bob (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, soccerType.Id,
                 L1(2, 10), L1(2, 12),
                 outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.", now);
 
-            await EnsureReservationAsync(db, org1.Id, alice.Id, bob.Id, privateType.Id,
+            // Private training — client: Carla (Client), provider: Bob (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, privateType.Id,
                 L1(10, 16), L1(10, 16).AddMinutes(45),
                 arena.Id, ReservationStatus.Canceled, "Cancelled by client.", now);
 
-            // Visual sample series (next 7 days) at 11:00 local
+            // Visual sample series (next 7 days) at 11:00 local — client: Carla, provider: Bob
             for (int i = 0; i < 7; i++)
             {
-                await EnsureReservationAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id,
+                await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, massageType.Id,
                     L1(i, 11), L1(i, 11).AddMinutes(60),
                     studio2.Id, ReservationStatus.Booked, "Daily massage demo slot.", now, allowDuplicate: false);
             }
@@ -187,14 +196,16 @@ namespace BetterSchedule.Server.DevTools
             DateOnly org2Today = LocalToday(now, org2Tz);
             DateTimeOffset L2(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org2Tz, org2Today, daysFromToday, hour, minute);
 
-            await EnsureReservationAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id,
+            // Org2 pilates — client: Frank (Client), provider: Eric (ServiceProvider)
+            await EnsureReservationCheckedAsync(db, userManager, org2.Id, frank.Id, eric.Id, pilates.Id,
                 L2(1, 9), L2(1, 10),
                 studioA.Id, ReservationStatus.Booked, "Org2 pilates.", now);
 
             // -----------------------------
-            // Participants: extra test cases
+            // Participants: extra test cases (org1)
+            // NOTE: Find using the corrected client/provider pairs above.
             // -----------------------------
-            var r1Id = await FindReservationIdAsync(db, org1.Id, alice.Id, carla.Id, soccerType.Id, L1(0, 17), L1(0, 19));
+            var r1Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, soccerType.Id, L1(0, 17), L1(0, 19));
             if (r1Id.HasValue)
             {
                 await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.ServiceProvider, userId: bob.Id);
@@ -203,7 +214,7 @@ namespace BetterSchedule.Server.DevTools
                 await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Parent Chaperone", guestPhone: "555-0101");
             }
 
-            var r2Id = await FindReservationIdAsync(db, org1.Id, bob.Id, carla.Id, soccerType.Id, L1(2, 10), L1(2, 12));
+            var r2Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, soccerType.Id, L1(2, 10), L1(2, 12));
             if (r2Id.HasValue)
                 await EnsureParticipantAsync(db, r2Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Team Manager", guestPhone: "555-0202");
 
@@ -211,7 +222,7 @@ namespace BetterSchedule.Server.DevTools
             if (r3Id.HasValue)
                 await EnsureParticipantAsync(db, r3Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Support Person", guestPhone: "555-0303");
 
-            var r4Id = await FindReservationIdAsync(db, org1.Id, bob.Id, alice.Id, yogaType.Id, L1(-7, 9), L1(-7, 10));
+            var r4Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, yogaType.Id, L1(-7, 9), L1(-7, 10));
             if (r4Id.HasValue)
                 await EnsureParticipantAsync(db, r4Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Observer", guestPhone: "555-0404");
 
@@ -294,8 +305,10 @@ namespace BetterSchedule.Server.DevTools
                 }
 
                 foreach (var r in rolesToAdd)
+                {
                     if (!await userManager.IsInRoleAsync(user, r))
                         await userManager.AddToRoleAsync(user, r);
+                }
 
                 return user;
             }
@@ -356,11 +369,9 @@ namespace BetterSchedule.Server.DevTools
                 }
                 else
                 {
-                    if (res.BackColor != backColor)
-                    {
-                        res.BackColor = backColor;
-                        await db.SaveChangesAsync();
-                    }
+                    var changed = false;
+                    if (res.BackColor != backColor) { res.BackColor = backColor; changed = true; }
+                    if (changed) await db.SaveChangesAsync();
                 }
                 return res;
             }
@@ -410,6 +421,36 @@ namespace BetterSchedule.Server.DevTools
                 return type;
             }
 
+            /// <summary>
+            /// Guarded create: checks roles/org for client/provider before delegating to EnsureReservationAsync.
+            /// Throws InvalidOperationException with a clear message when mismatched.
+            /// </summary>
+            static async Task EnsureReservationCheckedAsync(
+                ApplicationDbContext db,
+                UserManager<ApplicationUser> um,
+                string organizationId,
+                string clientId,
+                string providerId,
+                int typeId,
+                DateTimeOffset start,
+                DateTimeOffset end,
+                int? resourceId,
+                ReservationStatus status,
+                string? notes,
+                DateTimeOffset nowUtc,
+                bool allowDuplicate = false)
+            {
+                var client = await um.FindByIdAsync(clientId);
+                if (client is null || client.OrganizationId != organizationId || !await um.IsInRoleAsync(client, "Client"))
+                    throw new InvalidOperationException($"Seed error: clientId '{clientId}' must be a Client in org '{organizationId}'.");
+
+                var provider = await um.FindByIdAsync(providerId);
+                if (provider is null || provider.OrganizationId != organizationId || !await um.IsInRoleAsync(provider, "ServiceProvider"))
+                    throw new InvalidOperationException($"Seed error: providerId '{providerId}' must be a ServiceProvider in org '{organizationId}'.");
+
+                await EnsureReservationAsync(db, organizationId, clientId, providerId, typeId, start, end, resourceId, status, notes, nowUtc, allowDuplicate);
+            }
+
             static async Task EnsureReservationAsync(
                 ApplicationDbContext db,
                 string organizationId,
@@ -422,7 +463,7 @@ namespace BetterSchedule.Server.DevTools
                 ReservationStatus status,
                 string? notes,
                 DateTimeOffset nowUtc,
-                bool allowDuplicate = true)
+                bool allowDuplicate = false)
             {
                 var exists = await db.Reservations.AnyAsync(r =>
                     r.OrganizationId == organizationId &&
@@ -432,8 +473,11 @@ namespace BetterSchedule.Server.DevTools
                     r.StartTime == start &&
                     r.EndTime == end);
 
-                if (exists && !allowDuplicate) return;
-                if (exists && allowDuplicate) return;
+                if (exists && !allowDuplicate)
+                {
+                    return; // already present; do not add another
+                }
+                // if exists && allowDuplicate == true => intentionally insert another row
 
                 db.Reservations.Add(new Reservation
                 {

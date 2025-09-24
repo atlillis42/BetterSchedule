@@ -1,204 +1,179 @@
-import { useEffect, useId, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import AsyncSelect from "react-select/async";
+import type { CSSObjectWithLabel } from "react-select";
 import { searchClients, type ClientSearchItem } from "@/api/client-api";
+import { getClientLiteById } from "@/api/client-api";
 
-type Props = {
-    selected?: ClientSearchItem | null;
-    onSelect: (client: ClientSearchItem) => void;
-    onClear?: () => void;
-    placeholder?: string;
-    disabled?: boolean;
+/**
+ * Value object for the ClientSearchInput selection.
+ */
+export type ClientPick = {
+    /** Client user identifier (GUID). */
+    id: string;
+    /** Display name. */
+    name: string;
 };
 
-const DEBOUNCE_MS = 250;
-const MIN_CHARS = 2;
+export interface ClientSearchInputProps {
+    /**
+     * Current selected client ID (GUID). Can be null/undefined for "no selection".
+     * When provided, the control resolves the display label from the backend.
+     */
+    valueId?: string | null;
+    /**
+     * Optional initial label to use *until* the control resolves by ID.
+     * Useful if the reservation DTO already contains clientName.
+     */
+    initialLabel?: string | null;
+    /** Called when user picks (or clears) a client. Passes the picked client or null on clear. */
+    onChange: (client: ClientPick | null) => void;
+    /** Placeholder text. */
+    placeholder?: string;
+    /** Disable input. */
+    disabled?: boolean;
+    /** Autofocus input on mount. */
+    autoFocus?: boolean;
+}
 
-export default function ClientSearchInput({
-    selected,
-    onSelect,
-    onClear,
+/**
+ * Client async typeahead built on react-select/async.
+ * - Loads options via `searchClients(q)`
+ * - Resolves initial label by `valueId` via `getClientLiteById`
+ * - Emits `{id, name}` to parent on change
+ */
+const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
+    valueId,
+    initialLabel,
+    onChange,
     placeholder = "Search clients…",
-    disabled,
-}: Props) {
-    const [query, setQuery] = useState<string>(selected?.name ?? "");
-    const [results, setResults] = useState<ClientSearchItem[]>([]);
-    const [open, setOpen] = useState(false);
-    const [loading, setLoading] = useState(false);
-    const [activeIndex, setActiveIndex] = useState<number>(-1);
+    disabled = false,
+    autoFocus = false,
+}) => {
+    type Opt = { value: string; label: string };
 
-    const abortRef = useRef<AbortController | null>(null);
-    const debounceRef = useRef<number | undefined>(undefined);
-    const cacheRef = useRef<Map<string, ClientSearchItem[]>>(new Map());
+    // Simple in-memory caches to avoid redundant fetches.
+    const idCache = useRef(new Map<string, ClientSearchItem>());
+    const [selected, setSelected] = useState<Opt | null>(null);
+    const [defaultOptions, setDefaultOptions] = useState<Opt[]>([]);
 
-    const inputId = useId();
-    const listboxId = `${inputId}-listbox`;
+    // Map API items to react-select options
+    const toOpt = (c: ClientSearchItem): Opt => ({ value: c.id, label: c.name });
 
-    // Keep input text in sync with external selection
+    // Resolve selected label by ID on mount/changes
     useEffect(() => {
-        setQuery(selected?.name ?? "");
-    }, [selected?.id, selected?.name]);
+        let cancelled = false;
 
-    // Debounced search
-    useEffect(() => {
-        if (disabled) return;
-
-        window.clearTimeout(debounceRef.current);
-        debounceRef.current = window.setTimeout(async () => {
-            const q = query.trim();
-
-            // Reset when empty or equals selected label
-            if (!q || q === (selected?.name ?? "")) {
-                setResults([]);
-                setLoading(false);
-                setActiveIndex(-1);
+        const hydrate = async () => {
+            if (!valueId) {
+                setSelected(null);
                 return;
             }
 
-            // Min chars guard
-            if (q.length < MIN_CHARS) {
-                setResults([]);
-                setLoading(false);
-                setActiveIndex(-1);
+            // Use cache first
+            const cached = idCache.current.get(valueId);
+            if (cached) {
+                if (!cancelled) setSelected(toOpt(cached));
                 return;
             }
 
-            // Cache hit
-            if (cacheRef.current.has(q)) {
-                setResults(cacheRef.current.get(q)!);
-                setLoading(false);
-                setActiveIndex(0);
-                return;
+            // Show temporary label if provided while fetching
+            if (initialLabel) {
+                setSelected({ value: valueId, label: initialLabel });
             }
-
-            // Cancel in-flight
-            abortRef.current?.abort();
-            const controller = new AbortController();
-            abortRef.current = controller;
 
             try {
-                setLoading(true);
-                const data = await searchClients(q, { signal: controller.signal });
-                cacheRef.current.set(q, data);
-                setResults(data);
-                setActiveIndex(data.length > 0 ? 0 : -1);
+                const item = await getClientLiteById(valueId);
+                idCache.current.set(valueId, item);
+                if (!cancelled) setSelected(toOpt(item));
             } catch {
-                setResults([]);
-                setActiveIndex(-1);
-            } finally {
-                setLoading(false);
+                // Fall back to showing the GUID if resolution fails
+                if (!cancelled && !initialLabel) {
+                    setSelected({ value: valueId, label: valueId });
+                }
             }
-        }, DEBOUNCE_MS) as unknown as number;
+        };
 
-        return () => window.clearTimeout(debounceRef.current);
-    }, [query, disabled, selected?.name]);
+        void hydrate();
+        return () => {
+            cancelled = true;
+        };
+    }, [valueId, initialLabel]);
 
-    // Keyboard interactions
-    const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-            setOpen(true);
-        }
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setActiveIndex((i) => (results.length ? (i + 1) % results.length : -1));
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setActiveIndex((i) => (results.length ? (i - 1 + results.length) % results.length : -1));
-        } else if (e.key === "Enter") {
-            if (open && activeIndex >= 0 && activeIndex < results.length) {
-                const choice = results[activeIndex];
-                onSelect(choice);
-                setQuery(choice.name);
-                setResults([]);
-                setOpen(false);
-                setActiveIndex(-1);
+    // Preload a small default options set
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const items = await searchClients("", { take: 20 });
+                if (!cancelled) setDefaultOptions(items.map(toOpt));
+                items.forEach((c) => idCache.current.set(c.id, c));
+            } catch {
+                /* no-op */
             }
-        } else if (e.key === "Escape") {
-            setOpen(false);
-            setActiveIndex(-1);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    // Loader for react-select/async
+    const loadOptions = useMemo(
+        () => async (inputValue: string): Promise<Opt[]> => {
+            const items = await searchClients(inputValue, { take: 20 });
+            items.forEach((c) => idCache.current.set(c.id, c));
+            return items.map(toOpt);
+        },
+        []
+    );
+
+    const handleChange = (opt: Opt | null) => {
+        setSelected(opt);
+        if (!opt) {
+            onChange(null);
+            return;
         }
+        onChange({ id: opt.value, name: opt.label });
     };
 
-    const handlePick = (client: ClientSearchItem) => {
-        onSelect(client);
-        setQuery(client.name);
-        setResults([]);
-        setOpen(false);
-        setActiveIndex(-1);
-    };
+    // Styling compatible with Tailwind
+    const styles = useMemo(
+        () => ({
+            control: (base: CSSObjectWithLabel) => ({
+                ...base,
+                minHeight: 40,
+                borderRadius: 8,
+                borderColor: "#d1d5db", // tailwind gray-300
+                boxShadow: "none",
+                ":hover": { borderColor: "#9ca3af" }, // gray-400
+                fontSize: 14,
+            }),
+            menu: (base: CSSObjectWithLabel) => ({
+                ...base,
+                zIndex: 9999,
+            }),
+        }),
+        []
+    );
 
     return (
-        <div className="relative">
-            <div className="flex gap-2">
-                <input
-                    id={inputId}
-                    className="w-full border rounded px-3 py-2"
-                    placeholder={placeholder}
-                    value={query}
-                    onChange={(e) => {
-                        setQuery(e.target.value);
-                        setOpen(true);
-                    }}
-                    onFocus={() => setOpen(true)}
-                    onKeyDown={onKeyDown}
-                    disabled={disabled}
-                    aria-autocomplete="list"
-                    aria-expanded={open}
-                    aria-controls={listboxId}
-                    aria-activedescendant={
-                        activeIndex >= 0 && results[activeIndex] ? `${listboxId}-opt-${results[activeIndex].id}` : undefined
-                    }
-                    role="combobox"
-                />
-
-                {selected && (
-                    <button
-                        type="button"
-                        className="px-2 border rounded"
-                        onClick={() => {
-                            onClear?.();
-                            setQuery("");
-                            setResults([]);
-                            setOpen(false);
-                            setActiveIndex(-1);
-                        }}
-                        disabled={disabled}
-                        title="Clear"
-                        aria-label="Clear client"
-                    >
-                        ×
-                    </button>
-                )}
-            </div>
-
-            {open && (loading || results.length > 0 || (query.trim().length >= MIN_CHARS && !loading)) && (
-                <div
-                    id={listboxId}
-                    role="listbox"
-                    className="absolute z-10 mt-1 w-full bg-white border rounded shadow max-h-56 overflow-auto"
-                    onMouseDown={(e) => e.preventDefault()} // keep input focus
-                >
-                    {loading && <div className="p-2 text-sm text-gray-500">Searching…</div>}
-
-                    {!loading &&
-                        results.map((client, idx) => (
-                            <div
-                                key={client.id}
-                                id={`${listboxId}-opt-${client.id}`}
-                                role="option"
-                                aria-selected={idx === activeIndex}
-                                className={`px-3 py-2 cursor-pointer ${idx === activeIndex ? "bg-gray-100" : "hover:bg-gray-50"
-                                    }`}
-                                onMouseEnter={() => setActiveIndex(idx)}
-                                onMouseDown={() => handlePick(client)}
-                            >
-                                {client.name}
-                            </div>
-                        ))}
-
-                    {!loading && results.length === 0 && query.trim().length >= MIN_CHARS && (
-                        <div className="p-2 text-sm text-gray-500">No matches</div>
-                    )}
-                </div>
-            )}
-        </div>
+        <AsyncSelect
+            inputId="client-search"
+            cacheOptions
+            defaultOptions={defaultOptions}
+            loadOptions={loadOptions}
+            value={selected}
+            onChange={(opt) => handleChange(opt as Opt | null)}
+            isClearable
+            isDisabled={disabled}
+            placeholder={placeholder}
+            autoFocus={autoFocus}
+            styles={styles}
+            // ensure the component doesn't submit form on Enter in some contexts
+            onKeyDown={(e) => {
+                if (e.key === "Enter") e.stopPropagation();
+            }}
+        />
     );
-}
+};
+
+export default ClientSearchInput;

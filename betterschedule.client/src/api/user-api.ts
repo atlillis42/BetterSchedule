@@ -73,6 +73,18 @@ export async function getProvidersLite(): Promise<ProviderLite[]> {
 }
 
 /**
+ * Resolves a single provider by ID (GUID) to a lightweight display record.
+ * Maps to `GET /users/providers-lite/{id}`.
+ *
+ * @param id - Provider user identifier (GUID).
+ * @returns A `ProviderLite` with display name and `availabilityPublic`.
+ */
+export async function getProviderLiteById(id: string): Promise<ProviderLite> {
+    const { data } = await api.get<ProviderLite>(`/users/providers-lite/${encodeURIComponent(id)}`);
+    return data;
+}
+
+/**
  * Retrieves providers with additional details.
  * Maps to `GET /users/providers` with optional search/paging.
  *

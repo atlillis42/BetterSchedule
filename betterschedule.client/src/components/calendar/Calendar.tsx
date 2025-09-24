@@ -12,7 +12,7 @@ import { useCalendarData } from "@/hooks/useCalendarData";
 import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
-import { filterEventsByCanceled } from "@/services/eventsService"; // <-- add this
+import { filterEventsByCanceled } from "@/services/eventsService";
 
 import { buildBusinessHours } from "@/services/availabilityService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
@@ -21,15 +21,18 @@ import { createBeforeEventRender } from "@/adapters/daypilot/beforeEventRenderFa
 import type { UiEvent, CalendarResource, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 import type { ProviderLite } from "@/services/providersService";
+import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
 
-/** Root calendar shell that coordinates data, overlays, styling, and modal actions. */
+/**
+ * Root calendar shell that coordinates data loading, overlays, styling, and modal workflows.
+ */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
     const canManageReservations = isManager || isProvider;
     const canManageBlocks = isManager || isProvider;
 
     const { org, view, setView, startDate, setStartDate, tzLabel, goToday } = useCalendarView();
-    const { resources, events, providers, refreshEvents } = useCalendarData(startDate, view);
+    const { resources, events, providers, refreshEvents, appointmentTypesById } = useCalendarData(startDate, view);
     const { overlayProviderId, setOverlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
         isProvider ? userId ?? undefined : undefined
     );
@@ -89,7 +92,15 @@ const Calendar = () => {
         });
     }, [org, availabilityByProvider, overlayProviderId, isProvider, isManager]);
 
-    const beforeEventRender = useMemo(() => createBeforeEventRender(), []);
+    const beforeEventRender = useMemo(
+        () =>
+            createBeforeEventRender({
+                getTypeLabel: (id?: number) => (typeof id === "number" ? appointmentTypesById.get(id) : undefined),
+                getClientLabelSync: (id?: string) => (id ? peekClientName(id) : undefined),
+                primeClient: (id: string) => getClientNameCached(id),
+            }),
+        [appointmentTypesById]
+    );
 
     const showOverlaySelector = (org?.shadingMode ?? "ProviderAvailability") === "ProviderAvailability";
 

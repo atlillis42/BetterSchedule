@@ -56,6 +56,31 @@ namespace BetterSchedule.Server.Controllers.Users
         }
 
         /// <summary>
+        /// Resolves a single service provider (by GUID) to a lightweight display record.
+        /// Mirrors the shape of <see cref="ProviderLiteDto"/>.
+        /// </summary>
+        /// <param name="id">Provider user identifier (GUID).</param>
+        [HttpGet("providers-lite/{id}")]
+        [ProducesResponseType(typeof(ProviderLiteDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ProviderLiteDto>> GetProviderLiteById([FromRoute] string id, CancellationToken ct)
+        {
+            var item = await QueryUsersByRole("ServiceProvider")
+                .Where(u => u.Id == id)
+                .Select(u => new ProviderLiteDto
+                {
+                    Id = u.Id,
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.UserName ?? u.Email ?? u.Id) : u.FullName,
+                    AvailabilityPublic = u.AvailabilityPublic
+                })
+                .SingleOrDefaultAsync(ct);
+
+            if (item is null) return NotFound();
+            return Ok(item);
+        }
+
+
+        /// <summary>
         /// Returns detailed provider information with optional search and pagination.
         /// Includes <see cref="ProviderLiteDto.AvailabilityPublic"/>.
         /// </summary>
@@ -133,7 +158,6 @@ namespace BetterSchedule.Server.Controllers.Users
         /// Request body for <see cref="SetAvailabilityPublic(string, SetAvailabilityPublicDto, CancellationToken)"/>.
         /// </summary>
         public sealed record SetAvailabilityPublicDto(
-            // TODO: <summary>Desired value for <c>AvailabilityPublic</c>.</summary>
             bool Value
         );
 
@@ -175,6 +199,29 @@ namespace BetterSchedule.Server.Controllers.Users
                 .ToListAsync(ct);
 
             return Ok(items);
+        }
+
+        /// <summary>
+        /// Resolves a single client (by GUID) to a lightweight display record.
+        /// Used by the modal to render the client’s name when only an ID is known.
+        /// </summary>
+        [HttpGet("clients-lite/{id}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(ClientLiteDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<ClientLiteDto>> GetClientLiteById([FromRoute] string id, CancellationToken ct)
+        {
+            var item = await QueryUsersByRole("Client")
+                .Where(u => u.Id == id)
+                .Select(u => new ClientLiteDto
+                {
+                    Id = u.Id,
+                    Name = string.IsNullOrWhiteSpace(u.FullName) ? (u.Email ?? u.UserName ?? u.Id) : u.FullName
+                })
+                .SingleOrDefaultAsync(ct);
+
+            if (item is null) return NotFound();
+            return Ok(item);
         }
 
         /// <summary>

@@ -85,7 +85,6 @@ const EventModal: React.FC<EventModalProps> = ({
         handleField(key, value ? Number(value) : undefined);
     };
 
-    // Prefill resource from AppointmentType.assignedResourceId if none selected yet
     const handleAppointmentTypeChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
         const idString = e.target.value;
         const id = idString ? Number(idString) : undefined;
@@ -99,14 +98,7 @@ const EventModal: React.FC<EventModalProps> = ({
         });
     };
 
-    // Early return must be after all hooks above
     if (!open) return null;
-
-    // Minimal "selected" object for the client picker when clientId is present
-    const selectedClient =
-        values.clientId && typeof values.clientId === "string"
-            ? { id: values.clientId, name: values.clientId }
-            : null;
 
     // Quick status actions
     const runQuickStatus = async (status: "Completed" | "Canceled" | "NoShow") => {
@@ -120,7 +112,7 @@ const EventModal: React.FC<EventModalProps> = ({
             });
             toast.success(`Status set to ${status}.`);
             onRefreshRequested?.();
-            onCancel(); // close modal after quick action
+            onCancel();
         } catch (err: any) {
             const msg =
                 (err?.response?.data?.message as string | undefined) ||
@@ -234,11 +226,12 @@ const EventModal: React.FC<EventModalProps> = ({
                                 <div className="flex flex-col gap-1">
                                     <label className="text-sm font-medium">Client</label>
                                     <ClientSearchInput
-                                        selected={selectedClient}
-                                        onSelect={(c) => handleField("clientId", c.id)}
-                                        onClear={() => handleField("clientId", "")}
+                                        valueId={typeof values.clientId === "string" ? values.clientId : null}
+                                        initialLabel={values.clientName ?? null}
+                                        onChange={(c) => handleField("clientId", c?.id ?? "")}
                                         placeholder="Search clients…"
                                         disabled={false}
+                                        autoFocus={mode === "create"}
                                     />
                                 </div>
 
@@ -359,21 +352,21 @@ const EventModal: React.FC<EventModalProps> = ({
                     ) : (
                         // Blocked Time form
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <div className="flex flex-col gap-1">
-                                    <label className="text-sm font-medium">Resource (optional)</label>
-                                    <select
-                                        className="border rounded-lg px-3 py-2"
-                                        value={values.resourceId != null ? String(values.resourceId) : ""}
-                                        onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
-                                    >
-                                        <option value="">None</option>
-                                        {resourceOptions.map((r) => (
-                                            <option key={r.id} value={String(r.id)}>
-                                                {r.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                            <div className="flex flex-col gap-1">
+                                <label className="text-sm font-medium">Resource (optional)</label>
+                                <select
+                                    className="border rounded-lg px-3 py-2"
+                                    value={values.resourceId != null ? String(values.resourceId) : ""}
+                                    onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
+                                >
+                                    <option value="">None</option>
+                                    {resourceOptions.map((r) => (
+                                        <option key={r.id} value={String(r.id)}>
+                                            {r.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
 
                             <div className="flex flex-col gap-1">
                                 <label className="text-sm font-medium">Reason</label>
