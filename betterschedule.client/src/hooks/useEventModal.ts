@@ -66,10 +66,10 @@ export function useEventModal(params: {
         setType("reservation");
         setMode("create");
         setValues({
-            startDate: getLocalDateString(args.start),
-            startTime: getLocalTimeString(args.start),
-            endDate: getLocalDateString(args.end),
-            endTime: getLocalTimeString(args.end),
+            startDate: args.start.toString("yyyy-MM-dd"),
+            startTime: args.start.toString("HH:mm"),
+            endDate: args.end.toString("yyyy-MM-dd"),
+            endTime: args.end.toString("HH:mm"),
             resourceId: args.resource ? Number(args.resource) : undefined,
             serviceProviderId: isProvider && !isManager ? userId : "",
             type: "reservation",
@@ -78,6 +78,7 @@ export function useEventModal(params: {
         setOpen(true);
         setFormError(null);
     }
+
 
     function onEventClick(args: any) {
         const t = args.e?.type || args.e?.data?.type || "reservation";
