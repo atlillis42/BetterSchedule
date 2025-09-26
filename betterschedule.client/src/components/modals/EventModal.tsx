@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Select, { type SingleValue } from "react-select";
 import { toast } from "react-toastify";
 import { useAuth } from "@/components/auth/AuthContext";
 import ClientSearchInput from "@/components/modals/ClientSearchInput";
+import ProviderSearchInput from "@/components/modals/ProviderSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
 import { setReservationStatus } from "@/api/reservation-api";
 import {
@@ -11,9 +13,10 @@ import {
     type ReservationParticipantDto,
 } from "@/api/reservation-participants-api";
 import { getClientNameCached } from "@/services/clientNameCache";
+import { getProviderLiteById } from "@/api/user-api";
 import type { PendingParticipantAdd } from "@/hooks/useEventModal";
 
-/** Lightweight provider option used by the reservation form. */
+/** Lightweight provider option used by the reservation form (prop shape). */
 type ProviderLite = { id: string; name: string };
 /** Lightweight resource option used by the reservation form. */
 type CalendarResource = { id: number; name: string };
@@ -37,6 +40,9 @@ type EventModalProps = {
 /** UI tabs for reservations. */
 type ReservationTab = "details" | "group";
 
+/** react-select option for numeric IDs (e.g., resource, appointment type). */
+type NumberOption = { value: number; label: string };
+
 /** Extracts a robust numeric id for quick-status. */
 function quickStatusReservationId(values: any): number | undefined {
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
@@ -57,6 +63,10 @@ function quickStatusReservationId(values: any): number | undefined {
  *   - Edit mode: server-backed participant management (add/remove).
  *   - Create mode: pending participants queued and attached post-create.
  * - Blocked Time view unchanged.
+ *
+ * Uses ClientSearchInput and ProviderSearchInput (react-select/async).
+ * Current Participants shows Provider then Attendants (Clients + Guests).
+ * Guests display a small italic "Guest" tag. Cross-role de-dupe enforced.
  */
 const EventModal: React.FC<EventModalProps> = ({
     open,
@@ -73,8 +83,7 @@ const EventModal: React.FC<EventModalProps> = ({
     providers,
     onRefreshRequested,
 }) => {
-    const { isManager, isProvider } = useAuth();
-    const canEditParticipants = isManager || isProvider;
+    const { isManager } = useAuth();
 
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeDto[]>([]);
     const reservationIdForQuick = quickStatusReservationId(values);
@@ -90,7 +99,9 @@ const EventModal: React.FC<EventModalProps> = ({
     const [loadingParticipants, setLoadingParticipants] = useState(false);
     const [clientParticipants, setClientParticipants] = useState<ReservationParticipantDto[]>([]);
     const [providerParticipants, setProviderParticipants] = useState<ReservationParticipantDto[]>([]);
+    const [guestParticipants, setGuestParticipants] = useState<ReservationParticipantDto[]>([]);
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
+    const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
     // Create-mode pending participants (kept in shared values)
     const pending: PendingParticipantAdd[] = Array.isArray(values?.pendingParticipants)
@@ -100,15 +111,26 @@ const EventModal: React.FC<EventModalProps> = ({
     // Local selection states for Add buttons (create + edit)
     const [clientToAddId, setClientToAddId] = useState<string | null>(null);
     const [clientPickerKey, setClientPickerKey] = useState(0); // force reset after add
-    const [providerToAddId, setProviderToAddId] = useState<string>("");
+
+    const [providerToAddId, setProviderToAddId] = useState<string | null>(null);
+    const [providerPickerKey, setProviderPickerKey] = useState(0);
 
     // Unsaved protection for create-mode group tab
     const hasUnsavedGroupChanges =
         open && type === "reservation" && mode === "create" && resTab === "group" && pending.length > 0;
 
     // Data sources
-    const providerOptions = useMemo(() => providers ?? [], [providers]);
-    const resourceOptions = useMemo(() => resources ?? [], [resources]);
+    const resourceList = useMemo(() => resources ?? [], [resources]);
+
+    // Prime provider name map from incoming providers list
+    useEffect(() => {
+        if (!providers?.length) return;
+        setProviderNameMap(prev => {
+            const next = new Map(prev);
+            providers.forEach(p => next.set(p.id, p.name || p.id));
+            return next;
+        });
+    }, [providers]);
 
     const selectedAppointmentType: AppointmentTypeDto | undefined = useMemo(() => {
         const id = values?.appointmentTypeId != null ? Number(values.appointmentTypeId) : undefined;
@@ -121,41 +143,68 @@ const EventModal: React.FC<EventModalProps> = ({
     const primaryProviderId: string | undefined =
         typeof values?.serviceProviderId === "string" && values.serviceProviderId ? values.serviceProviderId : undefined;
 
-    // Create-mode: build sets of already selected to prevent duplicates
+    // ---------- Cross-role de-dupe sets ----------
+    // Create-mode: include both roles' ids
     const createSelectedClientIds = useMemo(() => {
         const set = new Set<string>();
         if (primaryClientId) set.add(primaryClientId);
         for (const p of pending) if (p.role === "Client" && p.userId) set.add(p.userId);
+        if (primaryProviderId) set.add(primaryProviderId);
+        for (const p of pending) if (p.role === "ServiceProvider" && p.userId) set.add(p.userId);
         return set;
-    }, [primaryClientId, pending]);
+    }, [primaryClientId, primaryProviderId, pending]);
 
     const createSelectedProviderIds = useMemo(() => {
         const set = new Set<string>();
         if (primaryProviderId) set.add(primaryProviderId);
         for (const p of pending) if (p.role === "ServiceProvider" && p.userId) set.add(p.userId);
+        if (primaryClientId) set.add(primaryClientId);
+        for (const p of pending) if (p.role === "Client" && p.userId) set.add(p.userId);
         return set;
-    }, [primaryProviderId, pending]);
+    }, [primaryProviderId, primaryClientId, pending]);
 
-    // Edit-mode: selected sets based on server participants + primary
+    // Edit-mode: include both roles' ids
     const editSelectedClientIds = useMemo(() => {
         const set = new Set<string>();
         if (primaryClientId) set.add(primaryClientId);
         for (const p of clientParticipants) if (p.userId) set.add(p.userId);
+        if (primaryProviderId) set.add(primaryProviderId);
+        for (const p of providerParticipants) if (p.userId) set.add(p.userId);
         return set;
-    }, [primaryClientId, clientParticipants]);
+    }, [primaryClientId, primaryProviderId, clientParticipants, providerParticipants]);
 
     const editSelectedProviderIds = useMemo(() => {
         const set = new Set<string>();
         if (primaryProviderId) set.add(primaryProviderId);
         for (const p of providerParticipants) if (p.userId) set.add(p.userId);
+        if (primaryClientId) set.add(primaryClientId);
+        for (const p of clientParticipants) if (p.userId) set.add(p.userId);
         return set;
-    }, [primaryProviderId, providerParticipants]);
+    }, [primaryProviderId, primaryClientId, providerParticipants, clientParticipants]);
 
-    // Provider picker options filtered to hide already selected ones
-    const providerAddOptions = useMemo(() => {
-        const exclude = mode === "edit" ? editSelectedProviderIds : createSelectedProviderIds;
-        return providerOptions.filter((p) => !exclude.has(p.id));
-    }, [providerOptions, editSelectedProviderIds, createSelectedProviderIds, mode]);
+    // Options for react-select (resource & appointment types)
+    const resourceOptionsRS: NumberOption[] = useMemo(
+        () => resourceList.map((r) => ({ value: r.id, label: r.name })),
+        [resourceList]
+    );
+    const appointmentTypeOptionsRS: NumberOption[] = useMemo(
+        () => appointmentTypes.map((t) => ({ value: t.id, label: t.name })),
+        [appointmentTypes]
+    );
+
+    const selectedResourceOption: NumberOption | null = useMemo(() => {
+        if (values?.resourceId == null) return null;
+        const id = Number(values.resourceId);
+        const match = resourceOptionsRS.find((o) => o.value === id);
+        return match ?? null;
+    }, [values?.resourceId, resourceOptionsRS]);
+
+    const selectedAppointmentTypeOption: NumberOption | null = useMemo(() => {
+        if (values?.appointmentTypeId == null) return null;
+        const id = Number(values.appointmentTypeId);
+        const match = appointmentTypeOptionsRS.find((o) => o.value === id);
+        return match ?? null;
+    }, [values?.appointmentTypeId, appointmentTypeOptionsRS]);
 
     // Load appointment types when reservation tab is active
     useEffect(() => {
@@ -170,7 +219,7 @@ const EventModal: React.FC<EventModalProps> = ({
         return () => { cancelled = true; };
     }, [open, type]);
 
-    // Load participants (edit mode)
+    // Load participants (edit mode) + resolve display names (clients & providers)
     useEffect(() => {
         let cancelled = false;
         if (!open || type !== "reservation" || mode !== "edit" || !reservationIdForQuick) return;
@@ -183,19 +232,49 @@ const EventModal: React.FC<EventModalProps> = ({
 
                 const clients = list.filter(p => p.role === "Client" && !p.isDeleted);
                 const provs = list.filter(p => p.role === "ServiceProvider" && !p.isDeleted);
+                const guests = list.filter(p => p.role === "Guest" && !p.isDeleted);
 
                 setClientParticipants(clients);
                 setProviderParticipants(provs);
+                setGuestParticipants(guests);
 
-                const ids = new Set<string>();
-                if (primaryClientId) ids.add(primaryClientId);
-                for (const c of clients) if (c.userId) ids.add(c.userId);
-
-                if (ids.size) {
-                    const entries = await Promise.all(
-                        Array.from(ids).map(async (id) => [id, await getClientNameCached(id)] as const)
+                // Client names
+                const clientIds = new Set<string>();
+                if (primaryClientId) clientIds.add(primaryClientId);
+                for (const c of clients) if (c.userId) clientIds.add(c.userId);
+                if (clientIds.size) {
+                    const pairs = await Promise.all(
+                        Array.from(clientIds).map(async (id) => [id, await getClientNameCached(id)] as const)
                     );
-                    if (!cancelled) setClientNameMap(new Map(entries));
+                    if (!cancelled) {
+                        const next = new Map<string, string>();
+                        pairs.forEach(([id, name]) => next.set(id, name));
+                        setClientNameMap(next);
+                    }
+                }
+
+                // Provider names
+                const provIds = new Set<string>();
+                if (primaryProviderId) provIds.add(primaryProviderId);
+                for (const p of provs) if (p.userId) provIds.add(p.userId);
+                if (provIds.size) {
+                    const pairs = await Promise.all(
+                        Array.from(provIds).map(async (id) => {
+                            try {
+                                const dto = await getProviderLiteById(id);
+                                return [id, dto?.name || id] as const;
+                            } catch {
+                                return [id, id] as const;
+                            }
+                        })
+                    );
+                    if (!cancelled) {
+                        setProviderNameMap(prev => {
+                            const next = new Map(prev);
+                            pairs.forEach(([id, name]) => next.set(id, name));
+                            return next;
+                        });
+                    }
                 }
             } catch (err) {
                 if (!cancelled) toast.error((err as Error)?.message || "We couldn't load participants.");
@@ -205,35 +284,60 @@ const EventModal: React.FC<EventModalProps> = ({
         })();
 
         return () => { cancelled = true; };
-    }, [open, type, mode, reservationIdForQuick, primaryClientId]);
+    }, [open, type, mode, reservationIdForQuick, primaryClientId, primaryProviderId]);
 
-    // Create-mode: resolve display names for selected/pending clients
+    // Create-mode: resolve display names for selected/pending clients & providers
     useEffect(() => {
         let cancelled = false;
         if (!open || type !== "reservation" || mode !== "create") return;
 
         (async () => {
             try {
-                const ids = new Set<string>();
-                if (primaryClientId) ids.add(primaryClientId);
-                for (const p of pending) if (p.role === "Client" && p.userId) ids.add(p.userId);
+                // Clients
+                const cids = new Set<string>();
+                if (primaryClientId) cids.add(primaryClientId);
+                for (const p of pending) if (p.role === "Client" && p.userId) cids.add(p.userId);
+                if (cids.size) {
+                    const pairs = await Promise.all(
+                        Array.from(cids).map(async (id) => [id, await getClientNameCached(id)] as const)
+                    );
+                    if (!cancelled) {
+                        setClientNameMap(prev => {
+                            const m = new Map(prev);
+                            pairs.forEach(([id, name]) => m.set(id, name));
+                            return m;
+                        });
+                    }
+                }
 
-                if (!ids.size) return;
-                const pairs = await Promise.all(
-                    Array.from(ids).map(async (id) => [id, await getClientNameCached(id)] as const)
-                );
-                if (!cancelled) {
-                    setClientNameMap(prev => {
-                        const map = new Map(prev);
-                        for (const [id, name] of pairs) map.set(id, name);
-                        return map;
-                    });
+                // Providers
+                const pids = new Set<string>();
+                if (primaryProviderId) pids.add(primaryProviderId);
+                for (const p of pending) if (p.role === "ServiceProvider" && p.userId) pids.add(p.userId);
+                if (pids.size) {
+                    const pairs = await Promise.all(
+                        Array.from(pids).map(async (id) => {
+                            try {
+                                const dto = await getProviderLiteById(id);
+                                return [id, dto?.name || id] as const;
+                            } catch {
+                                return [id, id] as const;
+                            }
+                        })
+                    );
+                    if (!cancelled) {
+                        setProviderNameMap(prev => {
+                            const m = new Map(prev);
+                            pairs.forEach(([id, name]) => m.set(id, name));
+                            return m;
+                        });
+                    }
                 }
             } catch { /* no-op */ }
         })();
 
         return () => { cancelled = true; };
-    }, [open, type, mode, primaryClientId, pending]);
+    }, [open, type, mode, primaryClientId, primaryProviderId, pending]);
 
     // Unsaved changes protection (browser)
     useEffect(() => {
@@ -250,13 +354,9 @@ const EventModal: React.FC<EventModalProps> = ({
     const handleField = (key: string, value: unknown) => {
         setValues((prev: any) => ({ ...prev, [key]: value }));
     };
-    const handleSelectNumber = (key: string, value: string) => {
-        handleField(key, value ? Number(value) : undefined);
-    };
 
-    const handleAppointmentTypeChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
-        const idString = e.target.value;
-        const id = idString ? Number(idString) : undefined;
+    const handleAppointmentTypeChange = (option: SingleValue<NumberOption>) => {
+        const id = option?.value;
         setValues((prev: any) => {
             const next: any = { ...prev, appointmentTypeId: id };
             const match = id ? appointmentTypes.find((t) => t.id === id) : undefined;
@@ -287,7 +387,6 @@ const EventModal: React.FC<EventModalProps> = ({
                 (err?.response?.data?.message as string | undefined) ||
                 (err instanceof Error ? err.message : undefined) ||
                 "";
-
             const needsManagerOverride =
                 !!msg &&
                 (msg.toLowerCase().includes("manager approval") ||
@@ -347,15 +446,15 @@ const EventModal: React.FC<EventModalProps> = ({
         });
 
     // Edit-mode remove (immediate)
-    const providerName = (id: string) => providerOptions.find((p) => p.id === id)?.name || id;
-
-    const handleRemoveParticipant = async (p: ReservationParticipantDto, role: "Client" | "ServiceProvider") => {
+    const handleRemoveParticipant = async (p: ReservationParticipantDto, role: "Client" | "ServiceProvider" | "Guest") => {
         if (!reservationIdForQuick) return;
         try {
             if (role === "Client") {
                 setClientParticipants((prev) => prev.filter((x) => x.id !== p.id));
-            } else {
+            } else if (role === "ServiceProvider") {
                 setProviderParticipants((prev) => prev.filter((x) => x.id !== p.id));
+            } else {
+                setGuestParticipants((prev) => prev.filter((x) => x.id !== p.id));
             }
             await removeParticipant(reservationIdForQuick, p.id);
             toast.success("Removed from this reservation.");
@@ -365,19 +464,12 @@ const EventModal: React.FC<EventModalProps> = ({
                 const list = await listParticipants(reservationIdForQuick);
                 const clients = list.filter(x => x.role === "Client" && !x.isDeleted);
                 const provs = list.filter(x => x.role === "ServiceProvider" && !x.isDeleted);
+                const guests = list.filter(x => x.role === "Guest" && !x.isDeleted);
                 setClientParticipants(clients);
                 setProviderParticipants(provs);
+                setGuestParticipants(guests);
             } catch { /* no-op */ }
         }
-    };
-
-    // Cancel with unsaved confirmation
-    const handleCancel = () => {
-        if (hasUnsavedGroupChanges) {
-            const leave = window.confirm("You have unsaved changes. Leave without saving?");
-            if (!leave) return;
-        }
-        onCancel();
     };
 
     // Small UI pieces
@@ -451,6 +543,22 @@ const EventModal: React.FC<EventModalProps> = ({
             return Array.from(uniq.values());
         }
     })();
+
+    const currentGuests = (() => {
+        if (type !== "reservation") return [];
+        return mode === "edit"
+            ? [...guestParticipants]
+            : pending.filter((p) => p.role === "Guest");
+    })();
+
+    // Cancel with unsaved confirmation
+    const handleCancel = () => {
+        if (hasUnsavedGroupChanges) {
+            const leave = window.confirm("You have unsaved changes. Leave without saving?");
+            if (!leave) return;
+        }
+        onCancel();
+    };
 
     // Render
     return (
@@ -553,34 +661,30 @@ const EventModal: React.FC<EventModalProps> = ({
 
                                 <div className="flex flex-col gap-1">
                                     <label className="text-sm font-medium">Service Provider</label>
-                                    <select
-                                        className="border rounded-lg px-3 py-2"
-                                        value={values.serviceProviderId || ""}
-                                        onChange={(e) => handleField("serviceProviderId", e.target.value)}
-                                    >
-                                        <option value="">Select provider</option>
-                                        {providerOptions.map((p) => (
-                                            <option key={p.id} value={p.id}>
-                                                {p.name || p.id}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <ProviderSearchInput
+                                        valueId={typeof values.serviceProviderId === "string" ? values.serviceProviderId : null}
+                                        initialLabel={providerNameMap.get(values.serviceProviderId ?? "") ?? null}
+                                        onChange={(p) => handleField("serviceProviderId", p?.id ?? "")}
+                                        placeholder="Search providers…"
+                                        disabled={false}
+                                        autoFocus={false}
+                                        // prevent selecting someone who is (or will be) an attendant
+                                        excludeIds={mode === "edit" ? editSelectedProviderIds : createSelectedProviderIds}
+                                    />
                                 </div>
 
                                 <div className="flex flex-col gap-1">
                                     <label className="text-sm font-medium">Appointment Type</label>
-                                    <select
-                                        className="border rounded-lg px-3 py-2"
-                                        value={values.appointmentTypeId != null ? String(values.appointmentTypeId) : ""}
+                                    <Select
+                                        className="text-sm"
+                                        classNamePrefix="rs"
+                                        options={appointmentTypeOptionsRS}
+                                        value={selectedAppointmentTypeOption}
                                         onChange={handleAppointmentTypeChange}
-                                    >
-                                        <option value="">Select type</option>
-                                        {appointmentTypes.map((t) => (
-                                            <option key={t.id} value={String(t.id)}>
-                                                {t.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        isClearable
+                                        placeholder="Select type…"
+                                        noOptionsMessage={() => "No appointment types"}
+                                    />
                                     {selectedAppointmentType && (
                                         <div className="mt-1 text-xs text-gray-600">
                                             Duration: {selectedAppointmentType.duration}
@@ -595,18 +699,18 @@ const EventModal: React.FC<EventModalProps> = ({
 
                                 <div className="flex flex-col gap-1">
                                     <label className="text-sm font-medium">Resource (optional)</label>
-                                    <select
-                                        className="border rounded-lg px-3 py-2"
-                                        value={values.resourceId != null ? String(values.resourceId) : ""}
-                                        onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
-                                    >
-                                        <option value="">None</option>
-                                        {resourceOptions.map((r) => (
-                                            <option key={r.id} value={String(r.id)}>
-                                                {r.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <Select
+                                        className="text-sm"
+                                        classNamePrefix="rs"
+                                        options={resourceOptionsRS}
+                                        value={selectedResourceOption}
+                                        onChange={(option: SingleValue<NumberOption>) =>
+                                            handleField("resourceId", option?.value ?? undefined)
+                                        }
+                                        isClearable
+                                        placeholder="None"
+                                        noOptionsMessage={() => "No resources"}
+                                    />
                                 </div>
 
                                 <div className="flex flex-col gap-1">
@@ -718,7 +822,7 @@ const EventModal: React.FC<EventModalProps> = ({
                                                         if (!userId) return;
 
                                                         if (editSelectedClientIds.has(userId)) {
-                                                            toast.info("That client is already on this reservation.");
+                                                            toast.info("That person is already on this reservation.");
                                                             return;
                                                         }
                                                         if (!reservationIdForQuick) return;
@@ -754,7 +858,7 @@ const EventModal: React.FC<EventModalProps> = ({
                                                     <div key={p.id} className="flex items-center gap-2">
                                                         <input
                                                             className="flex-1 border rounded-lg px-3 py-2 bg-gray-50"
-                                                            value={providerName(p.userId)}
+                                                            value={providerNameMap.get(p.userId) ?? p.userId}
                                                             readOnly
                                                         />
                                                         <button
@@ -770,20 +874,19 @@ const EventModal: React.FC<EventModalProps> = ({
                                                 ))}
                                             </div>
 
-                                            {/* Add provider (select + Add) */}
+                                            {/* Add provider (async search + Add) */}
                                             <div className="mt-3 flex items-center gap-2">
-                                                <select
-                                                    className="border rounded-lg px-3 py-2 w-full"
-                                                    value={providerToAddId}
-                                                    onChange={(e) => setProviderToAddId(e.target.value)}
-                                                >
-                                                    <option value="">Add provider…</option>
-                                                    {providerAddOptions.map((p) => (
-                                                        <option key={p.id} value={p.id}>
-                                                            {p.name || p.id}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="flex-1">
+                                                    <ProviderSearchInput
+                                                        key={providerPickerKey}
+                                                        valueId={null}
+                                                        initialLabel={null}
+                                                        onChange={(p) => setProviderToAddId(p?.id ?? null)}
+                                                        placeholder="Add provider…"
+                                                        disabled={false}
+                                                        excludeIds={editSelectedProviderIds}
+                                                    />
+                                                </div>
                                                 <button
                                                     type="button"
                                                     className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
@@ -792,14 +895,24 @@ const EventModal: React.FC<EventModalProps> = ({
                                                         if (!userId) return;
 
                                                         if (editSelectedProviderIds.has(userId)) {
-                                                            toast.info("That provider is already on this reservation.");
+                                                            toast.info("That person is already on this reservation.");
                                                             return;
                                                         }
                                                         if (!reservationIdForQuick) return;
                                                         try {
                                                             const created = await addParticipant(reservationIdForQuick, { role: "ServiceProvider", userId });
+                                                            // Resolve and cache name
+                                                            try {
+                                                                const dto = await getProviderLiteById(userId);
+                                                                setProviderNameMap(prev => {
+                                                                    const next = new Map(prev);
+                                                                    next.set(userId, dto?.name || userId);
+                                                                    return next;
+                                                                });
+                                                            } catch { /* no-op */ }
                                                             setProviderParticipants((prev) => [...prev, created]);
-                                                            setProviderToAddId("");
+                                                            setProviderToAddId(null);
+                                                            setProviderPickerKey(k => k + 1);
                                                             toast.success("Service provider added to this reservation.");
                                                         } catch (err) {
                                                             toast.error((err as Error)?.message || "We couldn't add that provider.");
@@ -828,17 +941,18 @@ const EventModal: React.FC<EventModalProps> = ({
                                         />
                                     </div>
 
-                                    {/* Current Participants (providers first, then clients) */}
+                                    {/* Current Participants (provider, attendants) */}
                                     <div className="rounded-lg border">
                                         <div className="px-3 py-2 text-sm font-medium bg-gray-50">Current Participants</div>
-                                        {/* Providers */}
+
+                                        <DividerLabel label="Provider" />
                                         <ul className="divide-y">
                                             {currentProviders.map((p, idx) => (
-                                                <li key={`prov-${("id" in p ? p.id : p.userId) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                <li key={`prov-${("id" in p ? p.id : (p as any).userId) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
                                                     <div className="truncate">
-                                                        {providerName("userId" in p ? p.userId! : (p as any).userId)}
+                                                        {providerNameMap.get(("userId" in p ? p.userId! : (p as any).userId) ?? "") ||
+                                                            ("userId" in p ? p.userId : (p as any).userId)}
                                                     </div>
-                                                    {/* Only real participant rows (id>0) support removal here; primary is non-removable */}
                                                     {"id" in p && p.id > 0 ? (
                                                         <button
                                                             type="button"
@@ -853,10 +967,11 @@ const EventModal: React.FC<EventModalProps> = ({
                                                 </li>
                                             ))}
                                         </ul>
-                                        <DividerLabel label="Clients" />
+
+                                        <DividerLabel label="Attendants" />
                                         <ul className="divide-y">
-                                            {currentClients.map((c, idx) => (
-                                                <li key={`cli-${("id" in c ? c.id : c.userId) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                            {currentClients.map((c, index) => (
+                                                <li key={`cli-${("id" in c ? c.id : (c as any).userId) ?? index}`} className="flex items-center justify-between px-3 py-2 text-sm">
                                                     <div className="truncate">
                                                         {clientNameMap.get(("userId" in c ? c.userId! : (c as any).userId) ?? "") ||
                                                             ("userId" in c ? c.userId : (c as any).userId)}
@@ -874,6 +989,48 @@ const EventModal: React.FC<EventModalProps> = ({
                                                     )}
                                                 </li>
                                             ))}
+
+                                            {currentGuests.length === 0 && currentClients.length === 0 && (
+                                                <li className="px-3 py-2 text-sm text-gray-400">No attendants</li>
+                                            )}
+                                            {currentGuests.map((g, index) => {
+                                                if ("id" in g) {
+                                                    const sg = g as ReservationParticipantDto;
+                                                    const label = sg.guestName || "Guest";
+                                                    const phone = sg.guestPhone ? ` • ${sg.guestPhone}` : "";
+                                                    return (
+                                                        <li key={`guest-${sg.id}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                            <div className="truncate">
+                                                                {label}{phone}
+                                                                <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                                            </div>
+                                                            {sg.id > 0 ? (
+                                                                <button
+                                                                    type="button"
+                                                                    className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                                                    onClick={() => handleRemoveParticipant(sg, "Guest")}
+                                                                >
+                                                                    Remove
+                                                                </button>
+                                                            ) : (
+                                                                <span className="text-xs text-gray-400">Primary</span>
+                                                            )}
+                                                        </li>
+                                                    );
+                                                } else {
+                                                    const pg = g as PendingParticipantAdd & { guestName?: string; guestPhone?: string };
+                                                    const label = (pg.guestName ?? "Guest") + (pg.guestPhone ? ` • ${pg.guestPhone}` : "");
+                                                    return (
+                                                        <li key={`guest-pending-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                            <div className="truncate">
+                                                                {label}
+                                                                <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                                            </div>
+                                                            <span className="text-xs text-gray-400">Pending</span>
+                                                        </li>
+                                                    );
+                                                }
+                                            })}
                                         </ul>
                                     </div>
 
@@ -907,7 +1064,7 @@ const EventModal: React.FC<EventModalProps> = ({
                                                         if (!userId) return;
 
                                                         if (createSelectedClientIds.has(userId)) {
-                                                            toast.info("That client is already selected.");
+                                                            toast.info("That person is already selected.");
                                                             return;
                                                         }
                                                         addPending({ role: "Client", userId });
@@ -925,18 +1082,17 @@ const EventModal: React.FC<EventModalProps> = ({
                                         <div>
                                             <div className="mb-2 font-medium">Service Providers</div>
                                             <div className="flex items-center gap-2">
-                                                <select
-                                                    className="border rounded-lg px-3 py-2 w-full"
-                                                    value={providerToAddId}
-                                                    onChange={(e) => setProviderToAddId(e.target.value)}
-                                                >
-                                                    <option value="">Add provider…</option>
-                                                    {providerAddOptions.map((p) => (
-                                                        <option key={p.id} value={p.id}>
-                                                            {p.name || p.id}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="flex-1">
+                                                    <ProviderSearchInput
+                                                        key={providerPickerKey}
+                                                        valueId={null}
+                                                        initialLabel={null}
+                                                        onChange={(p) => setProviderToAddId(p?.id ?? null)}
+                                                        placeholder="Add provider…"
+                                                        disabled={false}
+                                                        excludeIds={createSelectedProviderIds}
+                                                    />
+                                                </div>
                                                 <button
                                                     type="button"
                                                     className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
@@ -945,11 +1101,12 @@ const EventModal: React.FC<EventModalProps> = ({
                                                         if (!userId) return;
 
                                                         if (createSelectedProviderIds.has(userId)) {
-                                                            toast.info("That provider is already selected.");
+                                                            toast.info("That person is already selected.");
                                                             return;
                                                         }
                                                         addPending({ role: "ServiceProvider", userId });
-                                                        setProviderToAddId("");
+                                                        setProviderToAddId(null);
+                                                        setProviderPickerKey(k => k + 1);
                                                         toast.success("Service provider added.");
                                                     }}
                                                 >
@@ -973,15 +1130,15 @@ const EventModal: React.FC<EventModalProps> = ({
                                     {/* Current Participants */}
                                     <div className="rounded-lg border">
                                         <div className="px-3 py-2 text-sm font-medium bg-gray-50">Current Participants</div>
-                                        {/* Providers */}
+
+                                        <DividerLabel label="Provider" />
                                         <ul className="divide-y">
                                             {currentProviders.map((p, idx) => {
                                                 const isPrimary = "userId" in p && p.userId === primaryProviderId;
+                                                const id = "userId" in p ? p.userId! : (p as any).userId;
                                                 return (
-                                                    <li key={`cprov-${("id" in p ? p.id : (p as any).userId) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
-                                                        <div className="truncate">
-                                                            {providerName("userId" in p ? p.userId! : (p as any).userId)}
-                                                        </div>
+                                                    <li key={`cprov-${("id" in p ? p.id : id) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                        <div className="truncate">{providerNameMap.get(id) ?? id}</div>
                                                         {isPrimary ? (
                                                             <span className="text-xs text-gray-400">Primary</span>
                                                         ) : (
@@ -989,9 +1146,8 @@ const EventModal: React.FC<EventModalProps> = ({
                                                                 type="button"
                                                                 className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
                                                                 onClick={() => {
-                                                                    // find pending index matching this provider
                                                                     const index = pending.findIndex(
-                                                                        x => x.role === "ServiceProvider" && x.userId === ("userId" in p ? p.userId : (p as any).userId)
+                                                                        x => x.role === "ServiceProvider" && x.userId === id
                                                                     );
                                                                     if (index >= 0) removePendingAt(index);
                                                                 }}
@@ -1003,13 +1159,14 @@ const EventModal: React.FC<EventModalProps> = ({
                                                 );
                                             })}
                                         </ul>
-                                        <DividerLabel label="Clients" />
+
+                                        <DividerLabel label="Attendants" />
                                         <ul className="divide-y">
-                                            {currentClients.map((c, idx) => {
+                                            {currentClients.map((c, index) => {
                                                 const userId = "userId" in c ? c.userId! : (c as any).userId;
                                                 const isPrimary = userId === primaryClientId;
                                                 return (
-                                                    <li key={`ccli-${("id" in c ? c.id : userId) ?? idx}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                    <li key={`ccli-${("id" in c ? c.id : userId) ?? index}`} className="flex items-center justify-between px-3 py-2 text-sm">
                                                         <div className="truncate">
                                                             {clientNameMap.get(userId) || userId}
                                                         </div>
@@ -1032,6 +1189,51 @@ const EventModal: React.FC<EventModalProps> = ({
                                                     </li>
                                                 );
                                             })}
+
+                                            {currentGuests.length === 0 && currentClients.length === 0 && (
+                                                <li className="px-3 py-2 text-sm text-gray-400">No attendants</li>
+                                            )}
+                                            {currentGuests.map((g, index) => {
+                                                if ("id" in g) {
+                                                    const sg = g as ReservationParticipantDto;
+                                                    const label = (sg.guestName ?? "Guest") + (sg.guestPhone ? ` • ${sg.guestPhone}` : "");
+                                                    return (
+                                                        <li key={`cguest-saved-${sg.id}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                            <div className="truncate">
+                                                                {label}
+                                                                <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                                            </div>
+                                                            <span className="text-xs text-gray-400">Saved</span>
+                                                        </li>
+                                                    );
+                                                } else {
+                                                    const pg = g as PendingParticipantAdd & { guestName?: string; guestPhone?: string };
+                                                    const label = (pg.guestName ?? "Guest") + (pg.guestPhone ? ` • ${pg.guestPhone}` : "");
+                                                    return (
+                                                        <li key={`cguest-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                                            <div className="truncate">
+                                                                {label}
+                                                                <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                                                onClick={() => {
+                                                                    const idx = pending.findIndex(
+                                                                        (x) =>
+                                                                            x.role === "Guest" &&
+                                                                            (x as any).guestName === pg.guestName &&
+                                                                            (x as any).guestPhone === pg.guestPhone
+                                                                    );
+                                                                    if (idx >= 0) removePendingAt(idx);
+                                                                }}
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </li>
+                                                    );
+                                                }
+                                            })}
                                         </ul>
                                     </div>
                                 </div>
@@ -1044,18 +1246,18 @@ const EventModal: React.FC<EventModalProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="flex flex-col gap-1">
                                 <label className="text-sm font-medium">Resource (optional)</label>
-                                <select
-                                    className="border rounded-lg px-3 py-2"
-                                    value={values.resourceId != null ? String(values.resourceId) : ""}
-                                    onChange={(e) => handleSelectNumber("resourceId", e.target.value)}
-                                >
-                                    <option value="">None</option>
-                                    {resourceOptions.map((r) => (
-                                        <option key={r.id} value={String(r.id)}>
-                                            {r.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                <Select
+                                    className="text-sm"
+                                    classNamePrefix="rs"
+                                    options={resourceOptionsRS}
+                                    value={selectedResourceOption}
+                                    onChange={(option: SingleValue<NumberOption>) =>
+                                        handleField("resourceId", option?.value ?? undefined)
+                                    }
+                                    isClearable
+                                    placeholder="None"
+                                    noOptionsMessage={() => "No resources"}
+                                />
                             </div>
 
                             <div className="flex flex-col gap-1">

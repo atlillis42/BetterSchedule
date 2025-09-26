@@ -63,6 +63,13 @@ export type ProviderFull = ProviderLite & {
     email?: string | null;
 };
 
+/** Lightweight projection used by async provider search controls. */
+export type ProviderSearchItem = {
+    id: string;
+    name: string;
+    availabilityPublic?: boolean;
+};
+
 /**
  * Retrieves a list of providers for selection UIs.
  * Returns `ProviderLiteDto` (includes `availabilityPublic`).
@@ -106,6 +113,38 @@ export async function getProviders(params?: {
         params: query,
     });
     return data;
+}
+
+/**
+ * Async search for providers (mirrors client search pattern).
+ * Maps to `GET /users/providers` with `q` and optional `take`.
+ *
+ * @param query - Free text (name/email/username depending on server).
+ * @param opts  - Optional { take, signal }.
+ * @returns Lightweight search items for react-select/async.
+ */
+export async function searchProviders(
+    query = "",
+    opts?: { take?: number; signal?: AbortSignal }
+): Promise<ProviderSearchItem[]> {
+    const params: Record<string, string | number> = {};
+    if (query.trim()) params.q = query.trim();
+
+    if (typeof opts?.take === "number") {
+        const clamped = Math.max(1, Math.min(500, Math.floor(opts.take)));
+        params.take = clamped;
+    }
+
+    const { data } = await api.get<ProviderFull[]>("/users/providers", {
+        params,
+        signal: opts?.signal,
+    });
+
+    return data.map(p => ({
+        id: p.id,
+        name: p.name,
+        availabilityPublic: p.availabilityPublic,
+    }));
 }
 
 /**
