@@ -161,15 +161,37 @@ export async function updateReservation(
 /** Soft-deletes a reservation. */
 export async function deleteReservation(
     id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+    opts: {
+        toastSuccess?: boolean;
+        managerOverride?: boolean;
+        providerOverride?: boolean;
+    } = { toastSuccess: true }
 ): Promise<void> {
     try {
-        await api.delete(`/reservation/${id}`);
+        const params: Record<string, any> = {};
+        if (opts.managerOverride) params.managerOverride = true;
+        if (opts.providerOverride) params.providerOverride = true;
+
+        await api.delete(`/reservation/${id}`, { params });
+
         if (opts.toastSuccess !== false) toast.success("Reservation deleted.");
     } catch (err: any) {
-        handleApiError(err, "Failed to delete reservation.");
+        const status = err?.response?.status as number | undefined;
+        const data = err?.response?.data;
+        let message = "Failed to delete reservation.";
+
+        if (typeof data === "string" && data.trim()) {
+            message = data.trim();
+        } else if (data?.message) {
+            message = String(data.message);
+        }
+
+        const e = new Error(message) as Error & { status?: number };
+        if (status) e.status = status;
+        throw e;
     }
 }
+
 
 /**
  * Convenience: sets reservation status and optionally appends a reason to the notes.

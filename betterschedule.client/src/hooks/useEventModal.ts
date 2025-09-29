@@ -35,13 +35,13 @@ export type PendingParticipantAdd = {
 };
 
 /**
- * Extracts a numeric reservation id from a variety of shapes:
- * - number (e.g., 42)
- * - string with trailing digits (e.g., "reservation-42")
- * - object path (values.reservation?.id)
+ * Extracts a numeric reservation id from modal values. Prefers an explicit reservationId,
+ * falls back to nested or string-parsed ids.
  */
 function resolveReservationId(values: any): number | undefined {
+    if (typeof values?.reservationId === "number") return values.reservationId;
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
+
     const raw = values?.id;
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (typeof raw === "string") {
@@ -113,6 +113,11 @@ export function useEventModal(params: {
             participants: [],
             /** For create-mode group reservations: attach after create. */
             pendingParticipants: [] as PendingParticipantAdd[],
+
+            /** Explicitly clear edit-only helpers to avoid stale UI conditions. */
+            reservationId: undefined,
+            status: undefined,
+            originalServiceProviderId: undefined,
         });
         setOpen(true);
         setFormError(null);
@@ -121,6 +126,7 @@ export function useEventModal(params: {
     /**
      * Handles "click an existing event" → loads fields for edit.
      * Keeps compatibility with domain-style event IDs (e.g., "reservation-123").
+     * Also sets explicit `reservationId` (number) and `status` for the modal UI.
      */
     function onEventClick(args: any) {
         const t = args.e?.type || args.e?.data?.type || "reservation";
@@ -132,18 +138,41 @@ export function useEventModal(params: {
             (t === "blockedTime" && (isManager || isOwnBlock));
 
         const res = args.e?.data?.reservation;
+
         if (t === "reservation" && isProvider && !isManager && res?.serviceProviderId && res.serviceProviderId !== userId) {
             toast.info("You’re viewing another provider’s event. Switch provider or ask a manager to edit.");
         }
+
+        // Parse a numeric id from whatever is available (res.id preferred).
+        const parsedId =
+            typeof res?.id === "number"
+                ? res.id
+                : (() => {
+                    const raw = args.e?.id ?? args.e?.data?.id;
+                    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+                    if (typeof raw === "string") {
+                        const m = raw.match(/(\d+)$/);
+                        if (m) return Number(m[1]);
+                    }
+                    return undefined;
+                })();
 
         setMode(canEdit ? "edit" : "create");
         setType(t);
         setValues({
             ...extractEventFields(args.e),
-            id: args.e.id, // can be number or domain string; downstream is resilient
+
+            /** Keep whatever the calendar uses as a stable identifier for other operations. */
+            id: args.e.id,
+
+            /** Make status actions & UI deterministic: provide explicit fields. */
+            reservationId: t === "reservation" ? parsedId : undefined,
+            status: t === "reservation" ? res?.status : undefined,
+
             type: t,
             clientId: res?.clientId || "",
             serviceProviderId: res?.serviceProviderId || "",
+            originalServiceProviderId: res?.serviceProviderId || "",
             appointmentTypeId: res?.appointmentTypeId,
             notes: res?.notes || "",
             resourceId: res?.resourceId ?? undefined,
@@ -327,7 +356,7 @@ export function useEventModal(params: {
 
                         try {
                             await Promise.all(tasks);
-                        } catch (err) {
+                        } catch {
                             // If any participant add fails, we still keep the created reservation;
                             // surface a warning and proceed to refresh.
                             toast.warning("Reservation saved. Some participants could not be added.");
@@ -383,13 +412,91 @@ export function useEventModal(params: {
             return;
         }
 
-        if (type === "reservation") {
-            await deleteReservation(resolveReservationId(values)!);
-        } else {
-            await deleteBlockedTime(values.id);
+        const computeInsideWindowFallback = (): boolean => {
+            try {
+                const startIso = combineDateTime(values.startDate, values.startTime).iso as string;
+                const start = new Date(startIso).getTime();
+                const now = Date.now();
+                const hours = org?.cancelWindowHours ?? 24;
+                return start - now < hours * 60 * 60 * 1000;
+            } catch {
+                return false;
+            }
+        };
+
+        try {
+            if (type === "reservation") {
+                const id = resolveReservationId(values)!;
+                await deleteReservation(id); // first attempt
+            } else {
+                await deleteBlockedTime(values.id);
+            }
+            setOpen(false);
+            await refreshEvents();
+        } catch (err: any) {
+            const message = (err instanceof Error && err.message) || "";
+            const status = (err as any)?.status as number | undefined;
+
+            // Heuristics: server string OR fallback local time calc
+            const looksLikeInsideWindowMsg =
+                /within\s+\d+\s*hours/i.test(message) ||
+                /cannot be (deleted|modified) within/i.test(message);
+
+            const insideWindow = looksLikeInsideWindowMsg || computeInsideWindowFallback();
+
+            if (type === "reservation" && insideWindow && status === 400) {
+                const windowHours = org?.cancelWindowHours ?? 24;
+
+                // Ownership: prefer explicit serviceProviderId; fall back to originalServiceProviderId; then nested reservation field
+                const eventProviderId =
+                    (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
+                    (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
+                    (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
+
+                const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
+
+                const canManagerOverride = !!isManager;
+                const canProviderOverride = !!isProvider && isAssignedProvider;
+
+                if (canManagerOverride || canProviderOverride) {
+                    const ok = window.confirm(
+                        `This reservation is within the ${windowHours}h change window. ` +
+                        (canManagerOverride
+                            ? "Proceed with a manager override to delete?"
+                            : "Proceed as the assigned provider to delete?")
+                    );
+                    if (!ok) return;
+
+                    try {
+                        const id = resolveReservationId(values)!;
+                        await deleteReservation(id, {
+                            // These flags require the updated reservation-api.ts deleteReservation signature
+                            managerOverride: canManagerOverride,
+                            providerOverride: !canManagerOverride && canProviderOverride,
+                        });
+                        setOpen(false);
+                        await refreshEvents();
+                        return;
+                    } catch (err2: any) {
+                        const msg2 =
+                            (err2 instanceof Error && err2.message) ||
+                            (err2?.response?.data?.message as string | undefined) ||
+                            "We couldn't delete this reservation.";
+                        toast.error(msg2);
+                        setFormError(msg2);
+                        return;
+                    }
+                }
+            }
+
+            // Default: surface the real message now that api bubbles it
+            const fallback =
+                message ||
+                (typeof (err as any)?.response?.data === "string" ? (err as any).response.data : undefined) ||
+                "Failed to delete reservation.";
+            toast.error(fallback);
+            setFormError(fallback);
         }
-        setOpen(false);
-        await refreshEvents();
     }
 
     return {

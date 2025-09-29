@@ -475,11 +475,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// </summary>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct, [FromQuery] bool managerOverride = false)
+        public async Task<IActionResult> Delete(
+            [FromRoute] int id,
+            CancellationToken ct,
+            [FromQuery] bool managerOverride = false,
+            [FromQuery] bool providerOverride = false) 
         {
             var entity = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-
             if (entity is null) return NotFound();
 
             if (!ReservationScopes.CanModify(entity, UserId, IsManager, IsProvider, isClient: false))
@@ -492,8 +495,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             {
                 var now = _clock.UtcNow;
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                if (entity.StartTime - now < cancelWindow && !(managerOverride && IsManager))
-                    return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
+                var inside = entity.StartTime - now < cancelWindow;
+
+                if (inside)
+                {
+                    var isAssignedProvider = IsProvider && entity.ServiceProviderId == UserId;
+                    var allowed =
+                        (IsManager && managerOverride) ||
+                        (isAssignedProvider && providerOverride); // 👈 allow assigned provider
+                    if (!allowed)
+                        return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
+                }
             }
 
             entity.IsDeleted = true;

@@ -6,7 +6,7 @@ import CalendarNavigatorPane from "./CalendarNavigatorPane";
 import CalendarToolbar from "./CalendarToolbar";
 import CalendarLegend from "./CalendarLegend";
 import CalendarBody from "./CalendarBody";
-import EventModal from "@/components/modals/EventModal";
+import EventModal from "@/components/modals/eventModals/EventModal";
 
 import { useCalendarData } from "@/hooks/useCalendarData";
 import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
