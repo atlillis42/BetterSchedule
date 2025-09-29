@@ -24,11 +24,9 @@ type Props = {
     onCancel: () => void;
 };
 
-/** Prefer explicit reservationId; fall back to nested or parsed id */
 function reservationIdFromValues(values: any): number | undefined {
     if (typeof values?.reservationId === "number") return values.reservationId;
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
-
     const raw = values?.id;
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (typeof raw === "string") {
@@ -47,16 +45,14 @@ const ReservationModal: React.FC<Props> = ({
     onRefreshRequested,
     onCancel,
 }) => {
-    const { isManager } = useAuth();
+    const { isManager, isProvider, userId } = useAuth();
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeDto[]>([]);
     const [statusReason, setStatusReason] = useState("");
     const busyRef = useRef(false);
 
-    // Name maps for snappy labels
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
     const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
-    // Prime provider names from prop list
     useEffect(() => {
         if (!providers?.length) return;
         setProviderNameMap((prev) => {
@@ -66,7 +62,6 @@ const ReservationModal: React.FC<Props> = ({
         });
     }, [providers]);
 
-    // Resolve current client/provider names for visible labels
     const primaryClientId: string | undefined =
         typeof values?.clientId === "string" && values.clientId ? values.clientId : undefined;
     const primaryProviderId: string | undefined =
@@ -84,8 +79,7 @@ const ReservationModal: React.FC<Props> = ({
             try {
                 if (primaryProviderId) {
                     const dto = await getProviderLiteById(primaryProviderId);
-                    if (!cancelled)
-                        setProviderNameMap((m) => new Map(m).set(primaryProviderId, dto?.name || primaryProviderId));
+                    if (!cancelled) setProviderNameMap((m) => new Map(m).set(primaryProviderId, dto?.name || primaryProviderId));
                 }
             } catch { }
         })();
@@ -94,7 +88,6 @@ const ReservationModal: React.FC<Props> = ({
         };
     }, [primaryClientId, primaryProviderId]);
 
-    // react-select option data
     const resourceOptionsRS: NumberOption[] = useMemo(
         () => (resources ?? []).map((r) => ({ value: r.id, label: r.name })),
         [resources]
@@ -116,7 +109,6 @@ const ReservationModal: React.FC<Props> = ({
         return appointmentTypeOptionsRS.find((o) => o.value === id) ?? null;
     }, [values?.appointmentTypeId, appointmentTypeOptionsRS]);
 
-    // Load appointment types
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -130,13 +122,11 @@ const ReservationModal: React.FC<Props> = ({
         };
     }, []);
 
-    // Keep selected appointmentType detail
     useEffect(() => {
         const id = values?.appointmentTypeId != null ? Number(values.appointmentTypeId) : undefined;
         setSelectedAppointmentType(id ? appointmentTypes.find((t) => t.id === id) : undefined);
     }, [values?.appointmentTypeId, appointmentTypes]);
 
-    // Field helpers
     const handleField = (key: string, value: unknown) => {
         setValues((prev: any) => ({ ...prev, [key]: value }));
     };
@@ -151,7 +141,6 @@ const ReservationModal: React.FC<Props> = ({
         });
     };
 
-    // ------- Quick Status (edit only) -------
     const reservationId = reservationIdFromValues(values);
 
     const runQuickStatus = async (status: "Completed" | "Canceled" | "NoShow") => {
@@ -177,42 +166,83 @@ const ReservationModal: React.FC<Props> = ({
                 (err?.response?.data?.message as string | undefined) ||
                 (err instanceof Error ? err.message : undefined) ||
                 "";
-            const needsManagerOverride =
-                !!msg &&
-                (msg.toLowerCase().includes("manager approval") ||
-                    msg.toLowerCase().includes("manager override") ||
-                    msg.toLowerCase().includes("within"));
 
-            if (isManager && needsManagerOverride) {
-                const ok = window.confirm("This may require a manager override. Continue?");
-                if (ok) {
-                    try {
-                        await setReservationStatus(reservationId, status, {
-                            currentNotes: values?.notes ?? "",
-                            reason: statusReason.trim() || undefined,
-                            managerOverride: true,
-                            toastSuccess: false,
-                        });
-                        toast.success(
-                            status === "Completed"
-                                ? "Marked as completed."
-                                : status === "Canceled"
-                                    ? "Reservation canceled."
-                                    : "Marked as no-show."
-                        );
-                        onRefreshRequested?.();
-                        onCancel();
-                    } catch (err2: any) {
-                        const m2 =
-                            (err2?.response?.data?.message as string | undefined) ||
-                            (err2 instanceof Error ? err2.message : undefined) ||
-                            "We couldn't update the status.";
-                        toast.error(m2);
+            const looksLikeWindow =
+                !!msg &&
+                (/\bwithin\b/i.test(msg) || /hours of start/i.test(msg) || /change window/i.test(msg));
+
+            const eventProviderId =
+                (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
+                (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
+                (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
+
+            const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
+
+            if (looksLikeWindow) {
+                if (isManager) {
+                    const ok = window.confirm("This action is within the organization’s change window. Override and proceed?");
+                    if (ok) {
+                        try {
+                            await setReservationStatus(reservationId, status, {
+                                currentNotes: values?.notes ?? "",
+                                reason: statusReason.trim() || undefined,
+                                managerOverride: true,
+                                toastSuccess: false,
+                            });
+                            toast.success(
+                                status === "Completed"
+                                    ? "Marked as completed."
+                                    : status === "Canceled"
+                                        ? "Reservation canceled."
+                                        : "Marked as no-show."
+                            );
+                            onRefreshRequested?.();
+                            onCancel();
+                            return;
+                        } catch (err2: any) {
+                            const m2 =
+                                (err2?.response?.data?.message as string | undefined) ||
+                                (err2 instanceof Error ? err2.message : undefined) ||
+                                "We couldn't update the status.";
+                            toast.error(m2);
+                            busyRef.current = false;
+                            return;
+                        }
+                    }
+                } else if (isProvider && isAssignedProvider) {
+                    const ok = window.confirm("This action is within the change window. Proceed as the assigned provider?");
+                    if (ok) {
+                        try {
+                            await setReservationStatus(reservationId, status, {
+                                currentNotes: values?.notes ?? "",
+                                reason: statusReason.trim() || undefined,
+                                providerOverride: true,
+                                toastSuccess: false,
+                            });
+                            toast.success(
+                                status === "Completed"
+                                    ? "Marked as completed."
+                                    : status === "Canceled"
+                                        ? "Reservation canceled."
+                                        : "Marked as no-show."
+                            );
+                            onRefreshRequested?.();
+                            onCancel();
+                            return;
+                        } catch (err2: any) {
+                            const m2 =
+                                (err2?.response?.data?.message as string | undefined) ||
+                                (err2 instanceof Error ? err2.message : undefined) ||
+                                "We couldn't update the status.";
+                            toast.error(m2);
+                            busyRef.current = false;
+                            return;
+                        }
                     }
                 }
-            } else {
-                toast.error(msg || "We couldn't update the status.");
             }
+
+            toast.error(msg || "We couldn't update the status.");
         } finally {
             busyRef.current = false;
         }
@@ -223,7 +253,6 @@ const ReservationModal: React.FC<Props> = ({
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Quick status (edit only) */}
             {mode === "edit" && reservationId && (
                 <div className="rounded-lg border bg-gray-50 p-3">
                     <div className="flex items-center justify-between gap-3">
@@ -257,7 +286,6 @@ const ReservationModal: React.FC<Props> = ({
                             </div>
                         </div>
 
-                        {/* Compact current status pill (visual confirmation) */}
                         {currentStatus && (
                             <div className="flex items-center gap-2 text-xs" title={`Reservation • ${currentStatus}`}>
                                 <span
@@ -281,13 +309,12 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
             )}
 
-            {/* Main reservation form */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-medium">Client</label>
                     <ClientSearchInput
                         valueId={typeof values.clientId === "string" ? values.clientId : null}
-                        initialLabel={values.clientName ?? clientNameMap.get(values.clientId ?? "") ?? null}
+                        initialLabel={values.clientName ?? (values.clientId ? clientNameMap.get(values.clientId) ?? null : null)}
                         onChange={(c) => setValues((prev: any) => ({ ...prev, clientId: c?.id ?? "" }))}
                         placeholder="Search clients…"
                         disabled={false}
@@ -299,7 +326,7 @@ const ReservationModal: React.FC<Props> = ({
                     <label className="text-sm font-medium">Service Provider</label>
                     <ProviderSearchInput
                         valueId={typeof values.serviceProviderId === "string" ? values.serviceProviderId : null}
-                        initialLabel={providerNameMap.get(values.serviceProviderId ?? "") ?? null}
+                        initialLabel={values.serviceProviderId ? providerNameMap.get(values.serviceProviderId) ?? null : null}
                         onChange={(p) => setValues((prev: any) => ({ ...prev, serviceProviderId: p?.id ?? "" }))}
                         placeholder="Search providers…"
                         disabled={false}

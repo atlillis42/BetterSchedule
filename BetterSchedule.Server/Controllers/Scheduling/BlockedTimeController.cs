@@ -8,7 +8,7 @@ using BetterSchedule.Server.Controllers.Organization;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.BlockedTime;
 using BetterSchedule.Server.Models.Scheduling;
-using BetterSchedule.Server.Services.Errors; 
+using BetterSchedule.Server.Services.Errors;
 using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -19,8 +19,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 {
     /// <summary>
     /// Manages blocked time windows for provider schedules and resources.
-    /// A block with <c>ResourceId = null</c> applies to the creator's schedule (provider self-block).
-    /// A block with <c>ResourceId</c> set applies to that resource regardless of provider.
+    /// - When ResourceId is null, the block applies to a provider's personal schedule (the "owner" provider is stored in CreatedByUserId).
+    /// - When ResourceId is set, the block applies to that resource regardless of provider.
+    /// Managers can create either kind; providers can only self-block (no resource).
     /// </summary>
     [ApiController]
     [Route("api/blocked-times")]
@@ -70,8 +71,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         /// <summary>
-        /// Creates a blocked time. Validates time order, resource existence when provided,
-        /// and applies reservation/block conflict checks.
+        /// Creates a blocked time. Managers must pick either a provider OR a resource.
+        /// Providers may only create self-blocks (no resource).
         /// </summary>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
@@ -83,6 +84,39 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest(new ApiError("VALIDATION_ERROR", "EndTime must be after StartTime."));
 
+            // ---- Role + targeting rules
+            string ownerProviderIdForBlock; // who the self-block applies to when ResourceId is null
+            if (IsManager)
+            {
+                var hasProvider = !string.IsNullOrWhiteSpace(dto.ProviderId);
+                var hasResource = dto.ResourceId.HasValue;
+
+                if (hasProvider && hasResource)
+                    return BadRequest(new ApiError("VALIDATION_ERROR", "Choose either a provider or a resource, not both."));
+                if (!hasProvider && !hasResource)
+                    return BadRequest(new ApiError("VALIDATION_ERROR", "Managers must select a provider or a resource."));
+
+                // When targeting a provider, validate that user exists in this org
+                if (hasProvider)
+                {
+                    var providerExists = await _db.Users.AnyAsync(
+                        u => u.Id == dto.ProviderId && u.OrganizationId == OrganizationId && !u.IsDeleted, ct);
+                    if (!providerExists)
+                        return BadRequest(new ApiError("VALIDATION_ERROR", "Provider does not exist in this organization."));
+                }
+
+                // For provider blocks, stamp the provider as the "owner" (keeps scopes & conflicts working)
+                ownerProviderIdForBlock = hasProvider ? dto.ProviderId! : UserId!;
+            }
+            else
+            {
+                // Provider caller
+                if (dto.ResourceId.HasValue)
+                    return BadRequest(new ApiError("VALIDATION_ERROR", "Providers cannot create resource blocks."));
+                ownerProviderIdForBlock = UserId!;
+            }
+
+            // Resource existence when provided
             if (dto.ResourceId.HasValue)
             {
                 var exists = await _db.CalendarResources
@@ -90,16 +124,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 if (!exists) return BadRequest(new ApiError("VALIDATION_ERROR", "Resource does not exist in this organization."));
             }
 
+            // Conflicts check
             var conflicts = await _conflicts.CheckBlockedTimeCreateAsync(
                 organizationId: OrganizationId,
-                createdByUserId: UserId!,
+                createdByUserId: ownerProviderIdForBlock,
                 resourceId: dto.ResourceId,
                 start: dto.StartTime,
                 end: dto.EndTime,
                 cancellationToken: ct);
 
             if (conflicts.OverlapsReservations)
-                return Conflict(new ApiError("Reservation_Conflict", "This block overlaps one or more reservations."));
+                return Conflict(new ApiError("RESERVATION_CONFLICT", "This block overlaps one or more reservations."));
             if (conflicts.OverlapsOtherBlocks)
                 return Conflict(new ApiError("BLOCK_OVERLAP", "This block overlaps an existing blocked time."));
 
@@ -109,9 +144,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Reason = dto.Reason,
                 StartTime = dto.StartTime,
                 EndTime = dto.EndTime,
-                ResourceId = dto.ResourceId, // null => provider self-block
+                ResourceId = dto.ResourceId,              // null => provider schedule
                 BackColor = dto.BackColor,
-                CreatedByUserId = UserId!,
+                CreatedByUserId = ownerProviderIdForBlock, // provider whose calendar is blocked (or manager if resource block)
                 IsDeleted = false
             };
 
@@ -127,8 +162,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         /// <summary>
-        /// Updates a blocked time. Supports partial updates and resource unassignment (provider self-block) via <c>clearResource</c>.
-        /// Validates time order and conflict checks using effective values.
+        /// Updates a blocked time. Providers cannot target resources.
+        /// Managers may change the resource (or clear it); provider targeting cannot be changed here.
         /// </summary>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
@@ -145,6 +180,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (entity is null) return NotFound();
             if (!BlockedTimeScopes.CanModify(entity, UserId, IsManager, IsProvider)) return Forbid();
 
+            // Providers cannot manipulate resource targeting at all
+            if (IsProvider && !IsManager && (dto.ResourceId.HasValue || dto.ClearResource == true))
+                return BadRequest(new ApiError("VALIDATION_ERROR", "Providers cannot change resource targeting on a blocked time."));
+
             var newStart = dto.StartTime ?? entity.StartTime;
             var newEnd = dto.EndTime ?? entity.EndTime;
             if (newStart >= newEnd)
@@ -154,30 +193,33 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 return BadRequest(new ApiError("VALIDATION_ERROR", "Provide either clearResource or resourceId, not both."));
 
             int? newResourceId = entity.ResourceId;
-            if (dto.ClearResource == true)
+            if (IsManager)
             {
-                newResourceId = null; // provider self-block for the creator
-            }
-            else if (dto.ResourceId.HasValue)
-            {
-                var target = dto.ResourceId.Value;
-                var exists = await _db.CalendarResources
-                    .AnyAsync(r => r.Id == target && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-                if (!exists) return BadRequest(new ApiError("VALIDATION_ERROR", "Resource does not exist in this organization."));
-                newResourceId = target;
+                if (dto.ClearResource == true)
+                {
+                    newResourceId = null; // becomes provider schedule block; owner provider remains the existing CreatedByUserId
+                }
+                else if (dto.ResourceId.HasValue)
+                {
+                    var target = dto.ResourceId.Value;
+                    var exists = await _db.CalendarResources
+                        .AnyAsync(r => r.Id == target && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
+                    if (!exists) return BadRequest(new ApiError("VALIDATION_ERROR", "Resource does not exist in this organization."));
+                    newResourceId = target;
+                }
             }
 
             var conflicts = await _conflicts.CheckBlockedTimeUpdateAsync(
                 blockedTimeId: id,
                 organizationId: OrganizationId,
-                createdByUserId: entity.CreatedByUserId,
+                createdByUserId: entity.CreatedByUserId, // the provider whose calendar is blocked (if ResourceId is null)
                 resourceId: newResourceId,
                 start: newStart,
                 end: newEnd,
                 cancellationToken: ct);
 
             if (conflicts.OverlapsReservations)
-                return Conflict(new ApiError("Reservation_Conflict", "This block overlaps one or more reservations."));
+                return Conflict(new ApiError("RESERVATION_CONFLICT", "This block overlaps one or more reservations."));
             if (conflicts.OverlapsOtherBlocks)
                 return Conflict(new ApiError("BLOCK_OVERLAP", "This block overlaps an existing blocked time."));
 
@@ -210,7 +252,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             return NoContent();
         }
 
-        /// <summary>Projection to <see cref="BlockedTimeDto"/>.</summary>
         private static Expression<Func<BlockedTime, BlockedTimeDto>> ToDto() => x => new BlockedTimeDto
         {
             Id = x.Id,

@@ -26,22 +26,14 @@ import type { OrgSettingsDto } from "@/api/org-settings-api";
 /** Client-side representation of a participant to be attached after create. */
 export type PendingParticipantAdd = {
     role: "Client" | "ServiceProvider" | "Guest";
-    /** Required for Client/ServiceProvider; omit for Guest. */
     userId?: string;
-    /** Guests only. */
     guestName?: string;
-    /** Guests only. */
     guestPhone?: string;
 };
 
-/**
- * Extracts a numeric reservation id from modal values. Prefers an explicit reservationId,
- * falls back to nested or string-parsed ids.
- */
 function resolveReservationId(values: any): number | undefined {
     if (typeof values?.reservationId === "number") return values.reservationId;
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
-
     const raw = values?.id;
     if (typeof raw === "number" && Number.isFinite(raw)) return raw;
     if (typeof raw === "string") {
@@ -51,13 +43,6 @@ function resolveReservationId(values: any): number | undefined {
     return undefined;
 }
 
-/**
- * Coordinates Event modal state and actions (create/edit reservation or blocked time).
- * Encapsulates validation, availability preflight, and API mutation flows.
- *
- * In Reservation "create" mode, any `values.pendingParticipants` are attached immediately
- * after the reservation is created (clients, providers, and guests).
- */
 export function useEventModal(params: {
     canManageReservations: boolean;
     canManageBlocks: boolean;
@@ -93,10 +78,6 @@ export function useEventModal(params: {
 
     const canDelete = !readOnly && mode === "edit";
 
-    /**
-     * Handles "click a free time range" → primes default fields and opens the modal.
-     * Uses DayPilot's local formatting to avoid timezone drift.
-     */
     function onTimeRangeSelected(args: { start: DayPilot.Date; end: DayPilot.Date; resource?: number | string }) {
         if (!canManageReservations) return;
 
@@ -111,10 +92,8 @@ export function useEventModal(params: {
             serviceProviderId: isProvider && !isManager ? userId : "",
             type: "reservation",
             participants: [],
-            /** For create-mode group reservations: attach after create. */
             pendingParticipants: [] as PendingParticipantAdd[],
 
-            /** Explicitly clear edit-only helpers to avoid stale UI conditions. */
             reservationId: undefined,
             status: undefined,
             originalServiceProviderId: undefined,
@@ -123,11 +102,6 @@ export function useEventModal(params: {
         setFormError(null);
     }
 
-    /**
-     * Handles "click an existing event" → loads fields for edit.
-     * Keeps compatibility with domain-style event IDs (e.g., "reservation-123").
-     * Also sets explicit `reservationId` (number) and `status` for the modal UI.
-     */
     function onEventClick(args: any) {
         const t = args.e?.type || args.e?.data?.type || "reservation";
         const createdByUserId = args.e?.createdByUserId || args.e?.data?.createdByUserId;
@@ -143,7 +117,6 @@ export function useEventModal(params: {
             toast.info("You’re viewing another provider’s event. Switch provider or ask a manager to edit.");
         }
 
-        // Parse a numeric id from whatever is available (res.id preferred).
         const parsedId =
             typeof res?.id === "number"
                 ? res.id
@@ -161,11 +134,7 @@ export function useEventModal(params: {
         setType(t);
         setValues({
             ...extractEventFields(args.e),
-
-            /** Keep whatever the calendar uses as a stable identifier for other operations. */
             id: args.e.id,
-
-            /** Make status actions & UI deterministic: provide explicit fields. */
             reservationId: t === "reservation" ? parsedId : undefined,
             status: t === "reservation" ? res?.status : undefined,
 
@@ -177,19 +146,12 @@ export function useEventModal(params: {
             notes: res?.notes || "",
             resourceId: res?.resourceId ?? undefined,
             participants: res?.participants || [],
-            /** Ensure this exists so the modal can add pending participants in create mode if user switches tabs. */
             pendingParticipants: Array.isArray(res?.pendingParticipants) ? res.pendingParticipants : [],
         });
         setOpen(true);
         setFormError(null);
     }
 
-    /**
-     * Saves the current modal contents.
-     * - Reservation: validates, checks availability overlay, and then creates/updates.
-     *   When creating and `values.pendingParticipants` exist, attaches them immediately after create.
-     * - Blocked time: creates/updates accordingly.
-     */
     async function submit() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to save reservations.");
@@ -255,10 +217,26 @@ export function useEventModal(params: {
                             const ok = window.confirm("This is outside provider availability. Proceed anyway?");
                             if (!ok) throw err;
                             await updateReservation(resolveReservationId(values)!, payload, { overrideAvailability: true });
-                        } else if (isCancelWindowError(err) && isManager) {
-                            const ok = window.confirm("This is inside the organization’s change window. Override and proceed?");
-                            if (!ok) throw err;
-                            await updateReservation(resolveReservationId(values)!, payload, { managerOverride: true });
+                        } else if (isCancelWindowError(err)) {
+                            // allow manager or assigned provider override
+                            const eventProviderId =
+                                (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
+                                (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
+                                (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
+
+                            const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
+
+                            if (isManager) {
+                                const ok = window.confirm("This update is within the organization’s change window. Override and proceed?");
+                                if (!ok) throw err;
+                                await updateReservation(resolveReservationId(values)!, payload, { managerOverride: true });
+                            } else if (isProvider && isAssignedProvider) {
+                                const ok = window.confirm("This update is within the change window. Proceed as the assigned provider?");
+                                if (!ok) throw err;
+                                await updateReservation(resolveReservationId(values)!, payload, { providerOverride: true });
+                            } else {
+                                throw err;
+                            }
                         } else {
                             throw err;
                         }
@@ -281,7 +259,6 @@ export function useEventModal(params: {
                 if (type === "reservation") {
                     let created: ReservationDto | null = null;
 
-                    // 1) Create the reservation
                     try {
                         created = await createReservation({
                             clientId: values.clientId,
@@ -323,7 +300,7 @@ export function useEventModal(params: {
                         }
                     }
 
-                    // 2) Attach any pending participants (clients/providers/guests)
+                    // Attach pending participants (if any)
                     const pending: PendingParticipantAdd[] = Array.isArray(values.pendingParticipants)
                         ? values.pendingParticipants
                         : [];
@@ -333,7 +310,6 @@ export function useEventModal(params: {
                         const primaryProvider = values.serviceProviderId as string | undefined;
 
                         const tasks = pending.map((p) => {
-                            // Skip duplicates of primaries
                             if (p.role === "Client" && p.userId && p.userId === primaryClient) return Promise.resolve();
                             if (p.role === "ServiceProvider" && p.userId && p.userId === primaryProvider) return Promise.resolve();
 
@@ -344,12 +320,8 @@ export function useEventModal(params: {
                                     guestPhone: (p.guestPhone || "").trim() || undefined,
                                 });
                             }
-                            // Client/ServiceProvider
                             if (p.userId) {
-                                return addParticipant(created!.id, {
-                                    role: p.role,
-                                    userId: p.userId,
-                                });
+                                return addParticipant(created!.id, { role: p.role, userId: p.userId });
                             }
                             return Promise.resolve();
                         });
@@ -357,22 +329,18 @@ export function useEventModal(params: {
                         try {
                             await Promise.all(tasks);
                         } catch {
-                            // If any participant add fails, we still keep the created reservation;
-                            // surface a warning and proceed to refresh.
                             toast.warning("Reservation saved. Some participants could not be added.");
                         }
                     }
                 } else {
                     await createBlockedTime({
                         reason: values.reason ?? "",
-                        resourceId:
-                            typeof values.resourceId === "number"
-                                ? values.resourceId
-                                : values.resourceId
-                                    ? Number(values.resourceId)
-                                    : undefined,
                         startTime: start,
                         endTime: end,
+                        providerId: isManager ? (values.providerId || undefined) : undefined,
+                        resourceId: isManager
+                            ? (typeof values.resourceId === "number" ? values.resourceId : values.resourceId ? Number(values.resourceId) : undefined)
+                            : undefined, 
                         backColor: values.backColor ?? undefined,
                     });
                 }
@@ -401,7 +369,6 @@ export function useEventModal(params: {
         }
     }
 
-    /** Deletes the current entity. */
     async function remove() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to delete reservations.");
@@ -435,9 +402,9 @@ export function useEventModal(params: {
             await refreshEvents();
         } catch (err: any) {
             const message = (err instanceof Error && err.message) || "";
-            const status = (err as any)?.status as number | undefined;
+            const status = (err as any)?.status ??
+                (err as any)?.response?.status as number | undefined;
 
-            // Heuristics: server string OR fallback local time calc
             const looksLikeInsideWindowMsg =
                 /within\s+\d+\s*hours/i.test(message) ||
                 /cannot be (deleted|modified) within/i.test(message);
@@ -447,7 +414,6 @@ export function useEventModal(params: {
             if (type === "reservation" && insideWindow && status === 400) {
                 const windowHours = org?.cancelWindowHours ?? 24;
 
-                // Ownership: prefer explicit serviceProviderId; fall back to originalServiceProviderId; then nested reservation field
                 const eventProviderId =
                     (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
                     (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
@@ -470,7 +436,6 @@ export function useEventModal(params: {
                     try {
                         const id = resolveReservationId(values)!;
                         await deleteReservation(id, {
-                            // These flags require the updated reservation-api.ts deleteReservation signature
                             managerOverride: canManagerOverride,
                             providerOverride: !canManagerOverride && canProviderOverride,
                         });
@@ -489,7 +454,6 @@ export function useEventModal(params: {
                 }
             }
 
-            // Default: surface the real message now that api bubbles it
             const fallback =
                 message ||
                 (typeof (err as any)?.response?.data === "string" ? (err as any).response.data : undefined) ||
@@ -500,7 +464,6 @@ export function useEventModal(params: {
     }
 
     return {
-        // state
         open,
         setOpen,
         mode,
@@ -511,12 +474,8 @@ export function useEventModal(params: {
         setValues,
         formError,
         setFormError,
-
-        // derived
         readOnly,
         canDelete,
-
-        // handlers
         onTimeRangeSelected,
         onEventClick,
         submit,
