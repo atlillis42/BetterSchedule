@@ -97,6 +97,11 @@ export function useEventModal(params: {
             reservationId: undefined,
             status: undefined,
             originalServiceProviderId: undefined,
+            originalResourceId: undefined,     
+            originalStartDate: undefined,      
+            originalStartTime: undefined,      
+            originalEndDate: undefined,        
+            originalEndTime: undefined,        
         });
         setOpen(true);
         setFormError(null);
@@ -130,10 +135,12 @@ export function useEventModal(params: {
                     return undefined;
                 })();
 
+        const base = extractEventFields(args.e);
+
         setMode(canEdit ? "edit" : "create");
         setType(t);
         setValues({
-            ...extractEventFields(args.e),
+            ...base,
             id: args.e.id,
             reservationId: t === "reservation" ? parsedId : undefined,
             status: t === "reservation" ? res?.status : undefined,
@@ -145,6 +152,13 @@ export function useEventModal(params: {
             appointmentTypeId: res?.appointmentTypeId,
             notes: res?.notes || "",
             resourceId: res?.resourceId ?? undefined,
+
+            originalResourceId: res?.resourceId ?? undefined,     
+            originalStartDate: base.startDate,                     
+            originalStartTime: base.startTime,                    
+            originalEndDate: base.endDate,                         
+            originalEndTime: base.endTime,                         
+
             participants: res?.participants || [],
             pendingParticipants: Array.isArray(res?.pendingParticipants) ? res.pendingParticipants : [],
         });
@@ -180,7 +194,24 @@ export function useEventModal(params: {
             (values.serviceProviderId || undefined) ??
             overlayProviderId;
 
-        if (org?.shadingMode === "ProviderAvailability" && providerForCheck && providerForCheck === overlayProviderId) {
+        const resourceOnlyEditForManager =
+            mode === "edit" &&
+            type === "reservation" &&
+            isManager &&
+            values.startDate === values.originalStartDate &&
+            values.startTime === values.originalStartTime &&
+            values.endDate === values.originalEndDate &&
+            values.endTime === values.originalEndTime &&
+            (values.serviceProviderId || "") === (values.originalServiceProviderId || "") &&
+            String(values.resourceId ?? "") !== String(values.originalResourceId ?? "");
+
+        // Skip availability preflight for manager resource-only edits
+        if (
+            !resourceOnlyEditForManager &&
+            org?.shadingMode === "ProviderAvailability" &&
+            providerForCheck &&
+            providerForCheck === overlayProviderId
+        ) {
             const { allowed } = preflightAvailability(availabilityByProvider, providerForCheck, startDp, endDp);
             if (!allowed) {
                 const msg = "Selected time is outside provider availability.";
@@ -242,16 +273,28 @@ export function useEventModal(params: {
                         }
                     }
                 } else {
+
+                    const clearedResourceByManager =
+                        isManager &&
+                        values?.originalResourceId != null &&
+                        (values?.resourceId == null || values?.resourceId === "");
+
                     await updateBlockedTime(values.id, {
                         reason: values.reason ?? undefined,
-                        resourceId:
-                            typeof values.resourceId === "number"
-                                ? values.resourceId
-                                : values.resourceId
-                                    ? Number(values.resourceId)
-                                    : undefined,
                         startTime: start,
                         endTime: end,
+                        ...(isManager
+                            ? (clearedResourceByManager
+                                ? { clearResource: true }
+                                : {
+                                    resourceId:
+                                        typeof values.resourceId === "number"
+                                            ? values.resourceId
+                                            : values.resourceId
+                                                ? Number(values.resourceId)
+                                                : undefined,
+                                })
+                            : {}),
                         backColor: values.backColor ?? undefined,
                     });
                 }
@@ -337,10 +380,16 @@ export function useEventModal(params: {
                         reason: values.reason ?? "",
                         startTime: start,
                         endTime: end,
+                        // Manager may supply providerId/resourceId according to your modal;
+                        // Providers create self-blocks (server infers createdByUserId).                        
                         providerId: isManager ? (values.providerId || undefined) : undefined,
                         resourceId: isManager
-                            ? (typeof values.resourceId === "number" ? values.resourceId : values.resourceId ? Number(values.resourceId) : undefined)
-                            : undefined, 
+                            ? (typeof values.resourceId === "number"
+                                ? values.resourceId
+                                : values.resourceId
+                                    ? Number(values.resourceId)
+                                    : undefined)
+                            : undefined,
                         backColor: values.backColor ?? undefined,
                     });
                 }
@@ -402,7 +451,8 @@ export function useEventModal(params: {
             await refreshEvents();
         } catch (err: any) {
             const message = (err instanceof Error && err.message) || "";
-            const status = (err as any)?.status ??
+            const status =
+                (err as any)?.status ??
                 (err as any)?.response?.status as number | undefined;
 
             const looksLikeInsideWindowMsg =

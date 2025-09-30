@@ -13,6 +13,7 @@ import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
 import { filterEventsByCanceled } from "@/services/eventsService";
+import { filterBlockedTimesForView } from "@/services/eventsService";
 
 import { buildBusinessHours } from "@/services/availabilityService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
@@ -64,7 +65,13 @@ const Calendar = () => {
         refreshEvents,
     });
 
-    const visibleEvents = useMemo(() => filterEventsByCanceled(events, false), [events]);
+    const visibleEvents = useMemo(() => {
+        const base = filterEventsByCanceled(events, false);
+        return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, {
+            userId,
+            isManager,
+        });
+    }, [events, view, userId, isManager]);
 
     const beforeCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";

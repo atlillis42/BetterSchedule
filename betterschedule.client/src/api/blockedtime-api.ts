@@ -34,16 +34,10 @@ export type UpdateBlockedTimeDto = {
 
 type ApiError = { code?: string; message?: string };
 
-// tolerate both "RESERVATION_CONFLICT" and "Reservation_Conflict"
 function mapCreateUpdateError(err: any): never {
     const p: ApiError | undefined = err?.response?.data;
-    const code = p?.code ?? "";
-    if (/^reservation_?conflict$/i.test(code)) {
-        throw new Error(p?.message ?? "This block overlaps one or more reservations.");
-    }
-    if (/^block_?overlap$/i.test(code)) {
-        throw new Error(p?.message ?? "This block overlaps an existing block.");
-    }
+    if (p?.code === "RESERVATION_CONFLICT") throw new Error(p.message ?? "This block overlaps one or more reservations.");
+    if (p?.code === "BLOCK_OVERLAP") throw new Error(p.message ?? "This block overlaps an existing block.");
     throw err;
 }
 

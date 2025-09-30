@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import ReservationModal from "./ReservationModal";
 import GroupReservationModal from "./GroupReservationModal";
 import BlockedTimeModal from "./BlockedTimeModal";
+import ConflictPill from "./ConflictPill";
 
 type ProviderLite = { id: string; name: string };
 type CalendarResource = { id: number; name: string };
@@ -45,8 +46,7 @@ const SegButton: React.FC<{
 }> = ({ active, onClick, children, disabled, title }) => (
     <button
         type="button"
-        className={`px-3 py-1 rounded-lg border text-sm ${active ? "bg-gray-100" : ""
-            } ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+        className={`px-3 py-1 rounded-lg border text-sm ${active ? "bg-gray-100" : ""} ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
         onClick={onClick}
         disabled={disabled}
         title={title}
@@ -100,8 +100,14 @@ const EventModal: React.FC<EventModalProps> = ({
     }, [open, hasUnsavedGroupChanges, resTab, type]);
 
     const reservationId = quickStatusReservationId(values);
-
     if (!open) return null;
+
+    // Show the conflict pill ONLY for blocked-time conflicts.
+    // We detect conflicts by common keywords so it works whether or not the server appends "Conflicts with: ..."
+    const isBlockedTimeConflict =
+        type === "blockedTime" &&
+        typeof error === "string" &&
+        /(overlap|conflict)/i.test(error || "");
 
     return (
         <div
@@ -115,7 +121,7 @@ const EventModal: React.FC<EventModalProps> = ({
                 onClick={(e) => e.stopPropagation()} // prevent backdrop close when clicking content
             >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                     <div className="flex items-center gap-2">
                         <SegButton
                             active={type === "reservation" && resTab === "details"}
@@ -144,7 +150,8 @@ const EventModal: React.FC<EventModalProps> = ({
                         </SegButton>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="ml-auto flex items-center gap-3">
+                        {isBlockedTimeConflict && <ConflictPill message={error} />}
                         <div className="text-sm text-gray-500">{mode === "edit" ? "Edit" : "Create"}</div>
 
                         {/* Close icon (top-right) */}
@@ -197,9 +204,12 @@ const EventModal: React.FC<EventModalProps> = ({
                         />
                     )}
 
-                    {type === "blockedTime" && <BlockedTimeModal values={values} setValues={setValues} resources={resources} />}
+                    {type === "blockedTime" && (
+                        <BlockedTimeModal values={values} setValues={setValues} resources={resources} />
+                    )}
 
-                    {error && (
+                    {/* Keep the red error box for non-conflict errors, OR for reservation errors */}
+                    {error && !isBlockedTimeConflict && (
                         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                             {error}
                         </div>

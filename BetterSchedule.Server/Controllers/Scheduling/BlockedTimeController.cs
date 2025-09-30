@@ -9,7 +9,6 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.BlockedTime;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Services.Errors;
-using BetterSchedule.Server.Services.Scheduling;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,8 +18,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 {
     /// <summary>
     /// Manages blocked time windows for provider schedules and resources.
-    /// - When ResourceId is null, the block applies to a provider's personal schedule (the "owner" provider is stored in CreatedByUserId).
-    /// - When ResourceId is set, the block applies to that resource regardless of provider.
+    /// - ResourceId = null -> provider self-block (owner provider is CreatedByUserId).
+    /// - ResourceId set -> block applies to that resource regardless of provider.
     /// Managers can create either kind; providers can only self-block (no resource).
     /// </summary>
     [ApiController]
@@ -29,12 +28,10 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     public sealed class BlockedTimeController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
-        private readonly ISchedulingConflictService _conflicts;
 
-        public BlockedTimeController(ApplicationDbContext db, ISchedulingConflictService conflicts)
+        public BlockedTimeController(ApplicationDbContext db)
         {
             _db = db;
-            _conflicts = conflicts;
         }
 
         /// <summary>Returns blocks overlapping the optional range, ordered by start time.</summary>
@@ -71,7 +68,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         }
 
         /// <summary>
-        /// Creates a blocked time. Managers must pick either a provider OR a resource.
+        /// Creates a blocked time. Managers may pick either a provider OR a resource.
         /// Providers may only create self-blocks (no resource).
         /// </summary>
         [HttpPost]
@@ -84,8 +81,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.StartTime >= dto.EndTime)
                 return BadRequest(new ApiError("VALIDATION_ERROR", "EndTime must be after StartTime."));
 
-            // ---- Role + targeting rules
-            string ownerProviderIdForBlock; // who the self-block applies to when ResourceId is null
+            // Role + targeting
+            string ownerProviderIdForBlock;
             if (IsManager)
             {
                 var hasProvider = !string.IsNullOrWhiteSpace(dto.ProviderId);
@@ -96,7 +93,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 if (!hasProvider && !hasResource)
                     return BadRequest(new ApiError("VALIDATION_ERROR", "Managers must select a provider or a resource."));
 
-                // When targeting a provider, validate that user exists in this org
                 if (hasProvider)
                 {
                     var providerExists = await _db.Users.AnyAsync(
@@ -105,18 +101,15 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                         return BadRequest(new ApiError("VALIDATION_ERROR", "Provider does not exist in this organization."));
                 }
 
-                // For provider blocks, stamp the provider as the "owner" (keeps scopes & conflicts working)
                 ownerProviderIdForBlock = hasProvider ? dto.ProviderId! : UserId!;
             }
             else
             {
-                // Provider caller
                 if (dto.ResourceId.HasValue)
                     return BadRequest(new ApiError("VALIDATION_ERROR", "Providers cannot create resource blocks."));
                 ownerProviderIdForBlock = UserId!;
             }
 
-            // Resource existence when provided
             if (dto.ResourceId.HasValue)
             {
                 var exists = await _db.CalendarResources
@@ -124,19 +117,69 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 if (!exists) return BadRequest(new ApiError("VALIDATION_ERROR", "Resource does not exist in this organization."));
             }
 
-            // Conflicts check
-            var conflicts = await _conflicts.CheckBlockedTimeCreateAsync(
-                organizationId: OrganizationId,
-                createdByUserId: ownerProviderIdForBlock,
-                resourceId: dto.ResourceId,
-                start: dto.StartTime,
-                end: dto.EndTime,
-                cancellationToken: ct);
+            // Load org TZ for human-friendly conflict summaries
+            var orgSettings = await _db.OrganizationSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            TimeZoneInfo? tz = null;
+            try { if (orgSettings != null && !string.IsNullOrWhiteSpace(orgSettings.TimeZoneId)) tz = TimeZoneInfo.FindSystemTimeZoneById(orgSettings.TimeZoneId); } catch { }
 
-            if (conflicts.OverlapsReservations)
-                return Conflict(new ApiError("RESERVATION_CONFLICT", "This block overlaps one or more reservations."));
-            if (conflicts.OverlapsOtherBlocks)
-                return Conflict(new ApiError("BLOCK_OVERLAP", "This block overlaps an existing blocked time."));
+            // ---- Scoped conflict checks ----
+
+            // Reservations scoped: resource blocks => same resource; provider self-blocks => same provider
+            var resQuery =
+                from r in _db.Reservations.AsNoTracking()
+                join u in _db.Users.AsNoTracking() on r.ClientId equals u.Id into uj
+                from u in uj.DefaultIfEmpty()
+                where r.OrganizationId == OrganizationId
+                      && !r.IsDeleted
+                      && r.StartTime < dto.EndTime
+                      && r.EndTime > dto.StartTime
+                select new { r.Id, r.ResourceId, r.ServiceProviderId, r.StartTime, r.EndTime, ClientName = u.UserName };
+
+            if (dto.ResourceId.HasValue)
+                resQuery = resQuery.Where(x => x.ResourceId == dto.ResourceId);
+            else
+                resQuery = resQuery.Where(x => x.ServiceProviderId == ownerProviderIdForBlock);
+
+            var resConflict = await resQuery.OrderBy(x => x.StartTime).FirstOrDefaultAsync(ct);
+            if (resConflict is not null)
+            {
+                string FormatRange(DateTimeOffset s, DateTimeOffset e)
+                {
+                    DateTimeOffset ls = tz is null ? s.ToLocalTime() : TimeZoneInfo.ConvertTime(s, tz);
+                    DateTimeOffset le = tz is null ? e.ToLocalTime() : TimeZoneInfo.ConvertTime(e, tz);
+                    return $"{ls:ddd M/d h:mm tt}–{le:h:mm tt}";
+                }
+                var who = string.IsNullOrWhiteSpace(resConflict.ClientName) ? "Reservation" : resConflict.ClientName;
+                var msg = $"This block overlaps one or more reservations. Conflicts with: {who}, {FormatRange(resConflict.StartTime, resConflict.EndTime)}";
+                return Conflict(new ApiError("RESERVATION_CONFLICT", msg));
+            }
+
+            // Blocked-times scoped: resource blocks => same resource; provider self-blocks => same provider self-blocks
+            var blockQuery = _db.BlockedTimes.AsNoTracking()
+                .Where(b => b.OrganizationId == OrganizationId && !b.IsDeleted)
+                .Where(b => b.StartTime < dto.EndTime && b.EndTime > dto.StartTime);
+
+            if (dto.ResourceId.HasValue)
+                blockQuery = blockQuery.Where(b => b.ResourceId == dto.ResourceId);
+            else
+                blockQuery = blockQuery.Where(b => b.ResourceId == null && b.CreatedByUserId == ownerProviderIdForBlock);
+
+            var blockConflict = await blockQuery
+                .OrderBy(b => b.StartTime)
+                .Select(b => new { b.Id, b.StartTime, b.EndTime, b.Reason })
+                .FirstOrDefaultAsync(ct);
+
+            if (blockConflict is not null)
+            {
+                DateTimeOffset ls = tz is null ? blockConflict.StartTime.ToLocalTime() : TimeZoneInfo.ConvertTime(blockConflict.StartTime, tz);
+                DateTimeOffset le = tz is null ? blockConflict.EndTime.ToLocalTime() : TimeZoneInfo.ConvertTime(blockConflict.EndTime, tz);
+                var reason = string.IsNullOrWhiteSpace(blockConflict.Reason) ? "Blocked" : blockConflict.Reason!;
+                var msg = $"This block overlaps an existing blocked time. Conflicts with: {reason}, {ls:ddd M/d h:mm tt}–{le:h:mm tt}";
+                return Conflict(new ApiError("BLOCK_OVERLAP", msg));
+            }
+
+            // ---- end scoped checks ----
 
             var entity = new BlockedTime
             {
@@ -144,9 +187,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 Reason = dto.Reason,
                 StartTime = dto.StartTime,
                 EndTime = dto.EndTime,
-                ResourceId = dto.ResourceId,              // null => provider schedule
+                ResourceId = dto.ResourceId,               // null => provider schedule
                 BackColor = dto.BackColor,
-                CreatedByUserId = ownerProviderIdForBlock, // provider whose calendar is blocked (or manager if resource block)
+                CreatedByUserId = ownerProviderIdForBlock, // provider whose calendar is blocked
                 IsDeleted = false
             };
 
@@ -180,7 +223,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (entity is null) return NotFound();
             if (!BlockedTimeScopes.CanModify(entity, UserId, IsManager, IsProvider)) return Forbid();
 
-            // Providers cannot manipulate resource targeting at all
             if (IsProvider && !IsManager && (dto.ResourceId.HasValue || dto.ClearResource == true))
                 return BadRequest(new ApiError("VALIDATION_ERROR", "Providers cannot change resource targeting on a blocked time."));
 
@@ -209,19 +251,63 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 }
             }
 
-            var conflicts = await _conflicts.CheckBlockedTimeUpdateAsync(
-                blockedTimeId: id,
-                organizationId: OrganizationId,
-                createdByUserId: entity.CreatedByUserId, // the provider whose calendar is blocked (if ResourceId is null)
-                resourceId: newResourceId,
-                start: newStart,
-                end: newEnd,
-                cancellationToken: ct);
+            // Org TZ for summaries
+            var orgSettings = await _db.OrganizationSettings.AsNoTracking()
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            TimeZoneInfo? tz = null;
+            try { if (orgSettings != null && !string.IsNullOrWhiteSpace(orgSettings.TimeZoneId)) tz = TimeZoneInfo.FindSystemTimeZoneById(orgSettings.TimeZoneId); } catch { }
 
-            if (conflicts.OverlapsReservations)
-                return Conflict(new ApiError("RESERVATION_CONFLICT", "This block overlaps one or more reservations."));
-            if (conflicts.OverlapsOtherBlocks)
-                return Conflict(new ApiError("BLOCK_OVERLAP", "This block overlaps an existing blocked time."));
+            // ---- Scoped conflict checks (like Create) ----
+
+            var resQuery =
+                from r in _db.Reservations.AsNoTracking()
+                join u in _db.Users.AsNoTracking() on r.ClientId equals u.Id into uj
+                from u in uj.DefaultIfEmpty()
+                where r.OrganizationId == OrganizationId
+                      && !r.IsDeleted
+                      && r.StartTime < newEnd
+                      && r.EndTime > newStart
+                select new { r.Id, r.ResourceId, r.ServiceProviderId, r.StartTime, r.EndTime, ClientName = u.UserName };
+
+            if (newResourceId.HasValue)
+                resQuery = resQuery.Where(x => x.ResourceId == newResourceId);
+            else
+                resQuery = resQuery.Where(x => x.ServiceProviderId == entity.CreatedByUserId);
+
+            var resConflict = await resQuery.OrderBy(x => x.StartTime).FirstOrDefaultAsync(ct);
+            if (resConflict is not null)
+            {
+                DateTimeOffset ls = tz is null ? resConflict.StartTime.ToLocalTime() : TimeZoneInfo.ConvertTime(resConflict.StartTime, tz);
+                DateTimeOffset le = tz is null ? resConflict.EndTime.ToLocalTime() : TimeZoneInfo.ConvertTime(resConflict.EndTime, tz);
+                var who = string.IsNullOrWhiteSpace(resConflict.ClientName) ? "Reservation" : resConflict.ClientName;
+                var msg = $"This block overlaps one or more reservations. Conflicts with: {who}, {ls:ddd M/d h:mm tt}–{le:h:mm tt}";
+                return Conflict(new ApiError("RESERVATION_CONFLICT", msg));
+            }
+
+            var blockQuery = _db.BlockedTimes.AsNoTracking()
+                .Where(b => b.OrganizationId == OrganizationId && !b.IsDeleted && b.Id != id)
+                .Where(b => b.StartTime < newEnd && b.EndTime > newStart);
+
+            if (newResourceId.HasValue)
+                blockQuery = blockQuery.Where(b => b.ResourceId == newResourceId);
+            else
+                blockQuery = blockQuery.Where(b => b.ResourceId == null && b.CreatedByUserId == entity.CreatedByUserId);
+
+            var blockConflict = await blockQuery
+                .OrderBy(b => b.StartTime)
+                .Select(b => new { b.Id, b.StartTime, b.EndTime, b.Reason })
+                .FirstOrDefaultAsync(ct);
+
+            if (blockConflict is not null)
+            {
+                DateTimeOffset ls = tz is null ? blockConflict.StartTime.ToLocalTime() : TimeZoneInfo.ConvertTime(blockConflict.StartTime, tz);
+                DateTimeOffset le = tz is null ? blockConflict.EndTime.ToLocalTime() : TimeZoneInfo.ConvertTime(blockConflict.EndTime, tz);
+                var reason = string.IsNullOrWhiteSpace(blockConflict.Reason) ? "Blocked" : blockConflict.Reason!;
+                var msg = $"This block overlaps an existing blocked time. Conflicts with: {reason}, {ls:ddd M/d h:mm tt}–{le:h:mm tt}";
+                return Conflict(new ApiError("BLOCK_OVERLAP", msg));
+            }
+
+            // ---- end scoped checks ----
 
             if (dto.Reason is not null) entity.Reason = dto.Reason;
             entity.StartTime = newStart;

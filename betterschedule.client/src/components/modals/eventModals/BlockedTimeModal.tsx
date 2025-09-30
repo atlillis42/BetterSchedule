@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import Select, { type SingleValue } from "react-select";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
+import { useAuth } from "@/components/auth/AuthContext";
 
 type CalendarResource = { id: number; name: string };
 type NumberOption = { value: number; label: string };
@@ -8,12 +9,13 @@ type NumberOption = { value: number; label: string };
 type Props = {
     values: any;
     setValues: (updater: (prev: any) => any) => void;
-    resources: CalendarResource[];   
-    isManager: boolean;
-    isProvider: boolean;
+    resources: CalendarResource[];
 };
 
-const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources, isManager, isProvider }) => {
+const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources }) => {
+    const { isManager, isProvider } = useAuth(); 
+    const role = isManager ? "manager" : isProvider ? "provider" : "other";
+
     const resourceOptionsRS: NumberOption[] = useMemo(
         () => (resources ?? []).map((r) => ({ value: r.id, label: r.name })),
         [resources]
@@ -29,12 +31,13 @@ const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources, isMan
         setValues((prev: any) => ({ ...prev, [key]: value }));
     };
 
-    // Mutual exclusivity (manager UX): picking a provider clears resource, and vice versa
+    // Manager-only targeting: choose provider OR resource (mutually exclusive)
     const handleProviderPicked = (p: { id: string } | null) => {
         setValues((prev: any) => ({
             ...prev,
             providerId: p?.id ?? undefined,
-            resourceId: p ? undefined : prev.resourceId, // if provider chosen => clear resource
+            providerName: p ? undefined : prev.providerName,
+            resourceId: p ? undefined : prev.resourceId,
         }));
     };
 
@@ -43,14 +46,13 @@ const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources, isMan
         setValues((prev: any) => ({
             ...prev,
             resourceId: rid,
-            providerId: rid ? undefined : prev.providerId, // if resource chosen => clear provider
+            providerId: rid ? undefined : prev.providerId,
         }));
     };
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* Manager-only targeting controls */}
-            {isManager && (
+            {role === "manager" && (
                 <>
                     <div className="flex flex-col gap-1">
                         <label className="text-sm font-medium">Block for provider (optional)</label>
@@ -59,10 +61,10 @@ const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources, isMan
                             initialLabel={values.providerName ?? null}
                             onChange={handleProviderPicked}
                             placeholder="Search providers…"
-                            disabled={!!values.resourceId} // disabled if resource chosen
+                            disabled={!!values.resourceId}
                         />
                         <div className="text-xs text-gray-500 mt-1">
-                            Choose a provider <em>or</em> choose a resource below.
+                            Choose a provider <em>or</em> a resource below (not both).
                         </div>
                     </div>
 
@@ -77,14 +79,13 @@ const BlockedTimeModal: React.FC<Props> = ({ values, setValues, resources, isMan
                             isClearable
                             placeholder="None"
                             noOptionsMessage={() => "No resources"}
-                            isDisabled={!!values.providerId} // disabled if provider chosen
+                            isDisabled={!!values.providerId}
                         />
                     </div>
                 </>
             )}
 
-            {/* Providers: no targeting controls (always block self; no resource) */}
-            {isProvider && !isManager && (
+            {role === "provider" && (
                 <div className="md:col-span-2 rounded border bg-gray-50 px-3 py-2 text-xs text-gray-700">
                     This block will apply to <strong>your</strong> schedule. Providers cannot block resources.
                 </div>

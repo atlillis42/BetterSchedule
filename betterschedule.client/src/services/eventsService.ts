@@ -34,3 +34,34 @@ export function filterEventsByCanceled(events: UiEvent[], showCanceled: boolean)
     if (showCanceled) return events;
     return events.filter((e) => e.type !== "reservation" || e?.reservation?.status !== "Canceled");
 }
+
+// Scoped filtering for blocked times by view and role.
+export function filterBlockedTimesForView(
+    events: UiEvent[],
+    view: "Day" | "Week" | "Month" | "Resources",
+    ctx: { userId?: string | null; isManager?: boolean }
+): UiEvent[] {
+    const { userId, isManager } = ctx;
+
+    return events.filter((e) => {
+        if (e.type !== "blockedTime") return true;
+
+        const isResourceBlock = !!e.blockedTime?.resourceId;
+
+        // Resource blocks only in Resources view
+        if (view !== "Resources" && isResourceBlock) return false;
+
+        // In Resources view, keep resource blocks; provider-self blocks are fine to show as-is.
+        if (view === "Resources") return true;
+
+        // For Day/Week/Month, provider-self blocks:
+        // Providers: only show their own self-blocks
+        // Managers: show all provider self-blocks 
+        if (!isResourceBlock) {
+            if (isManager) return true; 
+            return !!userId && e.createdByUserId === userId;
+        }
+
+        return true;
+    });
+}
