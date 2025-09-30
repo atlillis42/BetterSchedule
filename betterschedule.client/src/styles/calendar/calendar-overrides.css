@@ -1,0 +1,60 @@
+/* Theme-agnostic overrides scoped to the calendar area. */
+/* Matches both timed and all-day events in all DayPilot views. */
+
+.bs-calendar .resv-booked :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+    /* intentionally empty; default look */
+}
+
+.bs-calendar .resv-completed :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+    opacity: 0.9;
+    border-inline-start: 3px solid #059669; /* emerald-600 */
+}
+
+.bs-calendar .resv-canceled :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+    opacity: 0.5;
+    text-decoration: line-through;
+    border-inline-start: 3px solid #9ca3af; /* neutral-400 */
+}
+
+.bs-calendar .resv-noshow :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+    opacity: 0.7;
+    border-inline-start: 3px solid #f59e0b; /* amber-500 */
+}
+
+/* Keep borders/opacity reliably above theme gradients */
+.bs-calendar .resv-completed :is([class*="_event_inner"], [class*="_alldayevent_inner"]),
+.bs-calendar .resv-canceled :is([class*="_event_inner"], [class*="_alldayevent_inner"]),
+.bs-calendar .resv-noshow :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+    position: relative;
+}
+
+/* 3-line event body helpers */
+.bs-calendar .bs-event {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.15;
+}
+
+.bs-calendar .bs-line1 {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.bs-calendar .bs-line2 {
+    font-size: 11px;
+    font-style: italic;
+    opacity: .9;
+}
+
+.bs-calendar .bs-line3 {
+    font-size: 11px;
+    opacity: .9;
+}
+
+/* If you rely on this class in your shading factory, keep it here */
+.bs-calendar .unavailable-cell {
+    background-color: #f5f5f5;
+    opacity: 0.5;
+    cursor: not-allowed;
+}

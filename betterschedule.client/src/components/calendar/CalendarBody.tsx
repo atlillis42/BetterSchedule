@@ -1,5 +1,6 @@
 import { DayPilotCalendar, DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
 import { formatWeekHeader } from "@/utilities/calendarDisplay/formatWeekHeader";
+import { themeForView } from "@/domain/calendar/daypilotThemes";
 import type { CalendarResource, UiEvent, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 
@@ -29,12 +30,14 @@ export default function CalendarBody(props: {
         beforeEventRender,
     } = props;
 
+    const theme = themeForView(view);
+
     return (
         <div className="calendar-body flex-1 overflow-auto">
             {view === "Day" && (
                 <DayPilotCalendar
                     viewType="Day"
-                    theme="betterschedule"
+                    theme={theme}
                     startDate={startDate}
                     events={events}
                     durationBarVisible={false}
@@ -57,7 +60,7 @@ export default function CalendarBody(props: {
             {view === "Week" && (
                 <DayPilotCalendar
                     viewType="Week"
-                    theme="betterschedule"
+                    theme={theme}
                     startDate={startDate}
                     events={events}
                     durationBarVisible={false}
@@ -81,7 +84,7 @@ export default function CalendarBody(props: {
                 <div className="month-wrapper">
                     <DayPilotMonth
                         startDate={startDate}
-                        theme="monthlybetterschedule"
+                        theme={theme}
                         events={events}
                         eventBarVisible={false}
                         onTimeRangeSelected={onTimeRangeSelected}
@@ -109,6 +112,7 @@ export default function CalendarBody(props: {
                     headerHeight={30}
                     rowHeaderWidth={150}
                     durationBarVisible={false}
+                    theme={theme}
                 />
             )}
         </div>

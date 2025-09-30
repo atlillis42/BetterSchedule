@@ -1,0 +1,120 @@
+/* 
+DayPilot Navigator Theme 
+https://themes.daypilot.org/navigator/theme/4xzllo
+Theme Designer Version: 2025.09.27.82882
+*/
+.navigator_main:not(.default) {
+	--dp-nav-border-color: #c0c0c0;
+	--dp-nav-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+	--dp-nav-font-size: 12px;
+	--dp-nav-title-color: #333333;
+	--dp-nav-title-bg-color: #f3f3f3;
+	--dp-nav-dayheader-color: #333333;
+	--dp-nav-dayheader-bg-color: #ffffff;
+	--dp-nav-weeknumber-color: #000000;
+	--dp-nav-weeknumber-bg-color: #ffffff;
+	--dp-nav-day-color: #000000;
+	--dp-nav-day-bg-color: #ffffff;
+	--dp-nav-dayother-color: #808080;
+	--dp-nav-dayother-bg-color: #ffffff;
+	--dp-nav-weekend-bg-color: #f0f0f0;
+	--dp-nav-select-bg-color: #ffe794;
+	--dp-nav-text-align: center;
+}
+.navigator_main {
+	--dp-nav-border-color: #c0c0c0;
+	--dp-nav-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+	--dp-nav-font-size: 12px;
+	--dp-nav-title-color: #333;
+	--dp-nav-title-bg-color: #f3f3f3;
+	--dp-nav-dayheader-color: #333;
+	--dp-nav-dayheader-bg-color: #ffffff;
+	--dp-nav-weeknumber-color: #999;
+	--dp-nav-weeknumber-bg-color: #ffffff;
+	--dp-nav-day-color: #000;
+	--dp-nav-day-bg-color: #ffffff;
+	--dp-nav-dayother-color: gray;
+	--dp-nav-dayother-bg-color: #ffffff;
+	--dp-nav-weekend-bg-color: #f0f0f0;
+	--dp-nav-select-bg-color: #FFE794;
+	--dp-nav-text-align: center;
+}
+.navigator_main *, .navigator_main *:before, .navigator_main *:after {
+	box-sizing: content-box;
+}
+.navigator_main {
+	border-left: 1px solid var(--dp-nav-border-color);
+	border-right: 1px solid var(--dp-nav-border-color);
+	border-bottom: 1px solid var(--dp-nav-border-color);
+	background-color: white;
+	color: var(--dp-nav-day-color);
+	box-sizing: content-box;
+}
+.navigator_month {
+	font-family: var(--dp-nav-font-family);
+	font-size: var(--dp-nav-font-size);
+}
+.navigator_day {
+	color: var(--dp-nav-day-color);
+	background-color: var(--dp-nav-day-bg-color);
+}
+.navigator_weekend {
+	background-color: var(--dp-nav-weekend-bg-color);
+}
+.navigator_dayheader {
+	color: var(--dp-nav-dayheader-color);
+	background-color: var(--dp-nav-dayheader-bg-color);
+	text-align: var(--dp-nav-text-align);
+	padding: 0px;
+}
+.navigator_line {
+	border-bottom: 1px solid var(--dp-nav-border-color);
+}
+.navigator_dayother {
+	color: var(--dp-nav-dayother-color);
+	background-color: var(--dp-nav-dayother-bg-color);
+}
+.navigator_todaybox {
+	border: 1px solid red;
+}
+.navigator_title, .navigator_titleleft, .navigator_titleright {
+	box-sizing: border-box;
+	border-top: 1px solid var(--dp-nav-border-color);
+	border-bottom: 1px solid var(--dp-nav-border-color);
+	color: var(--dp-nav-title-color);
+	background: var(--dp-nav-title-bg-color);
+	text-align: var(--dp-nav-text-align);
+}
+.navigator_busy {
+	font-weight: bold;
+}
+.navigator_cell {
+	text-align: var(--dp-nav-text-align);
+}
+.navigator_select .navigator_cell_box {
+	background-color: var(--dp-nav-select-bg-color);
+	opacity: 0.5;
+}
+.navigator_weeknumber {
+	text-align: var(--dp-nav-text-align);
+	color: var(--dp-nav-weeknumber-color);
+	background: var(--dp-nav-weeknumber-bg-color);
+}
+.navigator_cell_text {
+	cursor: pointer;
+}
+.navigator_todaysection {
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-top: 1px solid var(--dp-nav-border-color);
+}
+.navigator_todaysection_button {
+	cursor: pointer;
+	color: #333;
+	background-color: #f0f0f0;
+	border: 1px solid var(--dp-nav-border-color);
+	padding: 5px 10px;
+	border-radius: 0px;
+}

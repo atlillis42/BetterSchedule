@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import "@styles/Calendar.css";
+import "@/styles/calendar";
 
 import { useAuth } from "@/components/auth/AuthContext";
 import CalendarNavigatorPane from "./CalendarNavigatorPane";
@@ -12,8 +12,7 @@ import { useCalendarData } from "@/hooks/useCalendarData";
 import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
-import { filterEventsByCanceled } from "@/services/eventsService";
-import { filterBlockedTimesForView } from "@/services/eventsService";
+import { filterEventsByCanceled, filterBlockedTimesForView } from "@/services/eventsService";
 
 import { buildBusinessHours } from "@/services/availabilityService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
@@ -26,6 +25,14 @@ import { peekClientName, getClientNameCached } from "@/services/clientNameCache"
 
 /**
  * Root calendar shell that coordinates data loading, overlays, styling, and modal workflows.
+ *
+ * Responsibilities:
+ * - Pulls auth context to determine capabilities (manage reservations/blocks).
+ * - Manages calendar view state (mode, date range, timezone label).
+ * - Loads resources/events/providers and filters visible events (canceled/blocked-time rules).
+ * - Wires DayPilot render callbacks (cell shading, scheduler shading, event rendering).
+ * - Hosts the EventModal and passes CRUD handlers.
+ *
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
@@ -129,7 +136,7 @@ const Calendar = () => {
                 onRefreshRequested={refreshEvents}
             />
 
-            <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
+            <div className="bs-calendar calendar-container w-full h-full flex flex-row overflow-hidden">
                 <CalendarNavigatorPane
                     view={view as ViewMode}
                     visibleEvents={visibleEvents as UiEvent[]}
