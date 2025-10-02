@@ -32,6 +32,10 @@ export default function CalendarBody(props: {
 
     const theme = themeForView(view);
 
+    // Helper to append a CSS class safely
+    const appendClass = (existing: string | undefined, add?: string) =>
+        add ? [existing, add].filter(Boolean).join(" ") : existing || "";
+
     return (
         <div className="calendar-body flex-1 overflow-auto">
             {view === "Day" && (
@@ -47,12 +51,9 @@ export default function CalendarBody(props: {
                     onBeforeEventRender={beforeEventRender}
                     headerHeight={40}
                     onBeforeHeaderRender={(args) => {
-                        const { weekday, short } = formatWeekHeader(args.header.start);
-                        args.header.html = `
-              <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                <span style="font-weight:600">${weekday}</span>
-                <span style="font-size:12px">${short}</span>
-              </div>`;
+                        const info = formatWeekHeader(args.header.start);
+                        args.header.html = info.html;
+                        args.header.cssClass = appendClass(args.header.cssClass, info.cssClass);
                     }}
                 />
             )}
@@ -70,12 +71,9 @@ export default function CalendarBody(props: {
                     onBeforeEventRender={beforeEventRender}
                     headerHeight={40}
                     onBeforeHeaderRender={(args) => {
-                        const { weekday, short } = formatWeekHeader(args.header.start);
-                        args.header.html = `
-              <div style="display:flex;flex-direction:column;align-items:center;line-height:1.2">
-                <span style="font-weight:600">${weekday}</span>
-                <span style="font-size:12px">${short}</span>
-              </div>`;
+                        const info = formatWeekHeader(args.header.start);
+                        args.header.html = info.html;
+                        args.header.cssClass = appendClass(args.header.cssClass, info.cssClass);
                     }}
                 />
             )}

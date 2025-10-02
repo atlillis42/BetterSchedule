@@ -1,4 +1,4 @@
-/* ==== Status variables (theme-agnostic) ================================== */
+/* ==== Status variables ================================== */
 .res-status-booked {
     --bs-status: #3b82f6;
     --bs-status-rgb: 59,130,246;
@@ -20,74 +20,134 @@
 }
 /* gray */
 
-/* Target the event inner across all views (Day/Week = weekview, Month, Resources). */
-.ev-reservation .weekview_event_inner,
-.ev-reservation .monthview_event_inner,
-.ev-reservation .resourceview_event_inner {
+/* =========================================================================
+   Event Chip (Bar and shading):
+   Works for Week/Day, Month, and Resource views.
+   ========================================================================= */
+
+/* ---- WEEK (Day/Week) ---- */
+.ev-reservation.weekview_event {
     position: relative;
-    /* fallback tints first (for browsers without color-mix) */
-    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08);
-    border: 1px solid rgba(var(--bs-status-rgb, 0,0,0), 0.35);
-    /* modern tint using color-mix (overrides the fallback where supported) */
-    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff);
-    border-color: color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db);
+    /* Fallback tint */
+    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08) !important;
+    border: 1px solid rgba(var(--bs-status-rgb, 0,0,0), 0.35) !important;
+    /* Modern tint (overrides fallback) */
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff) !important;
+    border-color: color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db) !important;
+    border-radius: 2px;
     box-shadow: 0 1px 1px rgba(0,0,0,0.06);
-    /* make room for the vertical status bar */
-    padding-left: 12px !important;
+    overflow: hidden;
 }
 
-    /* Full-height status bar (duration = full height) */
-    .ev-reservation .weekview_event_inner::before,
-    .ev-reservation .monthview_event_inner::before,
-    .ev-reservation .resourceview_event_inner::before {
+    /* Full-height status bar */
+    .ev-reservation.weekview_event::before {
         content: "";
         position: absolute;
-        left: 0;
-        top: 0;
-        bottom: 0;
+        inset: 0 auto 0 0;
         width: 6px;
         background: var(--bs-status, #3b82f6);
         border-radius: 2px 0 0 2px;
         opacity: 0.95;
     }
 
-/* Month view is tighter: use a slimmer bar and lighter tint */
+/* Inner: transparent so outer tint shows; keep padding for text offset */
+.ev-reservation .weekview_event_inner {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-left: 12px !important; /* room for status bar */
+}
+
+/* Selected state: keep tint; add outline ring for affordance */
+.ev-reservation.weekview_selected.weekview_event {
+    outline: 2px solid color-mix(in srgb, var(--bs-status, #3b82f6) 55%, #ffffff);
+    outline-offset: 0;
+}
+
+/* ---- MONTH ---- */
+.ev-reservation.monthview_event {
+    position: relative;
+    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.06) !important;
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 7%, #fff) !important;
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 30%, #d1d5db) !important;
+    border-radius: 2px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+    .ev-reservation.monthview_event::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px; /* slimmer for month rows */
+        background: var(--bs-status, #3b82f6);
+        opacity: 0.95;
+    }
+
 .ev-reservation .monthview_event_inner {
-    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.06);
-    background: color-mix(in srgb, var(--bs-status, #3b82f6) 7%, #fff);
+    background: transparent !important;
+    border: none !important;
     padding-left: 10px !important;
 }
 
-    .ev-reservation .monthview_event_inner::before {
-        width: 4px;
+/* ---- RESOURCES ---- */
+.ev-reservation.resourceview_event {
+    position: relative;
+    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08) !important;
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff) !important;
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db) !important;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+    .ev-reservation.resourceview_event::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6px;
+        background: var(--bs-status, #3b82f6);
+        opacity: 0.95;
     }
 
-    /* Subtle hover focus */
-    .ev-reservation .weekview_event_inner:hover,
-    .ev-reservation .monthview_event_inner:hover,
-    .ev-reservation .resourceview_event_inner:hover {
-        filter: saturate(1.05) brightness(1.02);
-    }
+.ev-reservation .resourceview_event_inner {
+    background: transparent !important;
+    border: none !important;
+    padding-left: 12px !important;
+}
+
+/* Hover focus polish */
+.ev-reservation.weekview_event:hover,
+.ev-reservation.monthview_event:hover,
+.ev-reservation.resourceview_event:hover {
+    filter: saturate(1.05) brightness(1.02);
+}
 
 /* Keep status-specific decorations */
-.res-status-canceled .weekview_event_inner,
-.res-status-canceled .monthview_event_inner,
-.res-status-canceled .resourceview_event_inner {
+.res-status-canceled.weekview_event,
+.res-status-canceled.monthview_event,
+.res-status-canceled.resourceview_event {
     text-decoration: line-through;
     opacity: 0.85;
 }
 
-/* Blocked time: higher-contrast hatch + dashed border (no status color) */
+/* ---- Blocked time: remain visually distinct (no status color) ---- */
+.ev-blocked.weekview_event,
+.ev-blocked.monthview_event,
+.ev-blocked.resourceview_event {
+    position: relative;
+    color: #374151;
+    border: 1px dashed #9ca3af !important;
+    background: repeating-linear-gradient(45deg, rgba(156,163,175,0.18) 0 8px, rgba(156,163,175,0.10) 8px 16px), linear-gradient(#fafafa, #f5f5f5) !important;
+}
+
 .ev-blocked .weekview_event_inner,
 .ev-blocked .monthview_event_inner,
 .ev-blocked .resourceview_event_inner {
-    position: relative;
-    color: #374151;
-    border: 1px dashed #9ca3af;
-    background: repeating-linear-gradient(45deg, rgba(156,163,175,0.18) 0 8px, rgba(156,163,175,0.10) 8px 16px), linear-gradient(#fafafa, #f5f5f5);
+    background: transparent !important;
+    border: none !important;
 }
 
-/* Typography inside the 3-line content block you already emit */
+/* ---- Typography for your 3-line body ---- */
 .bs-event {
     display: flex;
     flex-direction: column;
@@ -98,18 +158,84 @@
 .bs-line1 {
     font-size: 12px;
     font-weight: 600;
-    color: #0f172a;
+    color: #0f172a; /* slate-900 */
 }
-/* slate-900 */
+
 .bs-line2 {
     font-size: 11px;
     opacity: .9;
-    color: #334155;
+    color: #334155; /* slate-700 */
 }
-/* slate-700 */
+
 .bs-line3 {
     font-size: 11px;
     opacity: .9;
-    color: #475569;
+    color: #475569; /* slate-600 */
 }
-/* slate-600 */
+
+/* === Week view: subtle "Today" column highlight ============================ */
+/* Accent variables (override in theme if desired) */
+.weekview_main {
+    --bs-today-accent: #3c78d8;
+    --bs-today-tint-business: color-mix(in srgb, var(--bs-today-accent) 6%, var(--dp-calendar-cell-business-bg-color, #ffffff));
+    --bs-today-tint-off: color-mix(in srgb, var(--bs-today-accent) 5%, var(--dp-calendar-cell-bg-color, #f9f9f9));
+    --bs-today-tint-header: color-mix(in srgb, var(--bs-today-accent) 10%, var(--dp-calendar-header-bg-color, #f3f3f3));
+    --bs-today-border: color-mix(in srgb, var(--bs-today-accent) 35%, var(--dp-calendar-border-color, #c0c0c0));
+}
+
+/* Header tint for today's column */
+.weekview_colheader_today .weekview_colheader_inner {
+    background: var(--bs-today-tint-header) !important;
+    border-bottom-color: var(--bs-today-border) !important;
+}
+
+/* Body cells: business vs. off-hours keep their own bases, lightly tinted */
+.weekview_cell_today.weekview_cell_business .weekview_cell_inner {
+    background: var(--bs-today-tint-business) !important;
+}
+
+.weekview_cell_today:not(.weekview_cell_business) .weekview_cell_inner {
+    background: var(--bs-today-tint-off) !important;
+}
+
+/* Keep gridlines crisp on "today" column */
+.weekview_cell_today .weekview_cell_inner {
+    border-right: 1px solid var(--dp-calendar-cell-border-color);
+    border-bottom: 1px solid var(--dp-calendar-cell-border-color);
+}
+
+/* Selection still obvious when today is selected (adds a faint ring) */
+.weekview_colheader_today,
+.weekview_cell_today .weekview_cell_inner {
+    box-shadow: inset 0 0 0 0.5px var(--bs-today-border);
+}
+
+/* === Week view: alternating hour shading (subtle) ========================= */
+.weekview_main {
+    /* Light mode mixes a tiny bit of slate into the base cell colors */
+    --bs-hour-odd-tint-business: color-mix(in srgb, #0f172a 6%, var(--dp-calendar-cell-business-bg-color, #ffffff));
+    --bs-hour-odd-tint-off: color-mix(in srgb, #0f172a 5%, var(--dp-calendar-cell-bg-color, #f9f9f9));
+}
+
+/* Apply to the inner cell background so gridlines remain crisp */
+.weekview_cell_hour_odd.weekview_cell_business .weekview_cell_inner {
+    background: var(--bs-hour-odd-tint-business) !important;
+}
+
+.weekview_cell_hour_odd:not(.weekview_cell_business) .weekview_cell_inner {
+    background: var(--bs-hour-odd-tint-off) !important;
+}
+
+/* Keep borders consistent on shaded rows */
+.weekview_cell_hour_odd .weekview_cell_inner {
+    border-right: 1px solid var(--dp-calendar-cell-border-color);
+    border-bottom: 1px solid var(--dp-calendar-cell-border-color);
+}
+
+/* Dark mode tune: add a hint of white into the darker bases */
+@media (prefers-color-scheme: dark) {
+    .weekview_main {
+        --bs-hour-odd-tint-business: color-mix(in srgb, #ffffff 7%, var(--dp-calendar-cell-business-bg-color, #111827));
+        --bs-hour-odd-tint-off: color-mix(in srgb, #ffffff 6%, var(--dp-calendar-cell-bg-color, #0f172a));
+    }
+}

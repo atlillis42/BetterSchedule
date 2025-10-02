@@ -6,10 +6,12 @@ import {
 } from "@/domain/calendar/availability";
 import { Messages } from "@/domain/calendar/messages";
 
-/**
- * Produces a DayPilot Calendar `onBeforeCellRender` handler
- * that applies availability/business-hours shading.
- */
+/* helpers */
+const appendClass = (existing: string | undefined, add: string) =>
+    [existing, add].filter(Boolean).join(" ");
+const cellProps = (args: any) => args?.cell?.properties ?? args?.cell; 
+const oddHourFallback = "rgba(17,24,39,0.035)"; // ~3.5% subtle
+
 export function createBeforeCellRender(opts: {
     shadingMode: CalendarShadingMode;
     availabilityByProvider: Map<string, ProviderAvailabilityDto[]>;
@@ -28,45 +30,54 @@ export function createBeforeCellRender(opts: {
     } = opts;
 
     return (args: any) => {
-        let allowed: boolean | null = null;
-        let reason: string | null = null;
+        try {
+            const p = cellProps(args);
 
-        if (shadingMode === "ProviderAvailability") {
-            if (!overlayProviderId) return;
-            const rules = availabilityByProvider.get(overlayProviderId);
-            if (!rules || rules.length === 0) return;
+            // 1) Availability/business-hours shading (skip gracefully if inputs missing)
+            let allowed: boolean | null = null;
+            let reason: string | null = null;
 
-            allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
-            if (!allowed) reason = Messages.OutsideProviderAvailability;
-        } else if (shadingMode === "OrgBusinessHours") {
-            if (!businessHours) return;
-            allowed = isWithinBusinessHours(
-                args.cell.start,
-                args.cell.end,
-                businessHours.startHHmm,
-                businessHours.endHHmm
-            );
-            if (!allowed) reason = Messages.OutsideOrgBusinessHours;
-        } else {
-            return; // "None"
-        }
+            if (shadingMode === "ProviderAvailability") {
+                const rules = overlayProviderId ? availabilityByProvider.get(overlayProviderId) : undefined;
+                if (rules && rules.length > 0) {
+                    allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
+                    if (allowed === false) reason = Messages.OutsideProviderAvailability;
+                }
+            } else if (shadingMode === "OrgBusinessHours") {
+                if (businessHours) {
+                    allowed = isWithinBusinessHours(
+                        args.cell.start,
+                        args.cell.end,
+                        businessHours.startHHmm,
+                        businessHours.endHHmm
+                    );
+                    if (allowed === false) reason = Messages.OutsideOrgBusinessHours;
+                }
+            }
 
-        if (allowed === false) {
-            args.cell.cssClass = "unavailable-cell";
-            if (reason) args.cell.toolTip = reason;
-            if (isProvider && !isManager) args.cell.disabled = true;
+            if (allowed === false) {
+                p.cssClass = appendClass(p.cssClass, "unavailable-cell");
+                if (isProvider && !isManager) p.disabled = true;
+                // (Tip: Calendar cells don't have a documented tooltip property; if needed, render p.html)
+            }
+
+            // 2) Readability: alternating odd-hour hint (ALWAYS runs)
+            const start = args?.cell?.start;
+            if (start && typeof start.toString === "function") {
+                const hour = Number(start.toString("H")); // 0..23
+                if (hour % 2 === 1) {
+                    p.cssClass = appendClass(p.cssClass, "weekview_cell_hour_odd");
+                    if (allowed !== false && !p.backColor) {
+                        p.backColor = oddHourFallback; // subtle fallback even if CSS order wins
+                    }
+                }
+            }
+        } catch {
+            /* no-op */
         }
     };
 }
 
-/**
- * Produces a DayPilot Scheduler `onBeforeCellRender` handler
- * mirroring `createBeforeCellRender` for the Resources view.
- *
- * Notes:
- * - Scheduler cells expose the same `start`/`end` range on `args.cell`.
- * - Provider overlay logic is time-based only; resource dimension is not considered here.
- */
 export function createBeforeSchedulerCellRender(opts: {
     shadingMode: CalendarShadingMode;
     availabilityByProvider: Map<string, ProviderAvailabilityDto[]>;
@@ -85,33 +96,37 @@ export function createBeforeSchedulerCellRender(opts: {
     } = opts;
 
     return (args: any) => {
-        let allowed: boolean | null = null;
-        let reason: string | null = null;
+        try {
+            const p = cellProps(args);
 
-        if (shadingMode === "ProviderAvailability") {
-            if (!overlayProviderId) return;
-            const rules = availabilityByProvider.get(overlayProviderId);
-            if (!rules || rules.length === 0) return;
+            let allowed: boolean | null = null;
+            let reason: string | null = null;
 
-            allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
-            if (!allowed) reason = Messages.OutsideProviderAvailability;
-        } else if (shadingMode === "OrgBusinessHours") {
-            if (!businessHours) return;
-            allowed = isWithinBusinessHours(
-                args.cell.start,
-                args.cell.end,
-                businessHours.startHHmm,
-                businessHours.endHHmm
-            );
-            if (!allowed) reason = Messages.OutsideOrgBusinessHours;
-        } else {
-            return; // "None"
-        }
+            if (shadingMode === "ProviderAvailability") {
+                const rules = overlayProviderId ? availabilityByProvider.get(overlayProviderId) : undefined;
+                if (rules && rules.length > 0) {
+                    allowed = isRangeWithinProviderAvailability(rules, args.cell.start, args.cell.end);
+                    if (allowed === false) reason = Messages.OutsideProviderAvailability;
+                }
+            } else if (shadingMode === "OrgBusinessHours") {
+                if (businessHours) {
+                    allowed = isWithinBusinessHours(
+                        args.cell.start,
+                        args.cell.end,
+                        businessHours.startHHmm,
+                        businessHours.endHHmm
+                    );
+                    if (allowed === false) reason = Messages.OutsideOrgBusinessHours;
+                }
+            }
 
-        if (allowed === false) {
-            args.cell.cssClass = "unavailable-cell";
-            if (reason) args.cell.toolTip = reason;
-            if (isProvider && !isManager) args.cell.disabled = true;
+            if (allowed === false) {
+                p.cssClass = appendClass(p.cssClass, "unavailable-cell");
+                if (isProvider && !isManager) p.disabled = true;
+            }
+
+        } catch {
+            /* no-op */
         }
     };
 }

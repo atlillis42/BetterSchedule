@@ -17,8 +17,7 @@ export function themeForView(view: ViewMode): ThemeName {
         switch (view) {
             case "Month":
                 return "monthlybetterschedule";
-            case "Resources":
-                // Old code didn't pass a theme to Scheduler (default theme).
+            case "Resources":                
                 return undefined;
             case "Day":
             case "Week":
