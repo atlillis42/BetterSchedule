@@ -1,12 +1,14 @@
 import {
     classForReservationStatus,
-    colorForReservationStatus,
+    // keep these for tooltip text only (we won't set backColor anymore)
     tooltipForReservation,
 } from "@/domain/calendar/eventStyle";
 
 /**
  * Creates a DayPilot `onBeforeEventRender` handler that formats reservation and block entries.
- * Label resolution is synchronous; callers inject lookup functions for client and appointment type names.
+ * - Keeps your client/type label logic + primeClient refresh.
+ * - Adds base CSS classes: `ev-reservation` / `ev-blocked` plus `res-status-*`.
+ * - Avoids setting inline colors (lets CSS control the look across themes/views).
  */
 export function createBeforeEventRender(opts?: {
     /** Returns a display label for an appointment type id. */
@@ -31,6 +33,15 @@ export function createBeforeEventRender(opts?: {
             const end = dpOrIso(e, data, "end");
             const timeLine = `${fmtTime(start)}–${fmtTime(end)}`;
 
+            // Helper to merge css classes uniquely
+            const addClasses = (...cls: Array<string | undefined>) => {
+                const existing = (data.cssClass || "").split(/\s+/).filter(Boolean);
+                for (const c of cls) {
+                    if (c && !existing.includes(c)) existing.push(c);
+                }
+                data.cssClass = existing.join(" ");
+            };
+
             if (kind === "reservation") {
                 const res = data.reservation ?? {};
                 const status = (res.status as any) ?? "Booked";
@@ -49,11 +60,20 @@ export function createBeforeEventRender(opts?: {
                     (typeId != null ? getTypeLabel?.(typeId) : undefined) ||
                     (typeId != null ? `Type ${typeId}` : "");
 
-                data.cssClass = [data.cssClass, classForReservationStatus(status)].filter(Boolean).join(" ");
-                if (!data.backColor) data.backColor = colorForReservationStatus(status);
-                data.toolTip = tooltipForReservation(status);
-                data.html = threeLines(clientLabel, typeLabel, timeLine);
+                // ---- styling: classes, not inline colors ----
+                addClasses("ev-reservation", classForReservationStatus(status));
+                // Do NOT set data.backColor anymore; CSS overrides control visuals across themes/views.
+                // If your control-level props show bars, we prefer them hidden for a cleaner look
+                // (Calendar views already set durationBarVisible={false}; Month uses eventBarVisible={false}.)
 
+                data.toolTip = tooltipForReservation(status);
+                data.html = threeLines(
+                    clientLabel || "Reservation",
+                    typeLabel,
+                    timeLine
+                );
+
+                // Prime client display if still a GUID
                 if (clientId && isGuid(clientLabel) && typeof primeClient === "function") {
                     const p = primeClient(clientId);
                     if (p && typeof (p as any).then === "function") {
@@ -62,16 +82,18 @@ export function createBeforeEventRender(opts?: {
                                 const control = args?.control;
                                 if (control && typeof control.update === "function") {
                                     setTimeout(() => {
-                                        try { control.update(); } catch { }
+                                        try { control.update(); } catch { /* noop */ }
                                     }, 0);
                                 }
                             })
-                            .catch(() => { });
+                            .catch(() => { /* noop */ });
                     }
                 }
             } else {
                 const reason: string = data.reason || data.text || "Blocked";
-                if (!data.backColor) data.backColor = "#9ca3af";
+
+                addClasses("ev-blocked");
+                // No inline colors; theme-agnostic CSS draws hatch + dashed border.
                 data.toolTip = "Blocked time";
                 data.html = threeLines(reason, "Blocked time", timeLine, true);
             }

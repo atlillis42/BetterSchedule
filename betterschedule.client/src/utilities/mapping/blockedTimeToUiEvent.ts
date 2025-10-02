@@ -4,7 +4,6 @@ import type { BlockedTimeDto } from "@/api/blockedtime-api";
 
 /**
  * Maps a blocked-time DTO into a DayPilot UI event.
- * @param block Blocked time read model.
  */
 export function blockedTimeToUiEvent(block: BlockedTimeDto): UiEvent {
     return {
@@ -13,9 +12,11 @@ export function blockedTimeToUiEvent(block: BlockedTimeDto): UiEvent {
         start: utcIsoToDayPilotLocal(block.startTime),
         end: utcIsoToDayPilotLocal(block.endTime),
         resource: block.resourceId ?? undefined,
-        backColor: block.backColor ?? undefined,
+        cssClass: "ev-blocked",
         type: "blockedTime",
         blockedTime: block,
         createdByUserId: block.createdByUserId,
-    };
+        toolTip: "Blocked time",
+        barHidden: true,
+    } as UiEvent;
 }

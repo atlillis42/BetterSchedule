@@ -1,60 +1,115 @@
-/* Theme-agnostic overrides scoped to the calendar area. */
-/* Matches both timed and all-day events in all DayPilot views. */
-
-.bs-calendar .resv-booked :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
-    /* intentionally empty; default look */
+/* ==== Status variables (theme-agnostic) ================================== */
+.res-status-booked {
+    --bs-status: #3b82f6;
+    --bs-status-rgb: 59,130,246;
 }
-
-.bs-calendar .resv-completed :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
-    opacity: 0.9;
-    border-inline-start: 3px solid #059669; /* emerald-600 */
+/* blue */
+.res-status-completed {
+    --bs-status: #10b981;
+    --bs-status-rgb: 16,185,129;
 }
-
-.bs-calendar .resv-canceled :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
-    opacity: 0.5;
-    text-decoration: line-through;
-    border-inline-start: 3px solid #9ca3af; /* neutral-400 */
+/* emerald */
+.res-status-noshow {
+    --bs-status: #f59e0b;
+    --bs-status-rgb: 245,158,11;
 }
-
-.bs-calendar .resv-noshow :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
-    opacity: 0.7;
-    border-inline-start: 3px solid #f59e0b; /* amber-500 */
+/* amber */
+.res-status-canceled {
+    --bs-status: #9ca3af;
+    --bs-status-rgb: 156,163,175;
 }
+/* gray */
 
-/* Keep borders/opacity reliably above theme gradients */
-.bs-calendar .resv-completed :is([class*="_event_inner"], [class*="_alldayevent_inner"]),
-.bs-calendar .resv-canceled :is([class*="_event_inner"], [class*="_alldayevent_inner"]),
-.bs-calendar .resv-noshow :is([class*="_event_inner"], [class*="_alldayevent_inner"]) {
+/* Target the event inner across all views (Day/Week = weekview, Month, Resources). */
+.ev-reservation .weekview_event_inner,
+.ev-reservation .monthview_event_inner,
+.ev-reservation .resourceview_event_inner {
     position: relative;
+    /* fallback tints first (for browsers without color-mix) */
+    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08);
+    border: 1px solid rgba(var(--bs-status-rgb, 0,0,0), 0.35);
+    /* modern tint using color-mix (overrides the fallback where supported) */
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff);
+    border-color: color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db);
+    box-shadow: 0 1px 1px rgba(0,0,0,0.06);
+    /* make room for the vertical status bar */
+    padding-left: 12px !important;
 }
 
-/* 3-line event body helpers */
-.bs-calendar .bs-event {
+    /* Full-height status bar (duration = full height) */
+    .ev-reservation .weekview_event_inner::before,
+    .ev-reservation .monthview_event_inner::before,
+    .ev-reservation .resourceview_event_inner::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 6px;
+        background: var(--bs-status, #3b82f6);
+        border-radius: 2px 0 0 2px;
+        opacity: 0.95;
+    }
+
+/* Month view is tighter: use a slimmer bar and lighter tint */
+.ev-reservation .monthview_event_inner {
+    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.06);
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 7%, #fff);
+    padding-left: 10px !important;
+}
+
+    .ev-reservation .monthview_event_inner::before {
+        width: 4px;
+    }
+
+    /* Subtle hover focus */
+    .ev-reservation .weekview_event_inner:hover,
+    .ev-reservation .monthview_event_inner:hover,
+    .ev-reservation .resourceview_event_inner:hover {
+        filter: saturate(1.05) brightness(1.02);
+    }
+
+/* Keep status-specific decorations */
+.res-status-canceled .weekview_event_inner,
+.res-status-canceled .monthview_event_inner,
+.res-status-canceled .resourceview_event_inner {
+    text-decoration: line-through;
+    opacity: 0.85;
+}
+
+/* Blocked time: higher-contrast hatch + dashed border (no status color) */
+.ev-blocked .weekview_event_inner,
+.ev-blocked .monthview_event_inner,
+.ev-blocked .resourceview_event_inner {
+    position: relative;
+    color: #374151;
+    border: 1px dashed #9ca3af;
+    background: repeating-linear-gradient(45deg, rgba(156,163,175,0.18) 0 8px, rgba(156,163,175,0.10) 8px 16px), linear-gradient(#fafafa, #f5f5f5);
+}
+
+/* Typography inside the 3-line content block you already emit */
+.bs-event {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    line-height: 1.15;
+    line-height: 1.2;
 }
 
-.bs-calendar .bs-line1 {
+.bs-line1 {
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 600;
+    color: #0f172a;
 }
-
-.bs-calendar .bs-line2 {
-    font-size: 11px;
-    font-style: italic;
-    opacity: .9;
-}
-
-.bs-calendar .bs-line3 {
+/* slate-900 */
+.bs-line2 {
     font-size: 11px;
     opacity: .9;
+    color: #334155;
 }
-
-/* If you rely on this class in your shading factory, keep it here */
-.bs-calendar .unavailable-cell {
-    background-color: #f5f5f5;
-    opacity: 0.5;
-    cursor: not-allowed;
+/* slate-700 */
+.bs-line3 {
+    font-size: 11px;
+    opacity: .9;
+    color: #475569;
 }
+/* slate-600 */
