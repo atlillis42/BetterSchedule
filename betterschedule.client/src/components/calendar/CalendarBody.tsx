@@ -1,11 +1,15 @@
-import { DayPilotCalendar, DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
+import { useEffect, useRef } from "react";
+import { DayPilot, DayPilotCalendar, DayPilotMonth, DayPilotScheduler } from "@daypilot/daypilot-lite-react";
 import { formatWeekHeader } from "@/utilities/calendarDisplay/formatWeekHeader";
 import { themeForView } from "@/domain/calendar/daypilotThemes";
 import type { CalendarResource, UiEvent, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 
 /**
- * Main calendar body rendering Day/Week/Month/Resources views.
+ * Renders Day/Week/WorkWeek/Month/Resources using DayPilot Lite components.
+ * - Weekends hidden in a weekly context use the native "WorkWeek" view type.
+ * - Off-hours omission/scrolling is controlled by `heightSpec`.
+ * - Uses controlRef + update() to refresh layout immediately on config changes.
  */
 export default function CalendarBody(props: {
     view: ViewMode;
@@ -17,6 +21,12 @@ export default function CalendarBody(props: {
     beforeCellRender: (args: any) => void;
     beforeSchedulerCellRender: (args: any) => void;
     beforeEventRender: (args: any) => void;
+    /** Start of business hours (0–23). */
+    businessBeginsHour?: number;
+    /** End of business hours (0–23). */
+    businessEndsHour?: number;
+    /** Height/scroll behavior. */
+    heightSpec?: "Full" | "BusinessHours" | "BusinessHoursNoScroll";
 }) {
     const {
         view,
@@ -28,11 +38,30 @@ export default function CalendarBody(props: {
         beforeCellRender,
         beforeSchedulerCellRender,
         beforeEventRender,
+        businessBeginsHour,
+        businessEndsHour,
+        heightSpec,
     } = props;
 
     const theme = themeForView(view);
 
-    // Helper to append a CSS class safely
+    // Control refs for explicit updates.
+    const dayRef = useRef<DayPilot.Calendar | null>(null);
+    const weekRef = useRef<DayPilot.Calendar | null>(null);
+    const monthRef = useRef<DayPilot.Month | null>(null);
+
+    // Refresh the active control when layout-affecting props change.
+    useEffect(() => {
+        if (view === "Day" && dayRef.current) {
+            dayRef.current.update();
+        } else if ((view === "Week" || view === "WorkWeek") && weekRef.current) {
+            weekRef.current.update();
+        } else if (view === "Month" && monthRef.current) {
+            monthRef.current.update();
+        }
+    }, [view, businessBeginsHour, businessEndsHour, heightSpec, startDate]);
+
+    // Helper to append a CSS class safely.
     const appendClass = (existing: string | undefined, add?: string) =>
         add ? [existing, add].filter(Boolean).join(" ") : existing || "";
 
@@ -40,11 +69,15 @@ export default function CalendarBody(props: {
         <div className="calendar-body flex-1 overflow-auto">
             {view === "Day" && (
                 <DayPilotCalendar
+                    controlRef={(c) => (dayRef.current = c ?? null)}
                     viewType="Day"
                     theme={theme}
                     startDate={startDate}
                     events={events}
                     durationBarVisible={false}
+                    businessBeginsHour={businessBeginsHour}
+                    businessEndsHour={businessEndsHour}
+                    heightSpec={heightSpec}
                     onTimeRangeSelected={onTimeRangeSelected}
                     onEventClick={onEventClick}
                     onBeforeCellRender={beforeCellRender}
@@ -58,13 +91,18 @@ export default function CalendarBody(props: {
                 />
             )}
 
-            {view === "Week" && (
+            {(view === "Week" || view === "WorkWeek") && (
                 <DayPilotCalendar
-                    viewType="Week"
+                    controlRef={(c) => (weekRef.current = c ?? null)}
+                    // Native weekly variants: "Week" (7 days) or "WorkWeek" (Mon–Fri)
+                    viewType={view === "WorkWeek" ? "WorkWeek" : "Week"}
                     theme={theme}
                     startDate={startDate}
                     events={events}
                     durationBarVisible={false}
+                    businessBeginsHour={businessBeginsHour}
+                    businessEndsHour={businessEndsHour}
+                    heightSpec={heightSpec}
                     onTimeRangeSelected={onTimeRangeSelected}
                     onEventClick={onEventClick}
                     onBeforeCellRender={beforeCellRender}
@@ -81,6 +119,7 @@ export default function CalendarBody(props: {
             {view === "Month" && (
                 <div className="month-wrapper">
                     <DayPilotMonth
+                        controlRef={(c) => (monthRef.current = c ?? null)}
                         startDate={startDate}
                         theme={theme}
                         events={events}

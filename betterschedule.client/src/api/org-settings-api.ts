@@ -10,7 +10,7 @@ import { api } from "@auth/axios";
  */
 
 /** Calendar view options as exposed by the API. */
-export type DefaultCalendarView = "Day" | "Week" | "Month" | "Resources";
+export type DefaultCalendarView = "Day" | "Week" | "WorkWeek" | "Month" | "Resources";
 
 /** Calendar background shading mode. */
 export type CalendarShadingMode = "None" | "OrgBusinessHours" | "ProviderAvailability";

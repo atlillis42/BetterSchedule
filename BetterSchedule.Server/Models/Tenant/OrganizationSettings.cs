@@ -59,7 +59,7 @@ namespace BetterSchedule.Server.Models.Tenant
 
         /// <summary>First day of week for week/month views. 0 = Sunday, 1 = Monday, etc.</summary>
         [Range(0, 6)]
-        public int StartOfWeek { get; set; } = 0;
+        public int StartOfWeek { get; set; } = 1;
 
         /// <summary>Start of organization business hours, interpreted in <see cref="TimeZoneId"/>.</summary>
         [Required]
@@ -70,7 +70,7 @@ namespace BetterSchedule.Server.Models.Tenant
         public TimeSpan BusinessHoursEndLocal { get; set; } = new(18, 0, 0);
 
         /// <summary>Organization default calendar view for new sessions (users may override per preference).</summary>
-        public DefaultCalendarView DefaultView { get; set; } = DefaultCalendarView.Week;
+        public DefaultCalendarView DefaultView { get; set; } = DefaultCalendarView.WorkWeek;
 
         // --------------------------------------------------------------------
         // Availability visualization + enforcement policy

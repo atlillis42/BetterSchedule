@@ -13,7 +13,7 @@ import { getClientNameCached } from "@/services/clientNameCache";
  * Hydrates client names and appointment type labels before exposing events to the UI
  * to avoid visible "pop-in" of placeholders.
  */
-export function useCalendarData(startDate: DayPilot.Date, view: "Day" | "Week" | "Month" | "Resources") {
+export function useCalendarData(startDate: DayPilot.Date, view: "Day" | "Week" | "WorkWeek" | "Month" | "Resources") {
     const [resources, setResources] = useState<CalendarResource[]>([]);
     const [events, setEvents] = useState<UiEvent[]>([]);
     const [providers, setProviders] = useState<ProviderLite[]>([]);

@@ -5,7 +5,8 @@
     {
         Day = 0,
         Week = 1,
-        Month = 2,
-        Resources = 3
+        WorkWeek = 2,
+        Month = 3,
+        Resources = 4
     }
 }

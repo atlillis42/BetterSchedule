@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import "@/styles/calendar";
 
 import { useAuth } from "@/components/auth/AuthContext";
@@ -24,15 +24,11 @@ import type { ProviderLite } from "@/services/providersService";
 import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
 
 /**
- * Root calendar shell that coordinates data loading, overlays, styling, and modal workflows.
+ * Root calendar shell coordinating data loading, overlays, rendering, and modal workflows.
  *
- * Responsibilities:
- * - Pulls auth context to determine capabilities (manage reservations/blocks).
- * - Manages calendar view state (mode, date range, timezone label).
- * - Loads resources/events/providers and filters visible events (canceled/blocked-time rules).
- * - Wires DayPilot render callbacks (cell shading, scheduler shading, event rendering).
- * - Hosts the EventModal and passes CRUD handlers.
- *
+ * - WorkWeek: use DayPilot's native "WorkWeek" view type for weekly view without weekends.
+ * - Hide non-business hours: uses heightSpec to omit rows (NoScroll) or allow scrolling (BusinessHours).
+ * - All Day/Week config changes flow into CalendarBody; explicit refresh via controlRef happens there.
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
@@ -44,6 +40,9 @@ const Calendar = () => {
     const { overlayProviderId, setOverlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
         isProvider ? userId ?? undefined : undefined
     );
+
+    // UI toggle: hide off-hours (omit rows vs. allow scroll)
+    const [hideOffHours, setHideOffHours] = useState<boolean>(true);
 
     const {
         open,
@@ -74,37 +73,46 @@ const Calendar = () => {
 
     const visibleEvents = useMemo(() => {
         const base = filterEventsByCanceled(events, false);
-        return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, {
-            userId,
-            isManager,
-        });
+        return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, { userId, isManager });
     }, [events, view, userId, isManager]);
+
+    const businessHours = useMemo(() => buildBusinessHours(org), [org]);
+
+    const businessBeginsHour = useMemo<number>(() => {
+        const s = businessHours?.startHHmm;
+        const hh = s ? parseInt(s.slice(0, 2), 10) : 9;
+        return Number.isFinite(hh) ? hh : 9;
+    }, [businessHours]);
+
+    const businessEndsHour = useMemo<number>(() => {
+        const e = businessHours?.endHHmm;
+        const hh = e ? parseInt(e.slice(0, 2), 10) : 17;
+        return Number.isFinite(hh) ? hh : 17;
+    }, [businessHours]);
 
     const beforeCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        const bh = buildBusinessHours(org);
         return createBeforeCellRender({
             shadingMode,
             availabilityByProvider,
             overlayProviderId,
-            businessHours: bh,
+            businessHours,
             isProvider,
             isManager,
         });
-    }, [org, availabilityByProvider, overlayProviderId, isProvider, isManager]);
+    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
 
     const beforeSchedulerCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        const bh = buildBusinessHours(org);
         return createBeforeSchedulerCellRender({
             shadingMode,
             availabilityByProvider,
             overlayProviderId,
-            businessHours: bh,
+            businessHours,
             isProvider,
             isManager,
         });
-    }, [org, availabilityByProvider, overlayProviderId, isProvider, isManager]);
+    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
 
     const beforeEventRender = useMemo(
         () =>
@@ -117,6 +125,12 @@ const Calendar = () => {
     );
 
     const showOverlaySelector = (org?.shadingMode ?? "ProviderAvailability") === "ProviderAvailability";
+
+    // Scroll behavior:
+    // - BusinessHours => business window visible, off-hours reachable via internal scrollbar.
+    // - BusinessHoursNoScroll => off-hours not rendered (no vertical scrollbar).
+    const heightSpec: "BusinessHoursNoScroll" | "BusinessHours" =
+        hideOffHours ? "BusinessHoursNoScroll" : "BusinessHours";
 
     return (
         <>
@@ -153,6 +167,8 @@ const Calendar = () => {
                         providers={providers}
                         overlayProviderId={overlayProviderId}
                         onOverlayChange={setOverlayProviderId}
+                        hideOffHours={hideOffHours}
+                        onToggleOffHours={setHideOffHours}
                     />
 
                     <CalendarLegend />
@@ -167,6 +183,9 @@ const Calendar = () => {
                         beforeCellRender={beforeCellRender}
                         beforeSchedulerCellRender={beforeSchedulerCellRender}
                         beforeEventRender={beforeEventRender}
+                        businessBeginsHour={businessBeginsHour}
+                        businessEndsHour={businessEndsHour}
+                        heightSpec={heightSpec}
                     />
                 </div>
             </div>

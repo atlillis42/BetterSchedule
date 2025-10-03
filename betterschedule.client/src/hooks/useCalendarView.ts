@@ -9,7 +9,7 @@ import type { ViewMode } from "@/types/calendarView";
  */
 export function useCalendarView() {
     const [org, setOrg] = useState<OrgSettingsDto | null>(null);
-    const [view, setView] = useState<ViewMode>("Week");
+    const [view, setView] = useState<ViewMode>("WorkWeek");
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
     const appliedDefaultViewRef = useRef(false);
 
