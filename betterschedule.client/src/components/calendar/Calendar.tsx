@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import "@/styles/calendar";
 
 import { useAuth } from "@/components/auth/AuthContext";
@@ -27,7 +27,7 @@ import { peekClientName, getClientNameCached } from "@/services/clientNameCache"
  * Root calendar shell coordinating data loading, overlays, rendering, and modal workflows.
  *
  * - WorkWeek: use DayPilot's native "WorkWeek" view type for weekly view without weekends.
- * - Hide non-business hours: uses heightSpec to omit rows (NoScroll) or allow scrolling (BusinessHours).
+ * - BusinessHours (Lite best practice): off-hours remain scrollable to avoid hit-testing drift.
  * - All Day/Week config changes flow into CalendarBody; explicit refresh via controlRef happens there.
  */
 const Calendar = () => {
@@ -35,14 +35,11 @@ const Calendar = () => {
     const canManageReservations = isManager || isProvider;
     const canManageBlocks = isManager || isProvider;
 
-    const { org, view, setView, startDate, setStartDate, tzLabel, goToday } = useCalendarView();
+    const { org, view, setView, startDate, setStartDate, tzLabel } = useCalendarView();
     const { resources, events, providers, refreshEvents, appointmentTypesById } = useCalendarData(startDate, view);
     const { overlayProviderId, setOverlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
         isProvider ? userId ?? undefined : undefined
     );
-
-    // UI toggle: hide off-hours (omit rows vs. allow scroll)
-    const [hideOffHours, setHideOffHours] = useState<boolean>(true);
 
     const {
         open,
@@ -124,13 +121,8 @@ const Calendar = () => {
         [appointmentTypesById]
     );
 
-    const showOverlaySelector = (org?.shadingMode ?? "ProviderAvailability") === "ProviderAvailability";
-
-    // Scroll behavior:
-    // - BusinessHours => business window visible, off-hours reachable via internal scrollbar.
-    // - BusinessHoursNoScroll => off-hours not rendered (no vertical scrollbar).
-    const heightSpec: "BusinessHoursNoScroll" | "BusinessHours" =
-        hideOffHours ? "BusinessHoursNoScroll" : "BusinessHours";
+    // Lite best practice: keep business hours visible by default; off-hours are reachable via scroll.
+    const heightSpec: "Full" | "BusinessHours" = "BusinessHours";
 
     return (
         <>
@@ -161,17 +153,11 @@ const Calendar = () => {
                     <CalendarToolbar
                         view={view as ViewMode}
                         onSetView={(v) => setView(v)}
-                        onToday={() => goToday()}
                         tzLabel={tzLabel}
-                        showOverlaySelector={showOverlaySelector}
-                        providers={providers}
-                        overlayProviderId={overlayProviderId}
-                        onOverlayChange={setOverlayProviderId}
-                        hideOffHours={hideOffHours}
-                        onToggleOffHours={setHideOffHours}
                     />
 
-                    <CalendarLegend />
+                    {/* Legend with weekend toggle on the far right */}
+                    <CalendarLegend view={view as ViewMode} onSetView={(v) => setView(v)} />
 
                     <CalendarBody
                         view={view as ViewMode}

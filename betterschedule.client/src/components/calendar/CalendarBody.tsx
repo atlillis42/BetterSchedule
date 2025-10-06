@@ -9,7 +9,8 @@ import type { ViewMode } from "@/types/calendarView";
  * Renders Day/Week/WorkWeek/Month/Resources using DayPilot Lite components.
  * - Weekends hidden in a weekly context use the native "WorkWeek" view type.
  * - Off-hours omission/scrolling is controlled by `heightSpec`.
- * - Uses controlRef + update() to refresh layout immediately on config changes.
+ * - Explicit update() on layout-affecting prop changes.
+ * - Uses keyed mounts for Day/Week to force a fresh layout when heightSpec changes.
  */
 export default function CalendarBody(props: {
     view: ViewMode;
@@ -65,10 +66,15 @@ export default function CalendarBody(props: {
     const appendClass = (existing: string | undefined, add?: string) =>
         add ? [existing, add].filter(Boolean).join(" ") : existing || "";
 
+    // Keys to force remount on layout model changes (fixes first-toggle no-op).
+    const dayKey = `day-${heightSpec ?? "Full"}`;
+    const weekKey = `week-${view}-${heightSpec ?? "Full"}`;
+
     return (
-        <div className="calendar-body flex-1 overflow-auto">
+        <div className="calendar-body flex-1 overflow-hidden min-h-0">
             {view === "Day" && (
                 <DayPilotCalendar
+                    key={dayKey}
                     controlRef={(c) => (dayRef.current = c ?? null)}
                     viewType="Day"
                     theme={theme}
@@ -93,6 +99,7 @@ export default function CalendarBody(props: {
 
             {(view === "Week" || view === "WorkWeek") && (
                 <DayPilotCalendar
+                    key={weekKey}
                     controlRef={(c) => (weekRef.current = c ?? null)}
                     // Native weekly variants: "Week" (7 days) or "WorkWeek" (Mon–Fri)
                     viewType={view === "WorkWeek" ? "WorkWeek" : "Week"}
