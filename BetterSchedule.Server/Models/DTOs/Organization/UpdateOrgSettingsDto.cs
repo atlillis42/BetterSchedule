@@ -31,7 +31,7 @@
         /// <summary>New business-hours end (local) in "HH:mm:ss".</summary>
         public string? BusinessHoursEndLocal { get; init; }
 
-        /// <summary>Default calendar view (Day | Week | Month | Resources).</summary>
+        /// <summary>Default calendar view (Day | Week | WorkWeek | Month | Resources).</summary>
         public string? DefaultView { get; init; }
 
         /// <summary>Background shading mode (None | OrgBusinessHours | ProviderAvailability).</summary>

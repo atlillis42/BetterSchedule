@@ -1,4 +1,5 @@
 import { DayPilotNavigator } from "@daypilot/daypilot-lite-react";
+import { navigatorTheme } from "@/domain/calendar/daypilotThemes";
 import type { UiEvent } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 
@@ -11,10 +12,11 @@ export default function CalendarNavigatorPane(props: {
     onDateChange: (date: any) => void;
 }) {
     const { view, visibleEvents, onDateChange } = props;
+
     return (
         <div className="calendar-sidebar w-64 bg-white shadow-md border-r border-gray-200">
             <DayPilotNavigator
-                theme="betterschedule_navigator"
+                theme={navigatorTheme()}
                 selectMode={view === "Month" ? "Month" : "Day"}
                 showMonths={3}
                 skipMonths={3}

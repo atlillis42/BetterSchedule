@@ -1,2 +1,2 @@
-export * from "./eventModalFields";
 export * from "./formFields";
+export * from "../formFields/extractEventFields";

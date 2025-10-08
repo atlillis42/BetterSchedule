@@ -5,11 +5,12 @@ import type { ViewMode } from "@/types/calendarView";
 
 /**
  * Manages calendar view state (view mode, start date) and loads organization settings.
- * Applies the organization's default view once when available.
+ * Always defaults to WorkWeek. If the org default is "Week", coerce it to "WorkWeek".
+ * Other org defaults (Day/Month/Resources) are respected.
  */
 export function useCalendarView() {
     const [org, setOrg] = useState<OrgSettingsDto | null>(null);
-    const [view, setView] = useState<ViewMode>("Week");
+    const [view, setView] = useState<ViewMode>("WorkWeek"); // hard default to WorkWeek
     const [startDate, setStartDate] = useState(DayPilot.Date.today());
     const appliedDefaultViewRef = useRef(false);
 
@@ -18,13 +19,14 @@ export function useCalendarView() {
             try {
                 const s = await getOrgSettings();
                 setOrg(s);
-                if (!appliedDefaultViewRef.current && s.defaultView) {
-                    setView(s.defaultView as ViewMode);
+                if (!appliedDefaultViewRef.current && s?.defaultView) {
+                    const v = (s.defaultView as ViewMode) || "WorkWeek";
+                    const coerced: ViewMode = v === "Week" ? "WorkWeek" : v;
+                    setView(coerced);
                     appliedDefaultViewRef.current = true;
                 }
             } catch (err: any) {
                 if (err?.response?.status !== 403) {
-                    // Best-effort: only warn for non-403 failures
                     console.warn("Org settings load failed", err);
                 }
             }

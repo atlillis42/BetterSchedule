@@ -38,9 +38,9 @@ namespace BetterSchedule.Server.Models.DTOs.Organization
         [Required]
         public string BusinessHoursEndLocal { get; init; } = "18:00:00";
 
-        /// <summary>Default calendar view (Day | Week | Month | Resources).</summary>
+        /// <summary>Default calendar view (Day | Week | WorkWeek | Month | Resources).</summary>
         [Required]
-        public string DefaultView { get; init; } = "Week";
+        public string DefaultView { get; init; } = "WorkWeek";
 
         /// <summary>Calendar shading mode (None | OrgBusinessHours | ProviderAvailability).</summary>
         [Required]

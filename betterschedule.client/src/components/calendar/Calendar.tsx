@@ -1,18 +1,18 @@
 import { useMemo } from "react";
-import "@styles/Calendar.css";
+import "@/styles/calendar";
 
 import { useAuth } from "@/components/auth/AuthContext";
 import CalendarNavigatorPane from "./CalendarNavigatorPane";
 import CalendarToolbar from "./CalendarToolbar";
 import CalendarLegend from "./CalendarLegend";
 import CalendarBody from "./CalendarBody";
-import EventModal from "@/components/modals/EventModal";
+import EventModal from "@/components/modals/eventModals/EventModal";
 
 import { useCalendarData } from "@/hooks/useCalendarData";
 import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
-import { filterEventsByCanceled } from "@/services/eventsService";
+import { filterEventsByCanceled, filterBlockedTimesForView } from "@/services/eventsService";
 
 import { buildBusinessHours } from "@/services/availabilityService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
@@ -22,16 +22,25 @@ import type { UiEvent, CalendarResource, CalendarTimeRangeSelectedArgs } from "@
 import type { ViewMode } from "@/types/calendarView";
 import type { ProviderLite } from "@/services/providersService";
 import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
+import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekHeader";
 
 /**
- * Root calendar shell that coordinates data loading, overlays, styling, and modal workflows.
+ * Calendar (root shell)
+ * -----------------------------------------------------------------------------
+ * Orchestrates data, overlays, DayPilot view rendering, and modal workflows.
+ *
+ * Key behaviors:
+ * - Resources view uses DayPilotCalendar(Resources) with a 1-day fetch window.
+ * - Business hours default to "BusinessHours" (off-hours remain scrollable).
+ * - Legend shows a compact date badge when in Resources view.
+ * - Toolbar order: Day, Resources, Week, Month.
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
     const canManageReservations = isManager || isProvider;
     const canManageBlocks = isManager || isProvider;
 
-    const { org, view, setView, startDate, setStartDate, tzLabel, goToday } = useCalendarView();
+    const { org, view, setView, startDate, setStartDate, tzLabel } = useCalendarView();
     const { resources, events, providers, refreshEvents, appointmentTypesById } = useCalendarData(startDate, view);
     const { overlayProviderId, setOverlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
         isProvider ? userId ?? undefined : undefined
@@ -64,33 +73,51 @@ const Calendar = () => {
         refreshEvents,
     });
 
-    const visibleEvents = useMemo(() => filterEventsByCanceled(events, false), [events]);
+    // Visible events after canceled/blocked filters for the current view.
+    const visibleEvents = useMemo(() => {
+        const base = filterEventsByCanceled(events, false);
+        return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, { userId, isManager });
+    }, [events, view, userId, isManager]);
 
+    // Organization business hours → DayPilot hour integers.
+    const businessHours = useMemo(() => buildBusinessHours(org), [org]);
+
+    const businessBeginsHour = useMemo<number>(() => {
+        const s = businessHours?.startHHmm;
+        const hh = s ? parseInt(s.slice(0, 2), 10) : 9;
+        return Number.isFinite(hh) ? hh : 9;
+    }, [businessHours]);
+
+    const businessEndsHour = useMemo<number>(() => {
+        const e = businessHours?.endHHmm;
+        const hh = e ? parseInt(e.slice(0, 2), 10) : 17;
+        return Number.isFinite(hh) ? hh : 17;
+    }, [businessHours]);
+
+    // Shading and event rendering callbacks.
     const beforeCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        const bh = buildBusinessHours(org);
         return createBeforeCellRender({
             shadingMode,
             availabilityByProvider,
             overlayProviderId,
-            businessHours: bh,
+            businessHours,
             isProvider,
             isManager,
         });
-    }, [org, availabilityByProvider, overlayProviderId, isProvider, isManager]);
+    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
 
     const beforeSchedulerCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        const bh = buildBusinessHours(org);
         return createBeforeSchedulerCellRender({
             shadingMode,
             availabilityByProvider,
             overlayProviderId,
-            businessHours: bh,
+            businessHours,
             isProvider,
             isManager,
         });
-    }, [org, availabilityByProvider, overlayProviderId, isProvider, isManager]);
+    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
 
     const beforeEventRender = useMemo(
         () =>
@@ -102,7 +129,17 @@ const Calendar = () => {
         [appointmentTypesById]
     );
 
-    const showOverlaySelector = (org?.shadingMode ?? "ProviderAvailability") === "ProviderAvailability";
+    /**
+     * Day label shown in the legend when view === "Resources".
+     * Delegates to a utility that ensures local interpretation and ordinal suffix.
+     */
+    const resourcesDayLabel = useMemo(
+        () => formatResourcesDayLabel(startDate as any),
+        [startDate]
+    );
+
+    // Lite best practice: keep business hours visible by default; off-hours remain reachable via scroll.
+    const heightSpec: "Full" | "BusinessHours" = "BusinessHours";
 
     return (
         <>
@@ -122,7 +159,7 @@ const Calendar = () => {
                 onRefreshRequested={refreshEvents}
             />
 
-            <div className="calendar-container w-full h-full flex flex-row overflow-hidden">
+            <div className="bs-calendar calendar-container w-full h-full flex flex-row overflow-hidden">
                 <CalendarNavigatorPane
                     view={view as ViewMode}
                     visibleEvents={visibleEvents as UiEvent[]}
@@ -133,15 +170,14 @@ const Calendar = () => {
                     <CalendarToolbar
                         view={view as ViewMode}
                         onSetView={(v) => setView(v)}
-                        onToday={() => goToday()}
                         tzLabel={tzLabel}
-                        showOverlaySelector={showOverlaySelector}
-                        providers={providers}
-                        overlayProviderId={overlayProviderId}
-                        onOverlayChange={setOverlayProviderId}
                     />
 
-                    <CalendarLegend />
+                    <CalendarLegend
+                        view={view as ViewMode}
+                        onSetView={(v) => setView(v)}
+                        resourcesDayLabel={resourcesDayLabel}
+                    />
 
                     <CalendarBody
                         view={view as ViewMode}
@@ -153,6 +189,9 @@ const Calendar = () => {
                         beforeCellRender={beforeCellRender}
                         beforeSchedulerCellRender={beforeSchedulerCellRender}
                         beforeEventRender={beforeEventRender}
+                        businessBeginsHour={businessBeginsHour}
+                        businessEndsHour={businessEndsHour}
+                        heightSpec={heightSpec}
                     />
                 </div>
             </div>

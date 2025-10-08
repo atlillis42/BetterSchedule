@@ -1,25 +1,29 @@
 import { DayPilot } from "@daypilot/daypilot-lite-react";
 
-// Shared by selection handlers
+/** Shared range payload used by selection handlers. */
 export interface DayPilotTimeRangeArgs {
     start: DayPilot.Date;
     end: DayPilot.Date;
 }
 
+/** Minimal control surface used by our selection logic. */
 export interface DayPilotControl {
     clearSelection: () => void;
 }
 
-// Calendar/Scheduler selection (week/day/resource view)
+/**
+ * Day/Week/Resources selection args.
+ * `resource` is set in Resources mode when selecting inside a resource column.
+ */
 export interface CalendarTimeRangeSelectedArgs extends DayPilotTimeRangeArgs {
     control: DayPilotControl;
     resource?: number | string;
 }
 
-// DayPilot can expose event fields as properties OR getters (e.id vs e.id()).
-// This captures both without losing too much type safety.
+/** Value can be a primitive or a DayPilot getter function. */
 type ValueOrGetter<T> = T | (() => T);
 
+/** Minimal DayPilot event surface we use in callbacks (click, beforeRender, etc.). */
 export interface DayPilotEventLike {
     id: ValueOrGetter<number | string>;
     text?: ValueOrGetter<string>;
@@ -29,12 +33,13 @@ export interface DayPilotEventLike {
     backColor?: string;
     data?: Record<string, unknown>;
 
-    // Custom fields you attach to events
+    // Custom fields we attach
     type?: "reservation" | "blockedTime";
     createdByUserId?: string;
     createdByUserName?: string;
 }
 
+/** Event arg surface for DayPilot handlers. */
 export interface DayPilotEventArgs {
     e: DayPilotEventLike;
 }

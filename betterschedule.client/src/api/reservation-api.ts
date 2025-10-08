@@ -56,14 +56,27 @@ export type UpdateReservationDto = {
     appointmentTypeId?: number | null;
 };
 
-/** API error payload contract. */
-type ApiErrorPayload = { code?: string; message?: string };
 
-/** Throws a normalized `Error(message)` using the API's `{ code, message }` payload when present. */
+/** Throws a normalized Error(message) and preserves HTTP status/response for callers. */
 function handleApiError(err: any, fallback: string): never {
-    const p: ApiErrorPayload | undefined = err?.response?.data;
-    if (p?.message) throw new Error(p.message);
-    throw new Error(fallback);
+    const res = err?.response;
+    const data = res?.data;
+
+    // Prefer server { message }, else plain string bodies, else fallback
+    let message: string | undefined;
+    if (data && typeof data === "object" && typeof data.message === "string") {
+        message = data.message;
+    } else if (typeof data === "string" && data.trim().length) {
+        message = data;
+    } else {
+        message = fallback;
+    }
+
+    const e: any = new Error(message);
+    // Preserve status/response so UI logic can branch (e.g., show override confirm)
+    e.status = res?.status;
+    e.response = res;
+    throw e;
 }
 
 /**
@@ -125,21 +138,25 @@ export async function createReservation(
 
 /**
  * Updates a reservation.
- * - May set `overrideAvailability` and/or `managerOverride` via query params.
+ * - May set `overrideAvailability`, `managerOverride`, and/or `providerOverride` via query params.
  * - Availability or block violations return `{ code: "OUTSIDE_AVAILABILITY" | "UNAVAILABLE", message }` with 409.
  * - On successful update with overlap, server may include `X-Warned-Double-Booking: true`.
  */
 export async function updateReservation(
     id: number,
     payload: UpdateReservationDto,
-    opts: { overrideAvailability?: boolean; managerOverride?: boolean; toastSuccess?: boolean } = {
-        toastSuccess: true,
-    }
+    opts: {
+        overrideAvailability?: boolean;
+        managerOverride?: boolean;
+        providerOverride?: boolean;
+        toastSuccess?: boolean;
+    } = { toastSuccess: true }
 ): Promise<void> {
     try {
         const params: Record<string, any> = {};
         if (opts.overrideAvailability) params.overrideAvailability = true;
         if (opts.managerOverride) params.managerOverride = true;
+        if (opts.providerOverride) params.providerOverride = true;
 
         const res = await api.put(`/reservation/${id}`, payload, { params });
 
@@ -161,10 +178,18 @@ export async function updateReservation(
 /** Soft-deletes a reservation. */
 export async function deleteReservation(
     id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
+    opts: {
+        managerOverride?: boolean;
+        providerOverride?: boolean;
+        toastSuccess?: boolean;
+    } = { toastSuccess: true }
 ): Promise<void> {
     try {
-        await api.delete(`/reservation/${id}`);
+        const params: Record<string, any> = {};
+        if (opts.managerOverride) params.managerOverride = true;
+        if (opts.providerOverride) params.providerOverride = true;
+
+        await api.delete(`/reservation/${id}`, { params });
         if (opts.toastSuccess !== false) toast.success("Reservation deleted.");
     } catch (err: any) {
         handleApiError(err, "Failed to delete reservation.");
@@ -182,6 +207,7 @@ export async function setReservationStatus(
         currentNotes?: string | null;
         reason?: string;
         managerOverride?: boolean;
+        providerOverride?: boolean;
         toastSuccess?: boolean;
     } = {}
 ): Promise<void> {
@@ -193,6 +219,10 @@ export async function setReservationStatus(
     return updateReservation(
         id,
         { status, notes },
-        { managerOverride: !!opts.managerOverride, toastSuccess: opts.toastSuccess }
+        {
+            managerOverride: !!opts.managerOverride,
+            providerOverride: !!opts.providerOverride,
+            toastSuccess: opts.toastSuccess,
+        }
     );
 }

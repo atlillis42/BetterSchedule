@@ -1,34 +1,75 @@
+/**
+ * @file Creates a DayPilot `onBeforeEventRender` handler dedicated to shaping
+ *       reservation and blocked-time visual presentation (CSS class, tooltip, HTML).
+ *       It deliberately avoids inline color props so CSS themes/overrides control visuals.
+ */
+
 import {
     classForReservationStatus,
-    colorForReservationStatus,
+    colorForReservationStatus, // retained for consumers; not used directly to avoid inline styles
     tooltipForReservation,
 } from "@/domain/calendar/eventStyle";
 
 /**
- * Creates a DayPilot `onBeforeEventRender` handler that formats reservation and block entries.
- * Label resolution is synchronous; callers inject lookup functions for client and appointment type names.
+ * Lightweight shape for DayPilot's callback args (kept permissive to avoid hard dependency).
  */
-export function createBeforeEventRender(opts?: {
-    /** Returns a display label for an appointment type id. */
+type BeforeEventRenderArgs = {
+    e?: any;
+    data?: any;
+    control?: { update?: () => void } | any;
+};
+
+/**
+ * Options for the renderer factory.
+ */
+export type BeforeEventRenderOptions = {
+    /**
+     * Resolve an appointment type display name from its numeric id (sync).
+     */
     getTypeLabel?: (id?: number) => string | undefined;
-    /** Returns a cached client display name, if available. */
+    /**
+     * Resolve a client display name if already cached (sync).
+     */
     getClientLabelSync?: (id?: string) => string | undefined;
-    /** Optionally primes a client name lookup and schedules a safe re-render. */
+    /**
+     * Optionally prime/fetch a missing client label (async). If it resolves,
+     * the control will be refreshed once to show updated labels.
+     */
     primeClient?: (id: string) => Promise<unknown> | void;
-}) {
+};
+
+/**
+ * Creates a DayPilot `onBeforeEventRender` handler focused on presentation:
+ * - Assigns CSS classes (e.g., `ev-reservation` + status class).
+ * - Provides compact tooltips.
+ * - Emits structured HTML (3-line block) for the event body.
+ *
+ * It intentionally does not set inline colors (e.g., `backColor`, `barColor`) so that
+ * your CSS (`calendar-overrides.css`) defines the canonical visuals. The only side effect
+ * is an optional cache prime for client labels, followed by a single safe control refresh.
+ *
+ * @param opts Optional label resolvers and priming hook.
+ * @returns DayPilot-compatible onBeforeEventRender handler.
+ */
+export function createBeforeEventRender(opts?: BeforeEventRenderOptions) {
     const getTypeLabel = opts?.getTypeLabel;
     const getClientLabelSync = opts?.getClientLabelSync;
     const primeClient = opts?.primeClient;
 
-    return function onBeforeEventRender(args: any) {
+    return function onBeforeEventRender(args: BeforeEventRenderArgs): void {
         try {
-            const e = args?.e;
-            const data = args?.data ?? e?.data ?? e;
+            const eventLike = args?.e;
+            const data = args?.data ?? eventLike?.data ?? eventLike;
             if (!data) return;
 
-            const kind: "reservation" | "blockedTime" = (data.type as any) ?? "reservation";
-            const start = dpOrIso(e, data, "start");
-            const end = dpOrIso(e, data, "end");
+            // Accept either `type` or `kind` markers; default to "reservation".
+            const kind: "reservation" | "blockedTime" =
+                (data.kind as any) ??
+                (data.type as any) ??
+                "reservation";
+
+            const start = dpOrIso(eventLike, data, "start");
+            const end = dpOrIso(eventLike, data, "end");
             const timeLine = `${fmtTime(start)}–${fmtTime(end)}`;
 
             if (kind === "reservation") {
@@ -43,72 +84,113 @@ export function createBeforeEventRender(opts?: {
                     clientId ||
                     "";
 
-                const typeId = typeof res.appointmentTypeId === "number" ? res.appointmentTypeId : undefined;
+                const typeId =
+                    typeof res.appointmentTypeId === "number" ? res.appointmentTypeId : undefined;
                 const typeLabel =
                     (res.appointmentTypeName as string) ||
                     (typeId != null ? getTypeLabel?.(typeId) : undefined) ||
                     (typeId != null ? `Type ${typeId}` : "");
 
-                data.cssClass = [data.cssClass, classForReservationStatus(status)].filter(Boolean).join(" ");
-                if (!data.backColor) data.backColor = colorForReservationStatus(status);
+                // Compose CSS classes; keep existing classes intact.
+                const statusClass = classForReservationStatus(status);
+                data.cssClass = ["ev-reservation", data.cssClass, statusClass]
+                    .filter(Boolean)
+                    .join(" ");
+
+                // Keep tooltip and structured content; avoid inline colors.
                 data.toolTip = tooltipForReservation(status);
                 data.html = threeLines(clientLabel, typeLabel, timeLine);
 
+                // If the client label still looks like a GUID, try to prime it and refresh once.
                 if (clientId && isGuid(clientLabel) && typeof primeClient === "function") {
-                    const p = primeClient(clientId);
-                    if (p && typeof (p as any).then === "function") {
-                        (p as Promise<unknown>)
+                    const promiseLike = primeClient(clientId);
+                    if (promiseLike && typeof (promiseLike as any).then === "function") {
+                        (promiseLike as Promise<unknown>)
                             .then(() => {
-                                const control = args?.control;
+                                const control = (args as any)?.control;
                                 if (control && typeof control.update === "function") {
+                                    // Defer to avoid synchronous re-entrancy during render.
                                     setTimeout(() => {
-                                        try { control.update(); } catch { }
+                                        try {
+                                            control.update();
+                                        } catch {
+                                            /* no-op */
+                                        }
                                     }, 0);
                                 }
                             })
-                            .catch(() => { });
+                            .catch(() => {
+                                /* no-op */
+                            });
                     }
                 }
             } else {
+                // Blocked time presentation
                 const reason: string = data.reason || data.text || "Blocked";
-                if (!data.backColor) data.backColor = "#9ca3af";
+                data.cssClass = ["ev-blocked", data.cssClass].filter(Boolean).join(" ");
                 data.toolTip = "Blocked time";
                 data.html = threeLines(reason, "Blocked time", timeLine, true);
             }
-        } catch (err) {
+        } catch (error) {
             // eslint-disable-next-line no-console
-            console.error("beforeEventRender:", err);
+            console.error("beforeEventRender:", error);
         }
     };
 }
 
-/** Returns a DayPilot date when present on the event instance, otherwise an ISO string from data. */
-function dpOrIso(e: any, data: any, key: "start" | "end"): any {
-    try { const v = e && typeof e[key] === "function" ? e[key]() : undefined; if (v) return v; } catch { }
+/**
+ * Returns DayPilot date objects via getter if present, otherwise ISO string fields.
+ */
+function dpOrIso(eventLike: any, data: any, key: "start" | "end"): any {
+    try {
+        const value = eventLike && typeof eventLike[key] === "function" ? eventLike[key]() : undefined;
+        if (value) return value;
+    } catch {
+        // ignore
+    }
     return data?.[key];
 }
 
-/** Formats a DayPilot date or ISO string to a compact time. */
-function fmtTime(v: any): string {
+/**
+ * Formats a DayPilot date or ISO string to "h:mm tt".
+ */
+function fmtTime(value: any): string {
     try {
-        if (v && typeof v.toString === "function") return v.toString("h:mm tt");
-        if (typeof v === "string") {
-            const m = v.match(/T(\d{2}:\d{2})/); if (m) return toAmPm(m[1]);
+        if (value && typeof value.toString === "function") {
+            // DayPilot.Date supports .toString("h:mm tt")
+            return value.toString("h:mm tt");
         }
-    } catch { }
+        if (typeof value === "string") {
+            const match = value.match(/T(\d{2}:\d{2})/);
+            if (match) return toAmPm(match[1]);
+        }
+    } catch {
+        // ignore
+    }
     return "";
 }
 
-/** Converts "HH:mm" to "h:mm AM/PM". */
+/**
+ * Converts "HH:MM" to "h:mm AM/PM".
+ */
 function toAmPm(hhmm: string): string {
-    const [h, m] = hhmm.split(":").map(Number);
-    const ampm = h >= 12 ? "PM" : "AM";
-    const hr = ((h + 11) % 12) + 1;
-    return `${hr}:${String(m).padStart(2, "0")} ${ampm}`;
+    const [hoursStr, minutesStr] = hhmm.split(":");
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    const ampm = hours >= 12 ? "PM" : "AM";
+    const h12 = ((hours + 11) % 12) + 1;
+    return `${h12}:${String(minutes).padStart(2, "0")} ${ampm}`;
 }
 
-/** Renders a compact three-line HTML block for event content. */
-function threeLines(primary: string, secondary: string, tertiary: string, italicSecondary = false): string {
+/**
+ * Builds the standard 3-line HTML block used by event bodies.
+ */
+function threeLines(
+    primary: string,
+    secondary: string,
+    tertiary: string,
+    italicSecondary = false
+): string {
     const line2 = italicSecondary
         ? `<em class="bs-line2">${esc(secondary)}</em>`
         : `<span class="bs-line2">${esc(secondary)}</span>`;
@@ -120,14 +202,27 @@ function threeLines(primary: string, secondary: string, tertiary: string, italic
 </div>`;
 }
 
-/** Best-effort GUID check used to detect unresolved client labels. */
-function isGuid(s: string): boolean {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+/**
+ * Basic GUID shape check (v1–v5).
+ */
+function isGuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-/** Escapes HTML-sensitive characters. */
-function esc(s?: string): string {
-    if (!s) return "";
-    return s.replace(/[&<>"']/g, ch =>
-        ch === "&" ? "&amp;" : ch === "<" ? "&lt;" : ch === ">" ? "&gt;" : ch === '"' ? "&quot;" : "&#039;");
+/**
+ * Escapes minimal HTML entities for safe injection into `data.html`.
+ */
+function esc(value?: string): string {
+    if (!value) return "";
+    return value.replace(/[&<>"']/g, (ch) =>
+        ch === "&"
+            ? "&amp;"
+            : ch === "<"
+                ? "&lt;"
+                : ch === ">"
+                    ? "&gt;"
+                    : ch === '"'
+                        ? "&quot;"
+                        : "&#039;"
+    );
 }

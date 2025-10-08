@@ -38,9 +38,9 @@ const TopNav: React.FC<TopNavProps> = ({
     };
 
     return (
-        <header className="bg-blue-600 text-white px-6 py-4 flex justify-between items-center shadow-md">
+        <header className="bg-white text-slate-800 px-6 py-4 flex justify-between items-center border-b border-slate-200">
             <div className="flex items-center gap-6">
-                <h1 className="text-xl font-bold cursor-pointer" onClick={() => navigate("/calendar")}>
+                <h1 className="text-xl font-bold cursor-pointer text-blue-600" onClick={() => navigate("/calendar")}>
                     BetterSchedule
                 </h1>
                 <NavLinks
@@ -56,7 +56,7 @@ const TopNav: React.FC<TopNavProps> = ({
                 )}
                 <button
                     onClick={onLogout}
-                    className="bg-white text-blue-600 px-4 py-2 rounded hover:bg-blue-50 transition"
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
                 >
                     Logout
                 </button>

@@ -24,5 +24,7 @@ namespace BetterSchedule.Server.Models.DTOs.BlockedTime
 
         /// <summary>Optional CSS hex color (e.g., "#3a87ad").</summary>
         public string? BackColor { get; init; }
+
+        public string? ProviderId { get; set; }
     }
 }

@@ -1,0 +1,56 @@
+.bs-calendar .calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.bs-calendar .calendar-toolbar button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background-color: #3c78d8;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.bs-calendar .calendar-toolbar button:hover {
+  background-color: #2f66c4;
+}
+
+.bs-calendar .calendar-toolbar button.selected {
+  background-color: #1c4587;
+}
+
+.bs-calendar .calendar-toolbar .standalone {
+  margin-left: auto;
+  background-color: #f6b26b;
+  color: #333;
+}
+
+/* Calendar body sizing helpers (kept minimal; most layout is handled with Tailwind in JSX) */
+.bs-calendar .calendar-body {
+  flex-grow: 1;
+  min-height: 0; /* allow children to size within flex */
+  overflow: hidden;
+  position: relative;
+}
+
+/* Month view should fill available space */
+.bs-calendar .month-wrapper {
+  height: 100%;
+  width: 100%;
+}
+
+.bs-calendar .month-wrapper .daypilot-month {
+  height: 100% !important;
+  width: 100% !important;
+}
+
+/* Generic helper used by DayPilot to hide elements */
+.bs-calendar .dp-hidden {
+  display: none !important;
+}

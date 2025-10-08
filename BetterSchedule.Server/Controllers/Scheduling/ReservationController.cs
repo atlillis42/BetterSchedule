@@ -102,8 +102,11 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (settings is not null &&
                 BookingPolicy.ViolatesLeadTime(settings.MinLeadMinutes, _clock.UtcNow, dto.StartTime))
             {
-                return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
+                var providerSelf = IsProvider && dto.ServiceProviderId == UserId;
+                if (!providerSelf)
+                    return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
             }
+
 
             var c = await _conflicts.CheckReservationCreateAsync(
                 OrganizationId,
@@ -181,8 +184,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             [FromRoute] int id,
             [FromBody] UpdateReservationDto dto,
             CancellationToken ct,
-            bool managerOverride = false,
-            bool overrideAvailability = false)
+            [FromQuery] bool managerOverride = false,
+            [FromQuery] bool overrideAvailability = false,
+            [FromQuery] bool providerOverride = false) 
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -234,8 +238,8 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 if (newEnd <= newStart)
                     return BadRequest("EndTime must be after StartTime.");
 
-                if (settings is not null &&
-                    BookingPolicy.ViolatesLeadTime(settings.MinLeadMinutes, now, newStart))
+                var providerSelf = IsProvider && newProviderId == UserId;
+                if (!providerSelf)
                     return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
             }
 
@@ -254,16 +258,28 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     }
                     else if (IsProvider)
                     {
-                        var allow = BookingPolicy.CanProviderCancel(settings.ProviderCancelPolicy, cancelWindow, now, reservation.StartTime);
-                        if (!allow)
-                            return BadRequest("Providers are not allowed to cancel at this time per organization policy.");
+                        var allowPerPolicy = BookingPolicy.CanProviderCancel(settings.ProviderCancelPolicy, cancelWindow, now, reservation.StartTime);
+                        var isAssignedProvider = reservation.ServiceProviderId == UserId;
+
+                        // If policy disallows, permit only when inside window AND assigned provider confirmed override
+                        if (!allowPerPolicy)
+                        {
+                            if (!(insideCancelWindow && isAssignedProvider && providerOverride))
+                                return BadRequest("Providers are not allowed to cancel at this time per organization policy.");
+                        }
                     }
                 }
                 else
                 {
-                    // Non-cancel modifications inside window require Manager override
-                    if (insideCancelWindow && !(managerOverride && IsManager))
-                        return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
+                    // Non-cancel modifications inside window:
+                    // allow manager override, or assigned provider override.
+                    if (insideCancelWindow)
+                    {
+                        var isAssignedProvider = IsProvider && reservation.ServiceProviderId == UserId;
+                        var allowed = (IsManager && managerOverride) || (isAssignedProvider && providerOverride);
+                        if (!allowed)
+                            return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
+                    }
                 }
             }
 
@@ -475,11 +491,14 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// </summary>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct, [FromQuery] bool managerOverride = false)
+        public async Task<ActionResult> Delete(
+            [FromRoute] int id,
+            CancellationToken ct,
+            [FromQuery] bool managerOverride = false,
+            [FromQuery] bool providerOverride = false)
         {
             var entity = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-
             if (entity is null) return NotFound();
 
             if (!ReservationScopes.CanModify(entity, UserId, IsManager, IsProvider, isClient: false))
@@ -492,8 +511,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             {
                 var now = _clock.UtcNow;
                 var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                if (entity.StartTime - now < cancelWindow && !(managerOverride && IsManager))
-                    return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override.");
+                var inside = entity.StartTime - now < cancelWindow;
+
+                if (inside)
+                {
+                    var isAssignedProvider = IsProvider && entity.ServiceProviderId == UserId;
+                    var allowed =
+                        (IsManager && managerOverride) ||
+                        (isAssignedProvider && providerOverride);
+                    if (!allowed)
+                        return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
+                }
             }
 
             entity.IsDeleted = true;
