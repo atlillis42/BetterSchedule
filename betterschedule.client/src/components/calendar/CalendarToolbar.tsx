@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import type { ViewMode } from "@/types/calendarView";
 
 /**
- * Toolbar for the calendar view.
+ * CalendarToolbar
  *
  * @remarks
  * Fixed-height layout: view tabs (left) and a 12h digital clock (right).
+ * - Button order: Day, Resources, Week, Month.
  * - Week tab is highlighted for both "Week" and "WorkWeek".
- * - Business-hours toggle removed (we default to BusinessHours in Calendar.tsx).
- * - Availability overlay and Today button remain removed from UI.
+ * - Business-hours toggle and overlay controls are not rendered here.
  */
 export default function CalendarToolbar(props: {
     /** Current calendar view mode. */
@@ -18,17 +18,12 @@ export default function CalendarToolbar(props: {
     /** IANA timezone label (e.g., "America/New_York"). */
     tzLabel: string;
 
-    // -- Deprecated (retained for compatibility; not rendered) --
-    /** @deprecated */
-    onToday?: () => void;
-    /** @deprecated */
-    showOverlaySelector?: boolean;
-    /** @deprecated */
-    providers?: Array<{ id: string; name: string }>;
-    /** @deprecated */
-    overlayProviderId?: string;
-    /** @deprecated */
-    onOverlayChange?: (id?: string) => void;
+  // Deprecated (retained for compatibility; not rendered)
+  /** @deprecated */ onToday?: () => void;
+  /** @deprecated */ showOverlaySelector?: boolean;
+  /** @deprecated */ providers?: Array<{ id: string; name: string }>;
+  /** @deprecated */ overlayProviderId?: string;
+  /** @deprecated */ onOverlayChange?: (id?: string) => void;
 }) {
     const { view, onSetView, tzLabel } = props;
 
@@ -56,23 +51,26 @@ export default function CalendarToolbar(props: {
                 >
                     Day
                 </button>
+
+                <button
+                    onClick={() => onSetView("Resources")}
+                    className={[tabClass(view === "Resources"), view === "Resources" ? "selected" : ""].join(" ")}
+                >
+                    Resources
+                </button>
+
                 <button
                     onClick={() => onSetView("Week")}
                     className={[tabClass(weekTabActive), weekTabActive ? "selected" : ""].join(" ")}
                 >
                     Week
                 </button>
+
                 <button
                     onClick={() => onSetView("Month")}
                     className={[tabClass(view === "Month"), view === "Month" ? "selected" : ""].join(" ")}
                 >
                     Month
-                </button>
-                <button
-                    onClick={() => onSetView("Resources")}
-                    className={[tabClass(view === "Resources"), view === "Resources" ? "selected" : ""].join(" ")}
-                >
-                    Resources
                 </button>
             </div>
 

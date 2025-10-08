@@ -22,13 +22,18 @@ import type { UiEvent, CalendarResource, CalendarTimeRangeSelectedArgs } from "@
 import type { ViewMode } from "@/types/calendarView";
 import type { ProviderLite } from "@/services/providersService";
 import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
+import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekHeader";
 
 /**
- * Root calendar shell coordinating data loading, overlays, rendering, and modal workflows.
+ * Calendar (root shell)
+ * -----------------------------------------------------------------------------
+ * Orchestrates data, overlays, DayPilot view rendering, and modal workflows.
  *
- * - WorkWeek: use DayPilot's native "WorkWeek" view type for weekly view without weekends.
- * - BusinessHours (Lite best practice): off-hours remain scrollable to avoid hit-testing drift.
- * - All Day/Week config changes flow into CalendarBody; explicit refresh via controlRef happens there.
+ * Key behaviors:
+ * - Resources view uses DayPilotCalendar(Resources) with a 1-day fetch window.
+ * - Business hours default to "BusinessHours" (off-hours remain scrollable).
+ * - Legend shows a compact date badge when in Resources view.
+ * - Toolbar order: Day, Resources, Week, Month.
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
@@ -68,11 +73,13 @@ const Calendar = () => {
         refreshEvents,
     });
 
+    // Visible events after canceled/blocked filters for the current view.
     const visibleEvents = useMemo(() => {
         const base = filterEventsByCanceled(events, false);
         return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, { userId, isManager });
     }, [events, view, userId, isManager]);
 
+    // Organization business hours → DayPilot hour integers.
     const businessHours = useMemo(() => buildBusinessHours(org), [org]);
 
     const businessBeginsHour = useMemo<number>(() => {
@@ -87,6 +94,7 @@ const Calendar = () => {
         return Number.isFinite(hh) ? hh : 17;
     }, [businessHours]);
 
+    // Shading and event rendering callbacks.
     const beforeCellRender = useMemo(() => {
         const shadingMode = org?.shadingMode ?? "ProviderAvailability";
         return createBeforeCellRender({
@@ -121,7 +129,16 @@ const Calendar = () => {
         [appointmentTypesById]
     );
 
-    // Lite best practice: keep business hours visible by default; off-hours are reachable via scroll.
+    /**
+     * Day label shown in the legend when view === "Resources".
+     * Delegates to a utility that ensures local interpretation and ordinal suffix.
+     */
+    const resourcesDayLabel = useMemo(
+        () => formatResourcesDayLabel(startDate as any),
+        [startDate]
+    );
+
+    // Lite best practice: keep business hours visible by default; off-hours remain reachable via scroll.
     const heightSpec: "Full" | "BusinessHours" = "BusinessHours";
 
     return (
@@ -156,8 +173,11 @@ const Calendar = () => {
                         tzLabel={tzLabel}
                     />
 
-                    {/* Legend with weekend toggle on the far right */}
-                    <CalendarLegend view={view as ViewMode} onSetView={(v) => setView(v)} />
+                    <CalendarLegend
+                        view={view as ViewMode}
+                        onSetView={(v) => setView(v)}
+                        resourcesDayLabel={resourcesDayLabel}
+                    />
 
                     <CalendarBody
                         view={view as ViewMode}

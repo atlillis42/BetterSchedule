@@ -6,11 +6,15 @@ Theme Designer Version: 2025.09.27.82882
 .monthview_main:not(.default) {
 	--dp-month-border-color: #c0c0c0;
 	--dp-month-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
-	--dp-month-font-size: 13px;
+	--dp-month-font-size: 13px; /* match week */
 	--dp-month-cell-border-color: #eeeeee;
 	--dp-month-cell-bg-color: #f9f9f9;
 	--dp-month-cell-business-bg-color: #ffffff;
-	--dp-month-header-bg-color: #f3f3f3;
+	--dp-month-header-bg-color: #f3f3f3; /* match week */
+	--dp-month-header-color: #333; /* match week */
+	--dp-month-header-padding: 0px; /* fixed height via .monthview_header_inner */
+	--dp-month-header-horizontal-align: center;
+	--dp-month-header-vertical-align: center;
 	--dp-month-message-bg-color: #ffa216;
 	--dp-month-message-color: #ffffff;
 	--dp-month-message-padding: 10px;
@@ -18,9 +22,9 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-event-border-color: #999999;
 	--dp-month-event-horizontal-align: flex-start;
 	--dp-month-event-vertical-align: center;
-	--dp-month-event-padding: 2px;
-	--dp-month-event-padding-left: 8px;
-	--dp-month-event-padding-rtl: 2px 10px 2px 1px;
+	--dp-month-event-padding: 4px; /* breathing room */
+	--dp-month-event-padding-left: 12px; /* room for status bar */
+	--dp-month-event-padding-rtl: 4px 12px 4px 4px;
 	--dp-month-event-bar-width: 6px;
 	--dp-month-event-bar-color: #1066a8;
 	--dp-month-event-bar-top: 1px;
@@ -28,13 +32,12 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-event-bar-bottom: 1px;
 	--dp-month-event-bar-display: block;
 	--dp-month-event-border-radius: 0px;
-	--dp-month-header-color: #333333;
-	--dp-month-header-padding: 2px;
-	--dp-month-header-horizontal-align: center;
-	--dp-month-header-vertical-align: center;
 	--dp-month-event-bg-top-color: #ffffff;
 	--dp-month-event-bg-bottom-color: #fafafa;
+	/* Design token for chip height; keep in sync with CalendarBody.tsx */
+	--bs-month-event-height: 26px;
 }
+
 .monthview_main {
 	--dp-month-border-color: #c0c0c0;
 	--dp-month-font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -50,9 +53,9 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-event-background: linear-gradient(to bottom, var(--dp-month-event-bg-top-color) 0%, var(--dp-month-event-bg-bottom-color) 100%);
 	--dp-month-event-horizontal-align: flex-start;
 	--dp-month-event-vertical-align: center;
-	--dp-month-event-padding: 2px;
-	--dp-month-event-padding-left: 10px;
-	--dp-month-event-padding-rtl: 2px 10px 2px 1px;
+	--dp-month-event-padding: 4px;
+	--dp-month-event-padding-left: 12px;
+	--dp-month-event-padding-rtl: 4px 12px 4px 4px;
 	--dp-month-event-border-radius: 0px;
 	--dp-month-event-box-shadow: none;
 	--dp-month-event-bar-top: 1px;
@@ -73,33 +76,41 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-shadow-color: #bbbbbb;
 	--dp-month-shadow-border-color: #888888;
 }
-.monthview_main *, .monthview_main *:before, .monthview_main *:after {
-	box-sizing: content-box;
-}
+
+	.monthview_main *, .monthview_main *:before, .monthview_main *:after {
+		box-sizing: content-box;
+	}
+
 .monthview_main {
 	border: 1px solid var(--dp-month-border-color);
 	font-family: var(--dp-month-font-family);
 	font-size: var(--dp-month-font-size);
 	color: #333;
 }
+
+/* Grid + business cells */
 .monthview_cell_inner {
 	border-right: 1px solid var(--dp-month-cell-border-color);
 	border-bottom: 1px solid var(--dp-month-cell-border-color);
 	position: absolute;
-	top: 0;
-	left: 0;
-	bottom: 0;
-	right: 0;
+	inset: 0;
 	background-color: var(--dp-month-cell-bg-color);
+	/* Allow per-day scrolling when cellMode=true */
+	overflow-y: auto;
 }
+
 .monthview_cell_business .monthview_cell_inner {
 	background-color: var(--dp-month-cell-business-bg-color);
 }
+
+/* Day number (top-right) */
 .monthview_cell_header {
 	text-align: right;
 	padding: 4px;
 	box-sizing: border-box;
 }
+
+/* Month header (Sun..Sat) to match Week header height) */
 .monthview_header_inner {
 	position: absolute;
 	inset: 0;
@@ -108,22 +119,24 @@ Theme Designer Version: 2025.09.27.82882
 	cursor: default;
 	color: var(--dp-month-header-color);
 	background: var(--dp-month-header-bg-color);
-	overflow: hidden;
 	display: flex;
-	align-items: var(--dp-month-header-vertical-align);
-	justify-content: var(--dp-month-header-horizontal-align);
-	padding: var(--dp-month-header-padding);
+	align-items: center;
+	justify-content: center;
+	height: 40px;
+	font-weight: 600;
 }
-.monthview_message {
-	opacity: 0.9;
-	color: var(--dp-month-message-color);
-	background: var(--dp-month-message-bg-color);
-	padding: var(--dp-month-message-padding);
-}
+
+/* Event shells */
 .monthview_event {
 	border-radius: var(--dp-month-event-border-radius);
 	box-shadow: var(--dp-month-event-box-shadow);
 }
+
+/* Fixed event height (official theme hook) */
+.monthview_event_height {
+	height: var(--bs-month-event-height);
+}
+
 .monthview_event_inner {
 	position: absolute;
 	top: 0;
@@ -139,21 +152,28 @@ Theme Designer Version: 2025.09.27.82882
 	display: flex;
 	align-items: var(--dp-month-event-vertical-align);
 	justify-content: var(--dp-month-event-horizontal-align);
+	font-size: 12px;
+	line-height: 1.2;
+	/* NOTE: remove min-height; chip height is controlled by .monthview_event_height and eventHeight prop */
 }
+
 .monthview_direction_rtl .monthview_event_inner {
 	right: 2px;
 	padding: var(--dp-month-event-padding-rtl);
 }
+
 .monthview_event_continueright .monthview_event_inner {
 	border-top-right-radius: 0;
 	border-bottom-right-radius: 0;
 	border-right-style: dotted;
 }
+
 .monthview_event_continueleft .monthview_event_inner {
 	border-top-left-radius: 0;
 	border-bottom-left-radius: 0;
 	border-left-style: dotted;
 }
+
 .monthview_event_bar {
 	display: var(--dp-month-event-bar-display);
 	top: var(--dp-month-event-bar-top);
@@ -161,23 +181,26 @@ Theme Designer Version: 2025.09.27.82882
 	left: var(--dp-month-event-bar-left);
 	width: var(--dp-month-event-bar-width);
 }
+
 .monthview_direction_rtl .monthview_event_bar {
 	top: 1px;
 	bottom: 1px;
 	right: 3px;
 	width: var(--dp-month-event-bar-width);
 }
+
 .monthview_event_bar_inner {
 	position: absolute;
 	width: var(--dp-month-event-bar-width);
 	background-color: var(--dp-month-event-bar-color);
 }
-.monthview_event_continueleft .monthview_event_bar {
-	display: none;
-}
+
+/* Selection */
 .monthview_selected .monthview_event_inner {
 	background: var(--dp-month-selected-event-bg-color);
 }
+
+/* Drag shadow */
 .monthview_shadow_inner {
 	box-sizing: border-box;
 	background-color: var(--dp-month-shadow-color);
@@ -185,35 +208,42 @@ Theme Designer Version: 2025.09.27.82882
 	opacity: 0.5;
 	height: 100%;
 }
+
 .monthview_shadow {
 	box-shadow: 0 2px 5px rgba(0, 0, 0, .2);
 }
+
+/* Delete icon */
 .monthview_event_delete {
 	background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAsAAAALCAYAAACprHcmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAadEVYdFNvZnR3YXJlAFBhaW50Lk5FVCB2My41LjExR/NCNwAAAI5JREFUKFNtkLERgCAMRbmzdK8s4gAUlhYOYEHJEJYOYOEwDmGBPxC4kOPfvePy84MGR0RJ2N1A8H3N6DATwSQ57m2ql8NBG+AEM7D+UW+wjdfUPgerYNgB5gOLRHqhcasg84C2QxPMtrUhSqQIhg7ypy9VM2EUZPI/4rQ7rGxqo9sadTegw+UdjeDLAKUfhbaQUVPIfJYAAAAASUVORK5CYII=) center center no-repeat;
 	opacity: 0.6;
 	cursor: pointer;
 }
-.monthview_event_delete:hover {
-	opacity: 1;
-}
-.monthview_event_timeleft {
+
+	.monthview_event_delete:hover {
+		opacity: 1;
+	}
+
+/* Time labels */
+.monthview_event_timeleft, .monthview_event_timeright {
 	color: #ccc;
 	font-size: 11px;
 	display: flex;
 	align-items: center;
 }
+
 .monthview_event_timeright {
-	color: #ccc;
-	font-size: 11px;
-	display: flex;
-	align-items: center;
 	justify-content: end;
 }
+
+/* Loading */
 .monthview_loading {
 	background-color: orange;
 	color: white;
 	padding: 2px;
 }
+
+/* Forbidden selection marker */
 .monthview_shadow_forbidden:after {
 	content: '';
 	position: absolute;
@@ -230,6 +260,7 @@ Theme Designer Version: 2025.09.27.82882
 	background-position: center;
 	background-size: contain;
 }
+
 .monthview_shadow_forbidden .monthview_shadow_inner {
 	border: 1px solid #cc0000;
 	background: #cc4125;

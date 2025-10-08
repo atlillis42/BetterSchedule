@@ -3,22 +3,21 @@
     --bs-status: #3b82f6;
     --bs-status-rgb: 59,130,246;
 }
-/* blue */
+
 .res-status-completed {
     --bs-status: #10b981;
     --bs-status-rgb: 16,185,129;
 }
-/* emerald */
+
 .res-status-noshow {
     --bs-status: #f59e0b;
     --bs-status-rgb: 245,158,11;
 }
-/* amber */
+/* Canceled → red */
 .res-status-canceled {
-    --bs-status: #9ca3af;
-    --bs-status-rgb: 156,163,175;
+    --bs-status: #ef4444;
+    --bs-status-rgb: 239,68,68;
 }
-/* gray */
 
 /* =========================================================================
    Event Chip (Bar and shading):
@@ -230,6 +229,11 @@
 .weekview_cell_hour_odd .weekview_cell_inner {
     border-right: 1px solid var(--dp-calendar-cell-border-color);
     border-bottom: 1px solid var(--dp-calendar-cell-border-color);
+}
+
+/* Bold the text of resource column headers (DayPilot Calendar, resources mode) */
+.bs-resource-colheader .weekview_colheader_inner {
+    font-weight: 600 !important;
 }
 
 /* Dark mode tune: add a hint of white into the darker bases */

@@ -37,8 +37,7 @@ export function getVisibleRange(
             return { start: gridStart, end: gridStart.addDays(42) };
         }
         case "Resources": {
-            // Match DayPilotScheduler days={5}
-            return { start: startDate, end: startDate.addDays(5) };
+            return { start: startDate, end: startDate.addDays(1) };
         }
     }
 }

@@ -1,23 +1,36 @@
+import { useMemo } from "react";
+import { DayPilot } from "@daypilot/daypilot-lite-react";
 import type { ViewMode } from "@/types/calendarView";
+import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekHeader";
 
 /**
- * Legend for reservation status colors + a compact weekend toggle on the far right.
- *
- * Action semantics:
- * - When current view is WorkWeek (no weekends), the button says "Show Weekends".
- * - When current view is Week (with weekends), the button says "Hide Weekends".
- *
- * Implementation detail:
- * - We use a single checkbox with dynamic label. `checked` reflects "Week" (weekends shown).
- *   onText applies when checked; offText applies when unchecked.
+ * CalendarLegend
+ * -----------------------------------------------------------------------------
+ * - Shows reservation status colors.
+ * - Weekly context: "Show/Hide Weekends" toggle on the right.
+ * - Resources context: compact "viewing day" badge on the right.
+ * - Month context: compact "today" badge on the right.
  */
 export default function CalendarLegend(props: {
+    /** Current view. */
     view: ViewMode;
+    /** View setter for the weekend toggle. */
     onSetView: (view: ViewMode) => void;
+    /**
+     * Resources view: label of the current day (e.g., "Wednesday, Oct 8th, 2025").
+     * Month view ignores this and derives "today" locally.
+     */
+    resourcesDayLabel?: string;
 }) {
-    const { view, onSetView } = props;
+    const { view, onSetView, resourcesDayLabel } = props;
+
     const isWeekly = view === "Week" || view === "WorkWeek";
     const weekendsShown = view === "Week"; // checked = Week (weekends visible)
+    const isResources = view === "Resources";
+    const isMonth = view === "Month";
+
+    // Month view: compute local "today" label (full weekday + ordinal) once.
+    const monthTodayLabel = useMemo(() => formatResourcesDayLabel(DayPilot.Date.today()), []);
 
     return (
         <div className="ml-4 flex items-center gap-3 text-xs p-2 border-b bg-white">
@@ -34,27 +47,46 @@ export default function CalendarLegend(props: {
                 <span>No-Show</span>
             </div>
             <div className="flex items-center gap-1">
-                <span className="inline-block w-3 h-3 rounded" style={{ background: "#9ca3af" }} />
+                {/* Changed from gray to a red tint (#ef4444) */}
+                <span className="inline-block w-3 h-3 rounded" style={{ background: "#ef4444" }} />
                 <span>Canceled</span>
             </div>
 
-            {/* Far right: small, subtle weekend action toggle (only in weekly context) */}
-            {isWeekly && (
-                <div className="ml-auto">
+            {/* RIGHT: weekly toggle and/or date badges */}
+            <div className="ml-auto flex items-center gap-2">
+                {isWeekly && (
                     <ToggleLabeledSubtle
                         id="toggle-weekends"
                         checked={weekendsShown}
-                        onText="Hide Weekends"   /* label when checked (Week) */
-                        offText="Show Weekends"  /* label when unchecked (WorkWeek) */
+                        onText="Hide Weekends"
+                        offText="Show Weekends"
                         onChange={(next) => onSetView(next ? "Week" : "WorkWeek")}
                     />
-                </div>
-            )}
+                )}
+
+                {(isResources || isMonth) && (
+                    <span
+                        className={[
+                            "inline-flex items-center gap-2 px-3 py-1 rounded-full border",
+                            "border-slate-200 bg-slate-50 text-slate-700",
+                            "text-[11px] font-medium",
+                        ].join(" ")}
+                        title={isResources ? "Viewing day (Resources view)" : "Today"}
+                    >
+                        <span
+                            aria-hidden="true"
+                            className="inline-block w-2 h-2 rounded-full"
+                            style={{ background: "#3c78d8" }}
+                        />
+                        {isResources ? (resourcesDayLabel ?? "") : monthTodayLabel}
+                    </span>
+                )}
+            </div>
         </div>
     );
 }
 
-/** Small, subtle labeled pill toggle (light gray-blue), used on the legend. */
+/** Small, subtle labeled pill toggle used on the legend. */
 function ToggleLabeledSubtle(props: {
     id?: string;
     checked: boolean;
