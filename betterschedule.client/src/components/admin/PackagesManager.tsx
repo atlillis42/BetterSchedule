@@ -11,7 +11,7 @@ import {
 } from "@/api/package-api";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
 import { getProvidersLite } from "@/api/user-api";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 
 /**
  * Lightweight provider reference for form pickers.

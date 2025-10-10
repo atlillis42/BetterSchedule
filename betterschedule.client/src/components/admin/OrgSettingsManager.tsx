@@ -9,7 +9,7 @@ import {
     type ProviderCancelPolicy,
     type ClientCancelPolicy,
 } from "@/api/org-settings-api";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 import ProviderAccessManager from "@/components/admin/ProviderAccessManager";
 
 /**

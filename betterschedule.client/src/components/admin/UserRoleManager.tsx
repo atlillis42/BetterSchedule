@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { getUsers, addUserRole, removeUserRole, type UserDto } from "@/api/user-api";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 
 const ALL_ROLES = ["Manager", "ServiceProvider", "Client"] as const;
 

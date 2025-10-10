@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 import { isManager, isProvider } from "@auth/roles";
 import {
     getAppointmentTypes,

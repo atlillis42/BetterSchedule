@@ -16,7 +16,7 @@ vi.mock("react-router-dom", async (orig) => {
 const mockedNavigate = vi.fn();
 
 // Mock the auth hook for logout
-vi.mock("@auth/AuthContext", () => ({
+vi.mock("@auth/auth-context", () => ({
     useAuth: () => ({
         logout: mockedLogout,
     }),

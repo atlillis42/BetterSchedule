@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
-import { useAuth } from "@auth/AuthContext";
-
+import { useAuth } from "@auth/auth-context";
 import { getProvidersLite, type ProviderLite } from "@/api/user-api";
 import { getResources } from "@/api/calendar-resource-api";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";

@@ -13,10 +13,16 @@ namespace BetterSchedule.Server.Models.DTOs.Users
         [Required]
         public string Id { get; init; } = default!;
 
-        /// <summary>Full display name of the user.</summary>
+        /// <summary>Full name of the user, legacy compatibility.</summary>
         [Required]
         public string Name { get; init; } = default!;
 
+        /// <summary>User's First Name, if available.</summary>
+        public string? FirstName { get; init; }
+
+        /// <summary>User's Last Name, if available.</summary>
+        public string? LastName { get; init; }
+        
         /// <summary>Username, if available.</summary>
         public string? UserName { get; init; }
 

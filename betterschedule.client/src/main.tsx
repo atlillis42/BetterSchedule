@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
-import { AuthProvider } from "./components/auth/AuthContext";
+import { AuthProvider } from "./components/auth/AuthProvider";
 import "react-toastify/dist/ReactToastify.css";
 import "./styles/tailwind.css";
 

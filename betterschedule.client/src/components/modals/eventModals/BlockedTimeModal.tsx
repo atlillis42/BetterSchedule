@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import Select, { type SingleValue } from "react-select";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
-import { useAuth } from "@/components/auth/AuthContext";
+import { useAuth } from "@/components/auth/auth-context";
 
 type CalendarResource = { id: number; name: string };
 type NumberOption = { value: number; label: string };
