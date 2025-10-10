@@ -4,32 +4,32 @@ import type { ReservationDto } from "@/api/reservation-api";
 import { classForReservationStatus, colorForReservationStatus, tooltipForReservation } from "@/domain/calendar/eventStyle";
 
 /**
- * Maps a reservation DTO into a DayPilot UI event.
- * Ensures `resource` matches Resource view column ids (cast to string).
+ * Maps a {@link ReservationDto} into a DayPilot-compatible {@link UiEvent}.
+ * - Keeps canceled reservations visible (styling reflects status).
+ * - Uses the status class for consistent theming across views.
+ * - Provides a compact tooltip and stable id prefix ("reservation-").
  */
-export function reservationToUiEvent(res: ReservationDto): UiEvent {
-    const statusClass = classForReservationStatus(res.status); // e.g., "res-status-completed"
-    const statusColor = colorForReservationStatus(res.status); // e.g., "#10b981"
+export function reservationToUiEvent(reservation: ReservationDto): UiEvent {
+    const statusClass = classForReservationStatus(reservation.status);
+    const statusColor = colorForReservationStatus(reservation.status);
 
     const resourceKey =
-        res.resourceId !== null && res.resourceId !== undefined
-            ? String(res.resourceId)
+        reservation.resourceId !== null && reservation.resourceId !== undefined
+            ? String(reservation.resourceId)
             : undefined;
 
     return {
-        id: `reservation-${res.id}`,
-        text: res.notes ?? "Reservation",
-        start: utcIsoToDayPilotLocal(res.startTime),
-        end: utcIsoToDayPilotLocal(res.endTime),
-        /** Match DayPilotCalendar(Resources) columns[*].id (we use string consistently). */
+        id: `reservation-${reservation.id}`,
+        text: reservation.notes ?? "Reservation",
+        start: utcIsoToDayPilotLocal(reservation.startTime),
+        end: utcIsoToDayPilotLocal(reservation.endTime),
         resource: resourceKey,
         cssClass: `ev-reservation ${statusClass}`,
         type: "reservation",
-        reservation: res,
-        participants: res.participants,
-        toolTip: tooltipForReservation(res.status),
-        // DayPilot property to hide inner duration bar (we rely on our CSS chip)
-        // (Not part of UiEvent TS surface; accepted by DayPilot at runtime.)
+        reservation,
+        participants: reservation.participants,
+        toolTip: tooltipForReservation(reservation.status),
+        // Hide DayPilot's inner duration bar; our CSS chip handles visuals.
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         barHidden: true,

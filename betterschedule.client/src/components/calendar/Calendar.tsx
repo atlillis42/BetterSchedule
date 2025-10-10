@@ -12,7 +12,7 @@ import { useCalendarData } from "@/hooks/useCalendarData";
 import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
-import { filterEventsByCanceled, filterBlockedTimesForView } from "@/services/eventsService";
+import { filterEventsByDeleted, filterBlockedTimesForView } from "@/services/eventsService";
 
 import { buildBusinessHours } from "@/services/availabilityService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
@@ -73,9 +73,9 @@ const Calendar = () => {
         refreshEvents,
     });
 
-    // Visible events after canceled/blocked filters for the current view.
+    // Visible events after deleted/blocked filters for the current view.
     const visibleEvents = useMemo(() => {
-        const base = filterEventsByCanceled(events, false);
+        const base = filterEventsByDeleted(events, false);
         return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, { userId, isManager });
     }, [events, view, userId, isManager]);
 

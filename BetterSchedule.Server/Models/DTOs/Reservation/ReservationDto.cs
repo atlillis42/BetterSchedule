@@ -65,6 +65,6 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
         public bool IsDeleted { get; init; }
 
         /// <summary>All participants for the booking (e.g., client + guests, additional providers).</summary>
-        public IEnumerable<ReservationParticipantDto> Participants { get; init; } = Array.Empty<ReservationParticipantDto>();
+        public IEnumerable<ReservationParticipantDto> Participants { get; init; } = [];
     }
 }
