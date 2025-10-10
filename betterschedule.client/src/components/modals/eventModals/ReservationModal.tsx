@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import { toast } from "react-toastify";
-import { useAuth } from "@/components/auth/AuthContext";
+import { useAuth } from "@/components/auth/auth-context";
 import ClientSearchInput from "@/components/modals/lookup/ClientSearchInput";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";

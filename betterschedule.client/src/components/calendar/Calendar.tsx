@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import "@/styles/calendar";
 
-import { useAuth } from "@/components/auth/AuthContext";
+import { useAuth } from "@/components/auth/auth-context";
 import CalendarNavigatorPane from "./CalendarNavigatorPane";
 import CalendarToolbar from "./CalendarToolbar";
 import CalendarLegend from "./CalendarLegend";

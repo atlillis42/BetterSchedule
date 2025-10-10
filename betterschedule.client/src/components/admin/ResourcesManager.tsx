@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 import { isManager } from "@auth/roles";
 import {
     getResources,

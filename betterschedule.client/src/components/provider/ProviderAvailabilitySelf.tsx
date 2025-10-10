@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
-import { useAuth } from "@auth/AuthContext";
+import { useAuth } from "@auth/auth-context";
 import {
     listAvailability,
     createAvailability,

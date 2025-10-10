@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import Login from "../components/auth/Login";
-import { AuthProvider } from "../components/auth/AuthContext";
+import { AuthProvider } from "../components/auth/AuthProvider";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
 // Mock the useAuth hook
-vi.mock("../components/auth/AuthContext", async () => {
-    const original = await vi.importActual("../components/auth/AuthContext");
+vi.mock("../components/auth/auth-context", async () => {
+    const original = await vi.importActual("../components/auth/auth-context");
     return {
         ...original,
         useAuth: () => ({

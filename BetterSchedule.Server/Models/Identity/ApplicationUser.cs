@@ -1,5 +1,6 @@
 ﻿using BetterSchedule.Server.Models.Tenant;
 using Microsoft.AspNetCore.Identity;
+using System.ComponentModel.DataAnnotations;
 
 namespace BetterSchedule.Server.Models.Identity
 {
@@ -15,6 +16,14 @@ namespace BetterSchedule.Server.Models.Identity
         /// Full name for display in the UI.
         /// </summary>
         public string? FullName { get; set; }
+
+        /// <summary>Given/first name.</summary>
+        [MaxLength(100)]
+        public string? FirstName { get; set; }
+
+        /// <summary>Family/last name.</summary>
+        [MaxLength(100)]
+        public string? LastName { get; set; }
 
         /// <summary>
         /// Soft delete flag; hidden from normal queries and sign-in when <c>true</c>.

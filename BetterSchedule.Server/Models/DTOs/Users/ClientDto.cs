@@ -14,6 +14,12 @@ namespace BetterSchedule.Server.Models.DTOs.Users
         /// <summary>Display name (FullName if present; otherwise UserName or Email).</summary>
         public string Name { get; init; } = default!;
 
+        /// <summary>User's First Name, if available.</summary>
+        public string? FirstName { get; init; }
+
+        /// <summary>User's Last Name, if available.</summary>
+        public string? LastName { get; init; }
+
         /// <summary>Username (nullable).</summary>
         public string? UserName { get; init; }
 
