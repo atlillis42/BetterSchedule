@@ -1,6 +1,10 @@
 ﻿namespace BetterSchedule.Server.Models.Tenant.SettingsHelpers
 {
-    /// <summary>Policy controlling whether providers may cancel their own reservations.</summary>
+    /// <summary>
+    /// Policy controlling whether providers may cancel their own reservations.
+    /// Note: As of the late-cancel redesign, controllers treat this as advisory/analytic;
+    /// Managers/Providers can cancel; late classification is derived from CancelWindowHours.
+    /// </summary>
     public enum ProviderCancelPolicy
     {
         /// <summary>Providers cannot cancel; only managers may cancel.</summary>

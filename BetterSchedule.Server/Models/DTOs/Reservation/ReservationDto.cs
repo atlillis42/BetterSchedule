@@ -6,6 +6,7 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
     /// <summary>
     /// Read model for an organization-scoped reservation between a client and a service provider
     /// for a specific appointment type, with absolute start/end timestamps and optional resource/package links.
+    /// Includes late-cancel metadata when Status == "Canceled".
     /// </summary>
     public class ReservationDto
     {
@@ -66,5 +67,24 @@ namespace BetterSchedule.Server.Models.DTOs.Reservation
 
         /// <summary>All participants for the booking (e.g., client + guests, additional providers).</summary>
         public IEnumerable<ReservationParticipantDto> Participants { get; init; } = [];
+
+        // ------------------------------
+        // Cancellation metadata (read-only)
+        // ------------------------------
+
+        /// <summary>UTC timestamp when the reservation was canceled (if canceled).</summary>
+        public DateTimeOffset? CancelledAt { get; init; }
+
+        /// <summary>User ID who performed the cancellation, if applicable.</summary>
+        public string? CancelledByUserId { get; init; }
+
+        /// <summary>Free-form cancel reason (e.g., "ClientRequest", "StaffAction", "Weather").</summary>
+        public string? CancelReason { get; init; }
+
+        /// <summary>True if the cancelation occurred within the organization’s late-cancel window (with grace, if configured).</summary>
+        public bool? IsLateCancel { get; init; }
+
+        /// <summary>Origin of the cancel event (ClientPortal, Staff, System).</summary>
+        public string? CancelSource { get; init; }
     }
 }

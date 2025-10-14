@@ -593,6 +593,18 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<int>("AppointmentTypeId")
                         .HasColumnType("int");
 
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CancelSource")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CancelledByUserId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -604,6 +616,9 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsLateCancel")
                         .HasColumnType("bit");
 
                     b.Property<string>("Notes")
@@ -755,6 +770,9 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("OrganizationId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<bool>("AllowClientReschedule")
+                        .HasColumnType("bit");
+
                     b.Property<int>("AvailabilityEnforcement")
                         .HasColumnType("int");
 
@@ -776,6 +794,9 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<int>("DefaultView")
                         .HasColumnType("int");
 
+                    b.Property<bool>("DisallowClientCancelAfterStart")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("EmailEnabled")
                         .HasColumnType("bit");
 
@@ -787,6 +808,9 @@ namespace BetterSchedule.Server.Migrations
 
                     b.Property<bool>("FailOpenWhenNoTypeAssignments")
                         .HasColumnType("bit");
+
+                    b.Property<int>("LateCancelGraceMinutes")
+                        .HasColumnType("int");
 
                     b.Property<bool>("LimitProvidersToAssignedAppointmentTypes")
                         .HasColumnType("bit");

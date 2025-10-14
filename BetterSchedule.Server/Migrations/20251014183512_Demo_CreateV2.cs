@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Demo_CreateV1 : Migration
+    public partial class Demo_CreateV2 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -137,6 +137,9 @@ namespace BetterSchedule.Server.Migrations
                     CancelWindowHours = table.Column<int>(type: "int", nullable: false),
                     ProviderCancelPolicy = table.Column<int>(type: "int", nullable: false),
                     ClientCancelPolicy = table.Column<int>(type: "int", nullable: false),
+                    DisallowClientCancelAfterStart = table.Column<bool>(type: "bit", nullable: false),
+                    AllowClientReschedule = table.Column<bool>(type: "bit", nullable: false),
+                    LateCancelGraceMinutes = table.Column<int>(type: "int", nullable: false),
                     ShowWeekends = table.Column<bool>(type: "bit", nullable: false),
                     StartOfWeek = table.Column<int>(type: "int", nullable: false),
                     BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
@@ -600,7 +603,12 @@ namespace BetterSchedule.Server.Migrations
                     CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    CancelledAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    CancelledByUserId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CancelReason = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsLateCancel = table.Column<bool>(type: "bit", nullable: false),
+                    CancelSource = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {

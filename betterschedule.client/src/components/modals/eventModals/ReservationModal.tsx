@@ -5,7 +5,7 @@ import { useAuth } from "@/components/auth/auth-context";
 import ClientSearchInput from "@/components/modals/lookup/ClientSearchInput";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
-import { setReservationStatus } from "@/api/reservation-api";
+import { setReservationStatus, cancelReservationAsClient } from "@/api/reservation-api";
 import { getClientNameCached } from "@/services/clientNameCache";
 import { getProviderLiteById } from "@/api/user-api";
 import { colorForReservationStatus } from "@/domain/calendar/eventStyle";
@@ -36,6 +36,18 @@ function reservationIdFromValues(values: any): number | undefined {
     return undefined;
 }
 
+/** Safe formatter for ISO-like date/time strings; returns "" on invalid. */
+function fmtDate(value?: string) {
+    if (!value) return "";
+    // value expected yyyy-mm-dd
+    return value;
+}
+function fmtTime(value?: string) {
+    if (!value) return "";
+    // value expected HH:mm
+    return value;
+}
+
 const ReservationModal: React.FC<Props> = ({
     mode,
     values,
@@ -45,7 +57,8 @@ const ReservationModal: React.FC<Props> = ({
     onRefreshRequested,
     onCancel,
 }) => {
-    const { isManager, isProvider, userId } = useAuth();
+    const { isManager, isProvider, isClient, userId } = useAuth();
+    const isClientOnly = !isManager && !isProvider; // a client that is not also staff
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeDto[]>([]);
     const [statusReason, setStatusReason] = useState("");
     const busyRef = useRef(false);
@@ -143,6 +156,9 @@ const ReservationModal: React.FC<Props> = ({
 
     const reservationId = reservationIdFromValues(values);
 
+    // ---------------------------
+    // Staff quick status actions
+    // ---------------------------
     const runQuickStatus = async (status: "Completed" | "Canceled" | "NoShow") => {
         if (!reservationId || busyRef.current) return;
         busyRef.current = true;
@@ -166,83 +182,34 @@ const ReservationModal: React.FC<Props> = ({
                 (err?.response?.data?.message as string | undefined) ||
                 (err instanceof Error ? err.message : undefined) ||
                 "";
-
-            const looksLikeWindow =
-                !!msg &&
-                (/\bwithin\b/i.test(msg) || /hours of start/i.test(msg) || /change window/i.test(msg));
-
-            const eventProviderId =
-                (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
-                (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
-                (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
-
-            const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
-
-            if (looksLikeWindow) {
-                if (isManager) {
-                    const ok = window.confirm("This action is within the organization’s change window. Override and proceed?");
-                    if (ok) {
-                        try {
-                            await setReservationStatus(reservationId, status, {
-                                currentNotes: values?.notes ?? "",
-                                reason: statusReason.trim() || undefined,
-                                managerOverride: true,
-                                toastSuccess: false,
-                            });
-                            toast.success(
-                                status === "Completed"
-                                    ? "Marked as completed."
-                                    : status === "Canceled"
-                                        ? "Reservation canceled."
-                                        : "Marked as no-show."
-                            );
-                            onRefreshRequested?.();
-                            onCancel();
-                            return;
-                        } catch (err2: any) {
-                            const m2 =
-                                (err2?.response?.data?.message as string | undefined) ||
-                                (err2 instanceof Error ? err2.message : undefined) ||
-                                "We couldn't update the status.";
-                            toast.error(m2);
-                            busyRef.current = false;
-                            return;
-                        }
-                    }
-                } else if (isProvider && isAssignedProvider) {
-                    const ok = window.confirm("This action is within the change window. Proceed as the assigned provider?");
-                    if (ok) {
-                        try {
-                            await setReservationStatus(reservationId, status, {
-                                currentNotes: values?.notes ?? "",
-                                reason: statusReason.trim() || undefined,
-                                providerOverride: true,
-                                toastSuccess: false,
-                            });
-                            toast.success(
-                                status === "Completed"
-                                    ? "Marked as completed."
-                                    : status === "Canceled"
-                                        ? "Reservation canceled."
-                                        : "Marked as no-show."
-                            );
-                            onRefreshRequested?.();
-                            onCancel();
-                            return;
-                        } catch (err2: any) {
-                            const m2 =
-                                (err2?.response?.data?.message as string | undefined) ||
-                                (err2 instanceof Error ? err2.message : undefined) ||
-                                "We couldn't update the status.";
-                            toast.error(m2);
-                            busyRef.current = false;
-                            return;
-                        }
-                    }
-                }
-            }
-
             toast.error(msg || "We couldn't update the status.");
+        } finally {
+            busyRef.current = false;
+        }
+    };
+
+    // ---------------------------
+    // Client cancel action
+    // ---------------------------
+    const runClientCancel = async () => {
+        if (!reservationId || busyRef.current) return;
+        const proceed = window.confirm(
+            "Cancel this appointment?\n\nIf this is within your organization’s late-cancel window, it will be marked as a late cancel and may incur a fee per policy."
+        );
+        if (!proceed) return;
+
+        busyRef.current = true;
+        try {
+            await cancelReservationAsClient(reservationId);
+            toast.success("Reservation canceled.");
+            onRefreshRequested?.();
+            onCancel();
+        } catch (err: any) {
+            const msg =
+                (err?.response?.data?.message as string | undefined) ||
+                (err instanceof Error ? err.message : undefined) ||
+                "";
+            toast.error(msg || "We couldn't cancel this reservation.");
         } finally {
             busyRef.current = false;
         }
@@ -251,9 +218,13 @@ const ReservationModal: React.FC<Props> = ({
     const currentStatus: string | undefined =
         values?.status ?? values?.reservation?.status ?? values?.reservationStatus;
 
+    // Editable controls are disabled for client-only users
+    const disableEdits = isClientOnly;
+
     return (
         <div className="flex flex-col gap-4">
-            {mode === "edit" && reservationId && (
+            {/* Staff-only quick status row */}
+            {mode === "edit" && reservationId && !isClientOnly && (
                 <div className="rounded-lg border bg-gray-50 p-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -304,8 +275,17 @@ const ReservationModal: React.FC<Props> = ({
                             placeholder="e.g., client requested, illness, no answer…"
                             value={statusReason}
                             onChange={(e) => setStatusReason(e.target.value)}
+                            disabled={busyRef.current}
                         />
                     </div>
+                </div>
+            )}
+
+            {/* Client-only: informational banner */}
+            {isClientOnly && mode === "edit" && (
+                <div className="rounded-lg border bg-blue-50 p-3 text-xs text-blue-900">
+                    You can cancel this appointment here. If it’s within your organization’s late-cancel window, it will be marked
+                    as a <strong>late cancel</strong> and may be subject to the organization’s policy.
                 </div>
             )}
 
@@ -316,9 +296,9 @@ const ReservationModal: React.FC<Props> = ({
                         valueId={typeof values.clientId === "string" ? values.clientId : null}
                         initialLabel={values.clientName ?? (values.clientId ? clientNameMap.get(values.clientId) ?? null : null)}
                         onChange={(c) => setValues((prev: any) => ({ ...prev, clientId: c?.id ?? "" }))}
-                        placeholder="Search clients…"
-                        disabled={false}
-                        autoFocus={mode === "create"}
+                        placeholder={disableEdits ? "" : "Search clients…"}
+                        disabled={disableEdits}
+                        autoFocus={mode === "create" && !disableEdits}
                     />
                 </div>
 
@@ -328,8 +308,8 @@ const ReservationModal: React.FC<Props> = ({
                         valueId={typeof values.serviceProviderId === "string" ? values.serviceProviderId : null}
                         initialLabel={values.serviceProviderId ? providerNameMap.get(values.serviceProviderId) ?? null : null}
                         onChange={(p) => setValues((prev: any) => ({ ...prev, serviceProviderId: p?.id ?? "" }))}
-                        placeholder="Search providers…"
-                        disabled={false}
+                        placeholder={disableEdits ? "" : "Search providers…"}
+                        disabled={disableEdits}
                         autoFocus={false}
                     />
                 </div>
@@ -342,9 +322,10 @@ const ReservationModal: React.FC<Props> = ({
                         options={appointmentTypeOptionsRS}
                         value={selectedAppointmentTypeOption}
                         onChange={handleAppointmentTypeChange}
-                        isClearable
-                        placeholder="Select type…"
+                        isClearable={!disableEdits}
+                        placeholder={disableEdits ? "" : "Select type…"}
                         noOptionsMessage={() => "No appointment types"}
+                        isDisabled={disableEdits}
                     />
                     {selectedAppointmentType && (
                         <div className="mt-1 text-xs text-gray-600">
@@ -366,9 +347,10 @@ const ReservationModal: React.FC<Props> = ({
                         onChange={(option: SingleValue<NumberOption>) =>
                             setValues((prev: any) => ({ ...prev, resourceId: option?.value ?? undefined }))
                         }
-                        isClearable
-                        placeholder="None"
+                        isClearable={!disableEdits}
+                        placeholder={disableEdits ? "" : "None"}
                         noOptionsMessage={() => "No resources"}
+                        isDisabled={disableEdits}
                     />
                 </div>
 
@@ -378,14 +360,16 @@ const ReservationModal: React.FC<Props> = ({
                         <input
                             type="date"
                             className="border rounded-lg px-3 py-2 w-1/2"
-                            value={values.startDate || ""}
+                            value={fmtDate(values.startDate) || ""}
                             onChange={(e) => handleField("startDate", e.target.value)}
+                            disabled={disableEdits}
                         />
                         <input
                             type="time"
                             className="border rounded-lg px-3 py-2 w-1/2"
-                            value={values.startTime || ""}
+                            value={fmtTime(values.startTime) || ""}
                             onChange={(e) => handleField("startTime", e.target.value)}
+                            disabled={disableEdits}
                         />
                     </div>
                 </div>
@@ -396,14 +380,16 @@ const ReservationModal: React.FC<Props> = ({
                         <input
                             type="date"
                             className="border rounded-lg px-3 py-2 w-1/2"
-                            value={values.endDate || ""}
+                            value={fmtDate(values.endDate) || ""}
                             onChange={(e) => handleField("endDate", e.target.value)}
+                            disabled={disableEdits}
                         />
                         <input
                             type="time"
                             className="border rounded-lg px-3 py-2 w-1/2"
-                            value={values.endTime || ""}
+                            value={fmtTime(values.endTime) || ""}
                             onChange={(e) => handleField("endTime", e.target.value)}
+                            disabled={disableEdits}
                         />
                     </div>
                 </div>
@@ -414,10 +400,26 @@ const ReservationModal: React.FC<Props> = ({
                         className="border rounded-lg px-3 py-2 min-h-[72px]"
                         value={values.notes || ""}
                         onChange={(e) => handleField("notes", e.target.value)}
-                        placeholder="optional notes"
+                        placeholder={disableEdits ? "" : "optional notes"}
+                        disabled={disableEdits}
                     />
                 </div>
             </div>
+
+            {/* Client-only footer action */}
+            {isClientOnly && mode === "edit" && reservationId && (
+                <div className="mt-2 flex items-center justify-end">
+                    <button
+                        type="button"
+                        className="px-4 py-2 text-sm rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+                        onClick={runClientCancel}
+                        disabled={busyRef.current || !isClient}
+                        title="Cancel this appointment"
+                    >
+                        Cancel Appointment
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

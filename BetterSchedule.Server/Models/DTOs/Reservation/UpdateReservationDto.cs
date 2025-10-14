@@ -30,5 +30,11 @@
         /// New lifecycle state, if changing. One of: "Booked", "Completed", "Canceled", "NoShow".
         /// </summary>
         public string? Status { get; init; }
+
+        /// <summary>
+        /// Optional free-form cancel reason to annotate a cancel status change (e.g., "ClientRequest", "StaffAction", "Weather").
+        /// Server may default if not provided.
+        /// </summary>
+        public string? CancelReason { get; init; }
     }
 }

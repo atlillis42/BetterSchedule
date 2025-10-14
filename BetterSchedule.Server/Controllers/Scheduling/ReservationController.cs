@@ -22,15 +22,15 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     ///
     /// Responsibilities
     /// - Read/write reservations within the caller's organization.
-    /// - Enforce MinLeadMinutes and CancelWindowHours via <see cref="OrganizationSettings"/>.
+    /// - Classify late cancellations; do NOT hard-block client cancels (pre-start).
     /// - Enforce provider availability + blocked-time constraints via <see cref="ISchedulingConflictService"/>.
     /// - Perform package redemption bookkeeping when status transitions to/from <c>Completed</c>.
     ///
-    /// Security &amp; Visibility
+    /// Security & Visibility
     /// - All endpoints are org-scoped via <see cref="OrgControllerBase"/>.
     /// - Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.
     /// - Create/Update/Delete are allowed for Managers and Service Providers (subject to scope).
-    /// - Clients can self-cancel via <see cref="CancelAsClient"/> when org policy allows.
+    /// - Clients can self-cancel via <see cref="CancelAsClient"/> (pre-start), always classified for lateness.
     /// </summary>
     [ApiController]
     [Route("api/reservation")]
@@ -102,11 +102,11 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (settings is not null &&
                 BookingPolicy.ViolatesLeadTime(settings.MinLeadMinutes, _clock.UtcNow, dto.StartTime))
             {
+                // Allow assigned provider to create inside lead time; otherwise block.
                 var providerSelf = IsProvider && dto.ServiceProviderId == UserId;
                 if (!providerSelf)
                     return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
             }
-
 
             var c = await _conflicts.CheckReservationCreateAsync(
                 OrganizationId,
@@ -177,6 +177,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Updates an existing reservation (Managers and Service Providers).
         /// Handles status transitions and package redemption bookkeeping atomically.
+        /// Staff may reschedule/cancel at any time; conflicts produce warnings/soft errors.
         /// </summary>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
@@ -184,9 +185,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             [FromRoute] int id,
             [FromBody] UpdateReservationDto dto,
             CancellationToken ct,
-            [FromQuery] bool managerOverride = false,
-            [FromQuery] bool overrideAvailability = false,
-            [FromQuery] bool providerOverride = false) 
+            [FromQuery] bool overrideAvailability = false)
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -232,55 +231,11 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var newEnd = dto.EndTime ?? reservation.EndTime;
             var newResourceId = dto.ResourceId ?? reservation.ResourceId;
 
-            // Lead-time check for any schedule change
+            // For staff, allow rescheduling anytime; only require that End > Start
             if (!isOnlyStatusChange)
             {
                 if (newEnd <= newStart)
                     return BadRequest("EndTime must be after StartTime.");
-
-                var providerSelf = IsProvider && newProviderId == UserId;
-                if (!providerSelf)
-                    return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
-            }
-
-            // Cancel-window / policy checks
-            if (settings is not null)
-            {
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                var insideCancelWindow = reservation.StartTime - now < cancelWindow;
-
-                if (wantsCancel && parsedStatus.HasValue)
-                {
-                    if (IsManager)
-                    {
-                        if (insideCancelWindow && !managerOverride)
-                            return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
-                    }
-                    else if (IsProvider)
-                    {
-                        var allowPerPolicy = BookingPolicy.CanProviderCancel(settings.ProviderCancelPolicy, cancelWindow, now, reservation.StartTime);
-                        var isAssignedProvider = reservation.ServiceProviderId == UserId;
-
-                        // If policy disallows, permit only when inside window AND assigned provider confirmed override
-                        if (!allowPerPolicy)
-                        {
-                            if (!(insideCancelWindow && isAssignedProvider && providerOverride))
-                                return BadRequest("Providers are not allowed to cancel at this time per organization policy.");
-                        }
-                    }
-                }
-                else
-                {
-                    // Non-cancel modifications inside window:
-                    // allow manager override, or assigned provider override.
-                    if (insideCancelWindow)
-                    {
-                        var isAssignedProvider = IsProvider && reservation.ServiceProviderId == UserId;
-                        var allowed = (IsManager && managerOverride) || (isAssignedProvider && providerOverride);
-                        if (!allowed)
-                            return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
-                    }
-                }
             }
 
             // Availability/resource checks when changing schedule
@@ -290,15 +245,11 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 var c = await _conflicts.CheckReservationUpdateAsync(
                     id, OrganizationId, newProviderId, newStart, newEnd, newResourceId, ct);
 
-                if (c.OutsideProviderAvailability)
+                if (c.OutsideProviderAvailability && !overrideAvailability)
                 {
-                    var isOwnProvider = IsProvider && newProviderId == UserId;
-                    var canOverride =
-                        (IsManager && overrideAvailability) ||
-                        (isOwnProvider && overrideAvailability);
-
-                    if (!canOverride)
-                        return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+                    // Warn (soft), but allow managers/providers to proceed if they explicitly confirm on UI side.
+                    // We return 409 only for hard blocks (blocked time).
+                    Response.Headers["X-Outside-Availability"] = "true";
                 }
 
                 if (c.ProviderBlocked || c.ResourceBlocked)
@@ -339,7 +290,23 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.Notes is not null) reservation.Notes = dto.Notes;
             if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
             if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
-            if (parsedStatus.HasValue) reservation.Status = parsedStatus.Value;
+
+            if (parsedStatus.HasValue)
+            {
+                // Transition to Canceled -> record metadata and classify lateness
+                if (parsedStatus.Value == ReservationStatus.Canceled && reservation.Status != ReservationStatus.Canceled)
+                {
+                    var orgSettings = settings ?? new OrganizationSettings();
+                    reservation.CancelledAt = now;
+                    reservation.CancelledByUserId = UserId;
+                    reservation.CancelReason = "StaffAction";
+                    reservation.CancelSource = CancellationSource.Staff;
+                    reservation.IsLateCancel = BookingPolicy.IsLateCancel(
+                        now, reservation.StartTime, orgSettings.TimeZoneId, orgSettings.CancelWindowHours, orgSettings.LateCancelGraceMinutes);
+                }
+
+                reservation.Status = parsedStatus.Value;
+            }
 
             reservation.ServiceProviderId = newProviderId;
             reservation.AppointmentTypeId = newTypeId;
@@ -433,17 +400,19 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Allows a client to cancel their own upcoming reservation (or a Manager to cancel on behalf of a client).
-        /// Enforces organization cancel window and ties client permission to provider policy.
+        /// New behavior: client cancels are always allowed pre-start; inside the window they are marked as "late".
+        /// Managers may cancel anytime.
         /// </summary>
         [HttpPost("{id:int}/cancel")]
         [Authorize(Roles = "Client,Manager")]
-        public async Task<IActionResult> CancelAsClient([FromRoute] int id, CancellationToken ct, [FromQuery] bool managerOverride = false)
+        public async Task<IActionResult> CancelAsClient([FromRoute] int id, CancellationToken ct)
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (reservation is null) return NotFound();
 
+            // Role/scope: client can cancel self; manager can cancel anyone
             if (!IsManager)
             {
                 if (!IsClient || reservation.ClientId != UserId)
@@ -457,45 +426,43 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 return BadRequest("This reservation cannot be canceled in its current state.");
 
             var now = _clock.UtcNow;
-            if (now >= reservation.StartTime)
-                return BadRequest("Cannot cancel after the reservation start time.");
 
             var settings = await _db.OrganizationSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct) ?? new OrganizationSettings();
 
-            if (settings is not null)
-            {
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
+            // Client gating: pre-start only (by default). Managers are unrestricted.
+            if (!IsManager && settings.DisallowClientCancelAfterStart && now >= reservation.StartTime)
+                return BadRequest("Cannot cancel after the reservation start time.");
 
-                var allowed = BookingPolicy.CanClientCancel(
-                    settings.ClientCancelPolicy,
-                    settings.ProviderCancelPolicy,
-                    cancelWindow,
-                    now,
-                    reservation.StartTime);
-
-                if (!allowed && !(IsManager && managerOverride))
-                    return BadRequest("This reservation cannot be canceled per organization policy.");
-            }
+            // Classify lateness (org-local)
+            var isLate = BookingPolicy.IsLateCancel(
+                now,
+                reservation.StartTime,
+                settings.TimeZoneId,
+                settings.CancelWindowHours,
+                settings.LateCancelGraceMinutes);
 
             reservation.Status = ReservationStatus.Canceled;
+            reservation.CancelledAt = now;
+            reservation.CancelledByUserId = UserId;
+            reservation.CancelReason = IsManager ? "StaffAction" : "ClientRequest";
+            reservation.CancelSource = IsManager ? CancellationSource.Staff : CancellationSource.ClientPortal;
+            reservation.IsLateCancel = isLate;
             reservation.UpdatedAt = now;
-            await _db.SaveChangesAsync(ct);
 
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
         /// <summary>
         /// Soft deletes a reservation (Managers and Service Providers).
-        /// Does not automatically restore package usage; use status transitions for that.
+        /// Staff may delete anytime; does not automatically restore package usage (use status transitions for that).
         /// </summary>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
         public async Task<ActionResult> Delete(
             [FromRoute] int id,
-            CancellationToken ct,
-            [FromQuery] bool managerOverride = false,
-            [FromQuery] bool providerOverride = false)
+            CancellationToken ct)
         {
             var entity = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
@@ -503,26 +470,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
             if (!ReservationScopes.CanModify(entity, UserId, IsManager, IsProvider, isClient: false))
                 return Forbid();
-
-            var settings = await _db.OrganizationSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
-
-            if (settings is not null)
-            {
-                var now = _clock.UtcNow;
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                var inside = entity.StartTime - now < cancelWindow;
-
-                if (inside)
-                {
-                    var isAssignedProvider = IsProvider && entity.ServiceProviderId == UserId;
-                    var allowed =
-                        (IsManager && managerOverride) ||
-                        (isAssignedProvider && providerOverride);
-                    if (!allowed)
-                        return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
-                }
-            }
 
             entity.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
@@ -533,7 +480,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         // Helpers
         // --------------------------
 
-        /// <summary>Map entity -> DTO (status as string).</summary>
+        /// <summary>Map entity -> DTO (status as string). Note: cancellation metadata is not projected yet.</summary>
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,

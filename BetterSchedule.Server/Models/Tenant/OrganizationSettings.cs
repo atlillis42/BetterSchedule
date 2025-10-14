@@ -24,31 +24,49 @@ namespace BetterSchedule.Server.Models.Tenant
 
         /// <summary>
         /// Minimum lead time to create or reschedule a reservation, in minutes.
-        /// Applies to Manager/Provider create/update and (optionally) to any future client self-reschedule endpoints.
+        /// Applies primarily to client booking flows; staff may override in controller logic.
         /// </summary>
         [Range(0, 10080)]
         public int MinLeadMinutes { get; set; } = 0;
 
         /// <summary>
-        /// Hours before start after which a reservation cannot be modified or canceled without an override.
-        /// Default 24h is typical for service scheduling.
+        /// Hours before start used to classify a client cancellation as "late".
+        /// NOTE: No longer blocks clients; used purely for status (IsLateCancel).
         /// </summary>
         [Range(0, 168)]
         public int CancelWindowHours { get; set; } = 24;
 
         /// <summary>
-        /// Organization policy controlling whether providers may cancel their own reservations.
-        /// Managers may still override in controller logic.
+        /// Providers' cancel policy (kept for compatibility/analytics).
+        /// Staff can override in controller logic; does not block cancellation anymore.
         /// </summary>
         [Required]
         public ProviderCancelPolicy ProviderCancelPolicy { get; set; } = ProviderCancelPolicy.AnyTime;
 
         /// <summary>
-        /// Organization policy controlling whether clients may cancel their own reservations.
-        /// NOTE: If <see cref="ProviderCancelPolicy"/> is <c>None</c>, clients are implicitly disallowed regardless of this value.
+        /// Client cancel policy (kept for compatibility/analytics).
+        /// Controllers classify cancels using CancelWindowHours; gating is mostly removed.
         /// </summary>
         [Required]
         public ClientCancelPolicy ClientCancelPolicy { get; set; } = ClientCancelPolicy.RespectWindow;
+
+        /// <summary>
+        /// If true (default), clients cannot cancel after the reservation start time.
+        /// Managers/providers can always cancel.
+        /// </summary>
+        public bool DisallowClientCancelAfterStart { get; set; } = true;
+
+        /// <summary>
+        /// If true, clients may reschedule their own reservations in UI (default false).
+        /// Current v1 keeps this false; clients cancel then book a new slot instead.
+        /// </summary>
+        public bool AllowClientReschedule { get; set; } = false;
+
+        /// <summary>
+        /// Grace period (minutes) applied to the late-cancel cutoff (moves cutoff later; fewer cancels count as "late").
+        /// </summary>
+        [Range(0, 120)]
+        public int LateCancelGraceMinutes { get; set; } = 0;
 
         // --------------------------------------------------------------------
         // Calendar display preferences (UI only)
@@ -142,7 +160,5 @@ namespace BetterSchedule.Server.Models.Tenant
 
         /// <summary>If set, send a reminder this many hours before start.</summary>
         public int? ReminderHoursBefore { get; set; } = null;
-
-        // Future toggles (placeholders) ...
     }
 }
