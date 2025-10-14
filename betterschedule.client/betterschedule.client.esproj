@@ -11,11 +11,12 @@
   <ItemGroup>
     <None Remove="src\components\client\**" />
     <None Remove="src\store\**" />
+    <None Remove="src\__tests__\__mocks__\**" />
     <TypeScriptConfiguration Remove="src\components\client\**" />
     <TypeScriptConfiguration Remove="src\store\**" />
+    <TypeScriptConfiguration Remove="src\__tests__\__mocks__\**" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="src\dev\" />
-    <Folder Include="src\__tests__\__mocks__\" />
   </ItemGroup>
 </Project>

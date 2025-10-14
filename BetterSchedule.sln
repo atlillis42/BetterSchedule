@@ -20,7 +20,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "client", "client", "{02184D
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "server", "server", "{6DEFEC46-F387-4EE8-943B-F109D9EF7320}"
 	ProjectSection(SolutionItems) = preProject
-		devtools.md = devtools.md
 		identity.md = identity.md
 		modelsOverview.md = modelsOverview.md
 		scopes.md = scopes.md

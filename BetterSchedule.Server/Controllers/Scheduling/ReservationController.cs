@@ -26,7 +26,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     /// - Enforce provider availability + blocked-time constraints via <see cref="ISchedulingConflictService"/>.
     /// - Perform package redemption bookkeeping when status transitions to/from <c>Completed</c>.
     ///
-    /// Security & Visibility
+    /// Security/Visibility
     /// - All endpoints are org-scoped via <see cref="OrgControllerBase"/>.
     /// - Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.
     /// - Create/Update/Delete are allowed for Managers and Service Providers (subject to scope).

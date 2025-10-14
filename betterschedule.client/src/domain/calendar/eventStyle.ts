@@ -1,9 +1,5 @@
 import type { ReservationDto } from "@/api/reservation-api";
 
-/**
- * Returns a stable CSS class for the reservation status.
- * Used by theme CSS to derive consistent color/tint styling.
- */
 export function classForReservationStatus(status: ReservationDto["status"]): string {
     switch (status) {
         case "Completed":
@@ -19,32 +15,27 @@ export function classForReservationStatus(status: ReservationDto["status"]): str
 }
 
 /**
- * Maps reservation status to the default accent color (hex).
- * @remarks
- * UI adapters (e.g., DayPilot beforeEventRender) may override these.
  * Colors align with Tailwind palette accents used elsewhere:
- * - Booked:  #3b82f6 (blue-500)
+ * - Booked:   #3b82f6 (blue-500)
  * - Completed:#10b981 (emerald-500)
- * - NoShow:  #f59e0b (amber-500)
- * - Canceled:#ef4444 (red-500) 
+ * - Canceled: #f59e0b (amber-500)   
+ * - NoShow:   #ef4444 (red-500)     
  */
 export function colorForReservationStatus(status: ReservationDto["status"]): string {
     switch (status) {
         case "Completed":
-            return "#10b981"; // emerald
+            return "#10b981";
         case "Canceled":
-            return "#ef4444"; // red (updated)
+            return "#f59e0b"; // amber 
         case "NoShow":
-            return "#f59e0b"; // amber
+            return "#ef4444"; // red 
         case "Booked":
         default:
-            return "#3b82f6"; // blue
+            return "#3b82f6";
     }
 }
 
-/**
- * Returns a compact tooltip for the reservation.
- */
 export function tooltipForReservation(status: ReservationDto["status"]): string {
-    return `Reservation • ${status}`;
+    const label = status === "NoShow" ? "No-Show / Late Cancel" : status;
+    return `Reservation • ${label}`;
 }

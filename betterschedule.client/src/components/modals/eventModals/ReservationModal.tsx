@@ -5,7 +5,11 @@ import { useAuth } from "@/components/auth/auth-context";
 import ClientSearchInput from "@/components/modals/lookup/ClientSearchInput";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
-import { setReservationStatus, cancelReservationAsClient } from "@/api/reservation-api";
+import {
+    setReservationStatus,
+    cancelReservationAsClient,
+    updateReservation,
+} from "@/api/reservation-api";
 import { getClientNameCached } from "@/services/clientNameCache";
 import { getProviderLiteById } from "@/api/user-api";
 import { colorForReservationStatus } from "@/domain/calendar/eventStyle";
@@ -36,16 +40,16 @@ function reservationIdFromValues(values: any): number | undefined {
     return undefined;
 }
 
-/** Safe formatter for ISO-like date/time strings; returns "" on invalid. */
 function fmtDate(value?: string) {
-    if (!value) return "";
-    // value expected yyyy-mm-dd
-    return value;
+    return value || "";
 }
 function fmtTime(value?: string) {
-    if (!value) return "";
-    // value expected HH:mm
-    return value;
+    return value || "";
+}
+
+function labelForStatus(s?: string) {
+    if (s === "NoShow") return "No-Show / Late Cancel";
+    return s || "";
 }
 
 const ReservationModal: React.FC<Props> = ({
@@ -57,8 +61,9 @@ const ReservationModal: React.FC<Props> = ({
     onRefreshRequested,
     onCancel,
 }) => {
-    const { isManager, isProvider, isClient, userId } = useAuth();
-    const isClientOnly = !isManager && !isProvider; // a client that is not also staff
+    const { isManager, isProvider, userId } = useAuth();
+    const isClientOnly = !isManager && !isProvider;
+
     const [appointmentTypes, setAppointmentTypes] = useState<AppointmentTypeDto[]>([]);
     const [statusReason, setStatusReason] = useState("");
     const busyRef = useRef(false);
@@ -75,10 +80,16 @@ const ReservationModal: React.FC<Props> = ({
         });
     }, [providers]);
 
+    // Resolve primary IDs from varied shapes we see flowing through modals
     const primaryClientId: string | undefined =
-        typeof values?.clientId === "string" && values.clientId ? values.clientId : undefined;
+        (typeof values?.clientId === "string" && values.clientId) ||
+        (typeof values?.reservation?.clientId === "string" && values.reservation.clientId) ||
+        undefined;
+
     const primaryProviderId: string | undefined =
-        typeof values?.serviceProviderId === "string" && values.serviceProviderId ? values.serviceProviderId : undefined;
+        (typeof values?.serviceProviderId === "string" && values.serviceProviderId) ||
+        (typeof values?.reservation?.serviceProviderId === "string" && values.reservation.serviceProviderId) ||
+        undefined;
 
     useEffect(() => {
         let cancelled = false;
@@ -156,24 +167,52 @@ const ReservationModal: React.FC<Props> = ({
 
     const reservationId = reservationIdFromValues(values);
 
-    // ---------------------------
-    // Staff quick status actions
-    // ---------------------------
-    const runQuickStatus = async (status: "Completed" | "Canceled" | "NoShow") => {
+    // Client is allowed to cancel only if they own the reservation
+    const userOwnsReservation =
+        !!isClientOnly &&
+        !!userId &&
+        !!primaryClientId &&
+        String(userId) === String(primaryClientId);
+
+    // -------------------------------------
+    // Quick status action (staff only)
+    // -------------------------------------
+    const runQuickStatus = async (status: "Booked" | "Completed" | "Canceled" | "NoShow") => {
         if (!reservationId || busyRef.current) return;
         busyRef.current = true;
+
+        const currentNotes: string = values?.notes ?? "";
+        const reason = (statusReason || "").trim();
+        const notesForBooked = reason ? `${currentNotes}\n[status=${status}] ${reason}` : undefined;
+
+        const doApply = async (opts?: { managerOverride?: boolean; providerOverride?: boolean }) => {
+            if (status === "Booked") {
+                await updateReservation(
+                    reservationId,
+                    { status, notes: notesForBooked },
+                    { managerOverride: !!opts?.managerOverride, providerOverride: !!opts?.providerOverride, toastSuccess: false }
+                );
+            } else {
+                await setReservationStatus(reservationId, status, {
+                    currentNotes,
+                    reason: reason || undefined,
+                    managerOverride: !!opts?.managerOverride,
+                    providerOverride: !!opts?.providerOverride,
+                    toastSuccess: false,
+                });
+            }
+        };
+
         try {
-            await setReservationStatus(reservationId, status, {
-                currentNotes: values?.notes ?? "",
-                reason: statusReason.trim() || undefined,
-                toastSuccess: false,
-            });
+            await doApply();
             toast.success(
-                status === "Completed"
-                    ? "Marked as completed."
-                    : status === "Canceled"
-                        ? "Reservation canceled."
-                        : "Marked as no-show."
+                status === "Booked"
+                    ? "Marked as booked."
+                    : status === "Completed"
+                        ? "Marked as completed."
+                        : status === "Canceled"
+                            ? "Reservation canceled."
+                            : "Marked as no-show / late cancel."
             );
             onRefreshRequested?.();
             onCancel();
@@ -182,6 +221,75 @@ const ReservationModal: React.FC<Props> = ({
                 (err?.response?.data?.message as string | undefined) ||
                 (err instanceof Error ? err.message : undefined) ||
                 "";
+
+            const looksLikeWindow =
+                !!msg && (/\bwithin\b/i.test(msg) || /hours of start/i.test(msg) || /change window/i.test(msg));
+
+            const eventProviderId =
+                (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
+                (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
+                (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
+
+            const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
+
+            if (looksLikeWindow) {
+                if (isManager) {
+                    const ok = window.confirm("This action is within the organization’s change window. Override and proceed?");
+                    if (ok) {
+                        try {
+                            await doApply({ managerOverride: true });
+                            toast.success(
+                                status === "Booked"
+                                    ? "Marked as booked."
+                                    : status === "Completed"
+                                        ? "Marked as completed."
+                                        : status === "Canceled"
+                                            ? "Reservation canceled."
+                                            : "Marked as no-show / late cancel."
+                            );
+                            onRefreshRequested?.();
+                            onCancel();
+                            return;
+                        } catch (err2: any) {
+                            const m2 =
+                                (err2?.response?.data?.message as string | undefined) ||
+                                (err2 instanceof Error ? err2.message : undefined) ||
+                                "We couldn't update the status.";
+                            toast.error(m2);
+                            busyRef.current = false;
+                            return;
+                        }
+                    }
+                } else if (isProvider && isAssignedProvider) {
+                    const ok = window.confirm("This action is within the change window. Proceed as the assigned provider?");
+                    if (ok) {
+                        try {
+                            await doApply({ providerOverride: true });
+                            toast.success(
+                                status === "Booked"
+                                    ? "Marked as booked."
+                                    : status === "Completed"
+                                        ? "Marked as completed."
+                                        : status === "Canceled"
+                                            ? "Reservation canceled."
+                                            : "Marked as no-show / late cancel."
+                            );
+                            onRefreshRequested?.();
+                            onCancel();
+                            return;
+                        } catch (err2: any) {
+                            const m2 =
+                                (err2?.response?.data?.message as string | undefined) ||
+                                (err2 instanceof Error ? err2.message : undefined) ||
+                                "We couldn't update the status.";
+                            toast.error(m2);
+                            busyRef.current = false;
+                            return;
+                        }
+                    }
+                }
+            }
+
             toast.error(msg || "We couldn't update the status.");
         } finally {
             busyRef.current = false;
@@ -218,8 +326,7 @@ const ReservationModal: React.FC<Props> = ({
     const currentStatus: string | undefined =
         values?.status ?? values?.reservation?.status ?? values?.reservationStatus;
 
-    // Editable controls are disabled for client-only users
-    const disableEdits = isClientOnly;
+    const disableEdits = isClientOnly; // read-only fields for clients
 
     return (
         <div className="flex flex-col gap-4">
@@ -232,38 +339,46 @@ const ReservationModal: React.FC<Props> = ({
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     type="button"
+                                    className="px-3 py-1.5 text-sm rounded border bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                                    onClick={() => runQuickStatus("Booked")}
+                                    disabled={busyRef.current}
+                                >
+                                    Booked
+                                </button>
+                                <button
+                                    type="button"
                                     className="px-3 py-1.5 text-sm rounded border bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
                                     onClick={() => runQuickStatus("Completed")}
                                     disabled={busyRef.current}
                                 >
-                                    Mark Completed
-                                </button>
-                                <button
-                                    type="button"
-                                    className="px-3 py-1.5 text-sm rounded border bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
-                                    onClick={() => runQuickStatus("Canceled")}
-                                    disabled={busyRef.current}
-                                >
-                                    Cancel
+                                    Completed
                                 </button>
                                 <button
                                     type="button"
                                     className="px-3 py-1.5 text-sm rounded border bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-60"
+                                    onClick={() => runQuickStatus("Canceled")}
+                                    disabled={busyRef.current}
+                                >
+                                    Canceled
+                                </button>
+                                <button
+                                    type="button"
+                                    className="px-3 py-1.5 text-sm rounded border bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
                                     onClick={() => runQuickStatus("NoShow")}
                                     disabled={busyRef.current}
                                 >
-                                    No-Show
+                                    No-Show/Late Cancel
                                 </button>
                             </div>
                         </div>
 
                         {currentStatus && (
-                            <div className="flex items-center gap-2 text-xs" title={`Reservation • ${currentStatus}`}>
+                            <div className="flex items-center gap-2 text-xs" title={`Reservation • ${labelForStatus(currentStatus)}`}>
                                 <span
                                     className="inline-block h-2.5 w-2.5 rounded-full"
                                     style={{ backgroundColor: colorForReservationStatus(currentStatus as any) }}
                                 />
-                                <span className="text-gray-700">{currentStatus}</span>
+                                <span className="text-gray-700">{labelForStatus(currentStatus)}</span>
                             </div>
                         )}
                     </div>
@@ -406,14 +521,14 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
             </div>
 
-            {/* Client-only footer action */}
-            {isClientOnly && mode === "edit" && reservationId && (
+            {/* Client-only footer action (must own the reservation) */}
+            {isClientOnly && mode === "edit" && reservationId && userOwnsReservation && (
                 <div className="mt-2 flex items-center justify-end">
                     <button
                         type="button"
-                        className="px-4 py-2 text-sm rounded bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+                        className="px-4 py-2 text-sm rounded bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-60"
                         onClick={runClientCancel}
-                        disabled={busyRef.current || !isClient}
+                        disabled={busyRef.current}
                         title="Cancel this appointment"
                     >
                         Cancel Appointment

@@ -115,14 +115,6 @@ namespace BetterSchedule.Server.DevTools
             var org1Tz = await db.OrganizationSettings.Where(x => x.OrganizationId == org1.Id).Select(x => x.TimeZoneId).FirstAsync();
             var org2Tz = await db.OrganizationSettings.Where(x => x.OrganizationId == org2.Id).Select(x => x.TimeZoneId).FirstAsync();
 
-            // -----------------------------
-            // Users (org1 + org2)
-            // -----------------------------
-            var devAdmin = await EnsureDevUserAsync("admin@dev.local", org1.Id, new[] { "Manager", "ServiceProvider", "Client" });
-            var devProv = await EnsureDevUserAsync("provider@dev.local", org1.Id, new[] { "ServiceProvider" });
-            var devClient = await EnsureDevUserAsync("client@dev.local", org1.Id, new[] { "Client" });
-            var devHybrid = await EnsureDevUserAsync("hybrid@dev.local", org1.Id, new[] { "ServiceProvider", "Client" });
-
             // Org1 core demo users
             var alice = await EnsureDemoUserAsync("alice", "alice@example.com", "Alice Anderson", "Manager", org1.Id);
             var bob = await EnsureDemoUserAsync("bob", "bob@example.com", "Bob Brown", "ServiceProvider", org1.Id);
@@ -245,36 +237,6 @@ namespace BetterSchedule.Server.DevTools
                 var unspecified = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
                 var offset = tz.GetUtcOffset(unspecified);
                 return new DateTimeOffset(unspecified, offset); // keep local offset; DB stores DateTimeOffset
-            }
-
-            async Task<ApplicationUser> EnsureDevUserAsync(string email, string organizationId, string[] rolesToAdd)
-            {
-                var user = await userManager.FindByEmailAsync(email);
-                if (user is null)
-                {
-                    user = new ApplicationUser
-                    {
-                        UserName = email,
-                        Email = email,
-                        EmailConfirmed = true,
-                        OrganizationId = organizationId
-                    };
-                    await userManager.CreateAsync(user, "Devpass123!");
-                }
-
-                if (user.OrganizationId != organizationId)
-                {
-                    user.OrganizationId = organizationId;
-                    await userManager.UpdateAsync(user);
-                }
-
-                foreach (var r in rolesToAdd)
-                {
-                    if (!await userManager.IsInRoleAsync(user, r))
-                        await userManager.AddToRoleAsync(user, r);
-                }
-
-                return user;
             }
 
             async Task<ApplicationUser> EnsureDemoUserAsync(string username, string email, string fullName, string role, string organizationId)

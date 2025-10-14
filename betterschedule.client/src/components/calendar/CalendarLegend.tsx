@@ -11,25 +11,19 @@ import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekH
  * - Resources context: compact "viewing day" badge on the right.
  * - Month context: compact "today" badge on the right.
  */
+
 export default function CalendarLegend(props: {
-    /** Current view. */
     view: ViewMode;
-    /** View setter for the weekend toggle. */
     onSetView: (view: ViewMode) => void;
-    /**
-     * Resources view: label of the current day (e.g., "Wednesday, Oct 8th, 2025").
-     * Month view ignores this and derives "today" locally.
-     */
     resourcesDayLabel?: string;
 }) {
     const { view, onSetView, resourcesDayLabel } = props;
 
     const isWeekly = view === "Week" || view === "WorkWeek";
-    const weekendsShown = view === "Week"; // checked = Week (weekends visible)
+    const weekendsShown = view === "Week";
     const isResources = view === "Resources";
     const isMonth = view === "Month";
 
-    // Month view: compute local "today" label (full weekday + ordinal) once.
     const monthTodayLabel = useMemo(() => formatResourcesDayLabel(DayPilot.Date.today()), []);
 
     return (
@@ -43,16 +37,14 @@ export default function CalendarLegend(props: {
                 <span>Completed</span>
             </div>
             <div className="flex items-center gap-1">
-                <span className="inline-block w-3 h-3 rounded" style={{ background: "#ef4444" }} />
+                <span className="inline-block w-3 h-3 rounded" style={{ background: "#f59e0b" }} />
                 <span>Canceled</span>
             </div>
             <div className="flex items-center gap-1">
-                <span className="inline-block w-3 h-3 rounded" style={{ background: "#f59e0b" }} />
-                <span>No-Show</span>
+                <span className="inline-block w-3 h-3 rounded" style={{ background: "#ef4444" }} />
+                <span>No-Show / Late Cancel</span>
             </div>
-            
 
-            {/* RIGHT: weekly toggle and/or date badges */}
             <div className="ml-auto flex items-center gap-2">
                 {isWeekly && (
                     <ToggleLabeledSubtle
@@ -86,7 +78,6 @@ export default function CalendarLegend(props: {
     );
 }
 
-/** Small, subtle labeled pill toggle used on the legend. */
 function ToggleLabeledSubtle(props: {
     id?: string;
     checked: boolean;
@@ -116,11 +107,9 @@ function ToggleLabeledSubtle(props: {
                     "group-focus-within:ring-2 group-focus-within:ring-blue-400 group-focus-within:ring-offset-1",
                 ].join(" ")}
             >
-                {/* Checked label (Week) */}
                 <span className={[checked ? "opacity-100" : "opacity-0", "transition-opacity duration-150 absolute"].join(" ")}>
                     {onText}
                 </span>
-                {/* Unchecked label (WorkWeek) */}
                 <span className={[checked ? "opacity-0" : "opacity-100", "transition-opacity duration-150"].join(" ")}>
                     {offText}
                 </span>
