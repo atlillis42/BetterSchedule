@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial_CreateV4 : Migration
+    public partial class Demo_CreateV1 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

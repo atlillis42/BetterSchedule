@@ -9,6 +9,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace BetterSchedule.Server.DevTools
 {
+    /// <summary>
+    /// Seeds development/demo data for BetterSchedule.
+    /// Produces two demo organizations with users, resources, appointment types,
+    /// provider availability, reservations, and participants. IDs remain stable;
+    /// names and data are human-readable for demos.
+    /// </summary>
     public static class DbInitializer
     {
         /// <summary>
@@ -51,10 +57,10 @@ namespace BetterSchedule.Server.DevTools
             }
 
             // -----------------------------
-            // Organizations
+            // Organizations (stable IDs, clearer names)
             // -----------------------------
-            var org1 = await EnsureOrganizationAsync(db, "demo-org-1", "Demo Organization");
-            var org2 = await EnsureOrganizationAsync(db, "demo-org-2", "Second Demo Org");
+            var org1 = await EnsureOrganizationAsync(db, "demo-org-1", "First Demo Holistic Wellness");
+            var org2 = await EnsureOrganizationAsync(db, "demo-org-2", "Demo Two, Health Strikes Back");
 
             // -----------------------------
             // Org Settings
@@ -117,13 +123,25 @@ namespace BetterSchedule.Server.DevTools
             var devClient = await EnsureDevUserAsync("client@dev.local", org1.Id, new[] { "Client" });
             var devHybrid = await EnsureDevUserAsync("hybrid@dev.local", org1.Id, new[] { "ServiceProvider", "Client" });
 
+            // Org1 core demo users
             var alice = await EnsureDemoUserAsync("alice", "alice@example.com", "Alice Anderson", "Manager", org1.Id);
             var bob = await EnsureDemoUserAsync("bob", "bob@example.com", "Bob Brown", "ServiceProvider", org1.Id);
             var carla = await EnsureDemoUserAsync("carla", "carla@example.com", "Carla Chen", "Client", org1.Id);
 
-            var dana = await EnsureDemoUserAsync("dana", "dana@example.com", "Dana Diaz", "Manager", org2.Id);
-            var eric = await EnsureDemoUserAsync("eric", "eric@example.com", "Eric Evans", "ServiceProvider", org2.Id);
+            // Org1 new provider/manager: Austin Lillis (Manager + ServiceProvider)
+            var austin = await EnsureDemoUserAsync("austin", "austin.manager@fdb.local", "Austin Lillis", "Manager", org1.Id);
+            if (!await userManager.IsInRoleAsync(austin, "ServiceProvider"))
+                await userManager.AddToRoleAsync(austin, "ServiceProvider");
+
+            // Org1 two additional clients
+            var mike = await EnsureDemoUserAsync("mike", "mike@example.com", "Mike Miller", "Client", org1.Id);
+            var nina = await EnsureDemoUserAsync("nina", "nina@example.com", "Nina Nguyen", "Client", org1.Id);
+
+            // Org2 users: one non-provider manager, one non-manager provider, unique clients
+            var dana = await EnsureDemoUserAsync("dana", "dana@example.com", "Dana Diaz", "Manager", org2.Id); // Manager only
+            var eric = await EnsureDemoUserAsync("eric", "eric@example.com", "Eric Evans", "ServiceProvider", org2.Id); // Provider only
             var frank = await EnsureDemoUserAsync("frank", "frank@example.com", "Frank Fox", "Client", org2.Id);
+            var gina = await EnsureDemoUserAsync("gina", "gina@example.com", "Gina Green", "Client", org2.Id);
 
             // -----------------------------
             // Resources / Appointment Types (org1)
@@ -137,48 +155,53 @@ namespace BetterSchedule.Server.DevTools
             var soccerType = await EnsureAppointmentTypeAsync(db, org1.Id, "Youth Soccer Clinic", TimeSpan.FromMinutes(120), 25.00m, "Ages 7-13 skills & games.", alice.Id, outdoor.Id, true, false);
             var privateType = await EnsureAppointmentTypeAsync(db, org1.Id, "Private Training", TimeSpan.FromMinutes(45), 40.00m, "One-on-one coaching.", alice.Id, arena.Id, false, false);
 
+            // New org1 type
+            var acupunctureType = await EnsureAppointmentTypeAsync(
+                db, org1.Id, "Acupuncture Session", TimeSpan.FromMinutes(60), 55.00m,
+                "Traditional acupuncture session.", austin.Id, studio2.Id, true, false);
+
             // -----------------------------
-            // Reservations (org1) — use org1 timezone
-            //   GUARDRAILS: clientId must be a Client; providerId must be a ServiceProvider.
+            // Reservations (org1)
             // -----------------------------
             DateOnly org1Today = LocalToday(now, org1Tz);
             DateTimeOffset L1(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org1Tz, org1Today, daysFromToday, hour, minute);
 
-            // Completed past yoga session — client: Carla (Client), provider: Bob (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, yogaType.Id,
-                L1(-7, 9), L1(-7, 10),
-                arena.Id, ReservationStatus.Completed, "Completed past yoga session.", now);
+                L1(-7, 9), L1(-7, 10), arena.Id, ReservationStatus.Completed, "Completed past yoga session.", now);
 
-            // No-show massage — client: Carla (Client), provider: Bob (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, massageType.Id,
-                L1(-3, 14), L1(-3, 15).AddMinutes(30),
-                studio2.Id, ReservationStatus.NoShow, "Missed massage, client did not show.", now);
+                L1(-3, 14), L1(-3, 15).AddMinutes(30), studio2.Id, ReservationStatus.NoShow, "Missed massage, client did not show.", now);
 
-            // Soccer clinic — client: Carla (Client), provider: Bob (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, soccerType.Id,
-                L1(0, 17), L1(0, 19),
-                outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.", now);
+                L1(0, 17), L1(0, 19), outdoor.Id, ReservationStatus.Booked, "Alice's kids' soccer clinic.", now);
 
-            // Morning soccer camp — client: Carla (Client), provider: Bob (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, soccerType.Id,
-                L1(2, 10), L1(2, 12),
-                outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.", now);
+                L1(2, 10), L1(2, 12), outdoor.Id, ReservationStatus.Booked, "Morning soccer camp, outdoor.", now);
 
-            // Private training — client: Carla (Client), provider: Bob (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, privateType.Id,
-                L1(10, 16), L1(10, 16).AddMinutes(45),
-                arena.Id, ReservationStatus.Canceled, "Cancelled by client.", now);
+                L1(10, 16), L1(10, 16).AddMinutes(45), arena.Id, ReservationStatus.Canceled, "Cancelled by client.", now);
 
-            // Visual sample series (next 7 days) at 11:00 local — client: Carla, provider: Bob
             for (int i = 0; i < 7; i++)
             {
                 await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, bob.Id, massageType.Id,
-                    L1(i, 11), L1(i, 11).AddMinutes(60),
-                    studio2.Id, ReservationStatus.Booked, "Daily massage demo slot.", now, allowDuplicate: false);
+                    L1(i, 11), L1(i, 11).AddMinutes(60), studio2.Id, ReservationStatus.Booked, "Daily massage demo slot.", now, allowDuplicate: false);
             }
 
+            // Austin-led wellness set
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, mike.Id, austin.Id, acupunctureType.Id,
+                L1(1, 9), L1(1, 10), studio2.Id, ReservationStatus.Booked, "Initial consult + acupuncture.", now);
+
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, nina.Id, austin.Id, acupunctureType.Id,
+                L1(2, 13), L1(2, 14), studio2.Id, ReservationStatus.Booked, "Stress relief session.", now);
+
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, austin.Id, privateType.Id,
+                L1(3, 16), L1(3, 17), arena.Id, ReservationStatus.Booked, "Core strength training.", now);
+
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, austin.Id, acupunctureType.Id,
+                L1(-1, 15), L1(-1, 16), studio2.Id, ReservationStatus.Completed, "Follow-up acupuncture session.", now);
+
             // -----------------------------
-            // BlockedTimes (org1) — org local
+            // BlockedTimes (org1)
             // -----------------------------
             await EnsureBlockedTimeAsync(db, org1.Id, arena.Id, "Floor waxing",
                 L1(1, 12), L1(1, 15), "#cccccc", alice.Id);
@@ -196,70 +219,11 @@ namespace BetterSchedule.Server.DevTools
             DateOnly org2Today = LocalToday(now, org2Tz);
             DateTimeOffset L2(int daysFromToday, int hour, int minute = 0) => AtLocal(now, org2Tz, org2Today, daysFromToday, hour, minute);
 
-            // Org2 pilates — client: Frank (Client), provider: Eric (ServiceProvider)
             await EnsureReservationCheckedAsync(db, userManager, org2.Id, frank.Id, eric.Id, pilates.Id,
-                L2(1, 9), L2(1, 10),
-                studioA.Id, ReservationStatus.Booked, "Org2 pilates.", now);
+                L2(1, 9), L2(1, 10), studioA.Id, ReservationStatus.Booked, "Org2 pilates.", now);
 
-            // -----------------------------
-            // Participants: extra test cases (org1)
-            // NOTE: Find using the corrected client/provider pairs above.
-            // -----------------------------
-            var r1Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, soccerType.Id, L1(0, 17), L1(0, 19));
-            if (r1Id.HasValue)
-            {
-                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.ServiceProvider, userId: bob.Id);
-                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Client, userId: devClient.Id);
-                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Client, userId: devHybrid.Id);
-                await EnsureParticipantAsync(db, r1Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Parent Chaperone", guestPhone: "555-0101");
-            }
-
-            var r2Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, soccerType.Id, L1(2, 10), L1(2, 12));
-            if (r2Id.HasValue)
-                await EnsureParticipantAsync(db, r2Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Team Manager", guestPhone: "555-0202");
-
-            var r3Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, massageType.Id, L1(0, 11), L1(0, 12));
-            if (r3Id.HasValue)
-                await EnsureParticipantAsync(db, r3Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Support Person", guestPhone: "555-0303");
-
-            var r4Id = await FindReservationIdAsync(db, org1.Id, carla.Id, bob.Id, yogaType.Id, L1(-7, 9), L1(-7, 10));
-            if (r4Id.HasValue)
-                await EnsureParticipantAsync(db, r4Id.Value, org1.Id, ReservationParticipantRole.Guest, guestName: "Observer", guestPhone: "555-0404");
-
-            var r5Id = await FindReservationIdAsync(db, org2.Id, frank.Id, eric.Id, pilates.Id, L2(1, 9), L2(1, 10));
-            if (r5Id.HasValue)
-                await EnsureParticipantAsync(db, r5Id.Value, org2.Id, ReservationParticipantRole.Guest, guestName: "Friend", guestPhone: "555-0505");
-
-            // -----------------------------
-            // Provider Availability (demo)
-            // -----------------------------
-            var today1 = LocalToday(now, org1Tz);
-            var today2 = LocalToday(now, org2Tz);
-            var farFuture = new DateOnly(2099, 12, 31);
-
-            // Org1: Bob — Mon–Fri 09:00–17:00
-            foreach (var dow in new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday })
-            {
-                await EnsureProviderAvailabilityAsync(
-                    db, org1.Id, serviceProviderId: bob.Id,
-                    dayOfWeek: dow,
-                    startLocalTime: new TimeSpan(9, 0, 0),
-                    endLocalTime: new TimeSpan(17, 0, 0),
-                    effectiveFrom: today1,
-                    effectiveTo: farFuture);
-            }
-
-            // Org2: Eric — Tue/Thu 10:00–18:00
-            foreach (var dow in new[] { DayOfWeek.Tuesday, DayOfWeek.Thursday })
-            {
-                await EnsureProviderAvailabilityAsync(
-                    db, org2.Id, serviceProviderId: eric.Id,
-                    dayOfWeek: dow,
-                    startLocalTime: new TimeSpan(10, 0, 0),
-                    endLocalTime: new TimeSpan(18, 0, 0),
-                    effectiveFrom: today2,
-                    effectiveTo: farFuture);
-            }
+            await EnsureReservationCheckedAsync(db, userManager, org2.Id, gina.Id, eric.Id, pilates.Id,
+                L2(2, 14), L2(2, 15), studioA.Id, ReservationStatus.Booked, "Intro pilates session.", now);
 
             return;
 
@@ -315,7 +279,7 @@ namespace BetterSchedule.Server.DevTools
 
             async Task<ApplicationUser> EnsureDemoUserAsync(string username, string email, string fullName, string role, string organizationId)
             {
-                var user = await userManager.FindByNameAsync(username);
+                var user = await userManager.FindByEmailAsync(email) ?? await userManager.FindByNameAsync(username);
                 if (user is null)
                 {
                     user = new ApplicationUser
@@ -328,11 +292,13 @@ namespace BetterSchedule.Server.DevTools
                     };
                     await userManager.CreateAsync(user, "Password123!");
                 }
-
-                if (user.OrganizationId != organizationId)
+                else
                 {
-                    user.OrganizationId = organizationId;
-                    await userManager.UpdateAsync(user);
+                    var needsUpdate = false;
+                    if (user.Email != email) { user.Email = email; user.EmailConfirmed = true; needsUpdate = true; }
+                    if (user.FullName != fullName) { user.FullName = fullName; needsUpdate = true; }
+                    if (user.OrganizationId != organizationId) { user.OrganizationId = organizationId; needsUpdate = true; }
+                    if (needsUpdate) await userManager.UpdateAsync(user);
                 }
 
                 if (!await userManager.IsInRoleAsync(user, role))
@@ -421,10 +387,6 @@ namespace BetterSchedule.Server.DevTools
                 return type;
             }
 
-            /// <summary>
-            /// Guarded create: checks roles/org for client/provider before delegating to EnsureReservationAsync.
-            /// Throws InvalidOperationException with a clear message when mismatched.
-            /// </summary>
             static async Task EnsureReservationCheckedAsync(
                 ApplicationDbContext db,
                 UserManager<ApplicationUser> um,
@@ -477,7 +439,6 @@ namespace BetterSchedule.Server.DevTools
                 {
                     return; // already present; do not add another
                 }
-                // if exists && allowDuplicate == true => intentionally insert another row
 
                 db.Reservations.Add(new Reservation
                 {
@@ -647,7 +608,6 @@ namespace BetterSchedule.Server.DevTools
                 else
                 {
                     var changed = false;
-
                     if (s.MinLeadMinutes != minLeadMinutes) { s.MinLeadMinutes = minLeadMinutes; changed = true; }
                     if (s.CancelWindowHours != cancelWindowHours) { s.CancelWindowHours = cancelWindowHours; changed = true; }
                     if (s.ShowWeekends != showWeekends) { s.ShowWeekends = showWeekends; changed = true; }

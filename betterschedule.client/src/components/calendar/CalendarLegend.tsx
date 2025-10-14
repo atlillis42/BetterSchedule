@@ -43,14 +43,14 @@ export default function CalendarLegend(props: {
                 <span>Completed</span>
             </div>
             <div className="flex items-center gap-1">
-                <span className="inline-block w-3 h-3 rounded" style={{ background: "#f59e0b" }} />
-                <span>No-Show</span>
-            </div>
-            <div className="flex items-center gap-1">
-                {/* Changed from gray to a red tint (#ef4444) */}
                 <span className="inline-block w-3 h-3 rounded" style={{ background: "#ef4444" }} />
                 <span>Canceled</span>
             </div>
+            <div className="flex items-center gap-1">
+                <span className="inline-block w-3 h-3 rounded" style={{ background: "#f59e0b" }} />
+                <span>No-Show</span>
+            </div>
+            
 
             {/* RIGHT: weekly toggle and/or date badges */}
             <div className="ml-auto flex items-center gap-2">
