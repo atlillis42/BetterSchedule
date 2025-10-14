@@ -10,7 +10,7 @@ import {
     type ClientCancelPolicy,
 } from "@/api/org-settings-api";
 import { useAuth } from "@auth/auth-context";
-import ProviderAccessManager from "@/components/admin/ProviderAccessManager";
+import ProviderAccessManager from "@/components/manager/Users/ProviderAccessManager";
 
 /**
  * Organization Settings Manager (Manager-only).

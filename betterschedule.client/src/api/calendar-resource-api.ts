@@ -1,5 +1,4 @@
 import { api } from "@auth/axios";
-import { toast } from "react-toastify";
 import type { BlockedTimeDto as BlockedTime } from "@api/blockedtime-api";
 import type { CalendarResource } from "@/types/calendarDataTypes";
 
@@ -103,16 +102,13 @@ export async function getResourceById(
 /**
  * Creates a resource.
  * @param payload Resource details.
- * @param opts Optional UI flags.
  * @returns Created resource DTO.
  */
 export async function createResource(
     payload: CreateCalendarResourceDto,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<CalendarResourceDto> {
     try {
         const { data } = await api.post<CalendarResourceDto>("/calendar-resources", payload);
-        if (opts.toastSuccess) toast.success("Resource created.");
         return data;
     } catch (err) {
         handleApiError(err, "Failed to create resource.");
@@ -123,16 +119,13 @@ export async function createResource(
  * Updates a resource (partial).
  * @param id Resource identifier.
  * @param payload Fields to change.
- * @param opts Optional UI flags.
  */
 export async function updateResource(
     id: number,
     payload: UpdateCalendarResourceDto,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
     try {
         await api.put(`/calendar-resources/${id}`, payload);
-        if (opts.toastSuccess) toast.success("Resource updated.");
     } catch (err) {
         handleApiError(err, "Failed to update resource.");
     }
@@ -141,15 +134,12 @@ export async function updateResource(
 /**
  * Soft-deletes a resource.
  * @param id Resource identifier.
- * @param opts Optional UI flags.
  */
 export async function deleteResource(
     id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
     try {
         await api.delete(`/calendar-resources/${id}`);
-        if (opts.toastSuccess) toast.success("Resource deleted.");
     } catch (err) {
         handleApiError(err, "Failed to delete resource.");
     }

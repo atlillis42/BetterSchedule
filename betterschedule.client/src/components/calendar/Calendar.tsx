@@ -42,7 +42,7 @@ const Calendar = () => {
 
     const { org, view, setView, startDate, setStartDate, tzLabel } = useCalendarView();
     const { resources, events, providers, refreshEvents, appointmentTypesById } = useCalendarData(startDate, view);
-    const { overlayProviderId, setOverlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
+    const { overlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
         isProvider ? userId ?? undefined : undefined
     );
 

@@ -1,5 +1,4 @@
 import { api } from "@auth/axios";
-import { toast } from "react-toastify";
 
 /**
  * Read model for an organization-scoped appointment type.
@@ -106,16 +105,13 @@ export async function getAppointmentType(id: number): Promise<AppointmentTypeDto
 /**
  * Creates a new appointment type.
  * @param payload Create payload.
- * @param opts Optional UI flags.
  * @returns The created appointment type.
  */
 export async function createAppointmentType(
     payload: CreateAppointmentTypeDto,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<AppointmentTypeDto> {
     try {
         const { data } = await api.post<AppointmentTypeDto>("/appointmenttype", payload);
-        if (opts.toastSuccess) toast.success("Appointment type created.");
         return data;
     } catch (err) {
         handleApiError(err, "Failed to create appointment type.");
@@ -126,16 +122,13 @@ export async function createAppointmentType(
  * Updates an existing appointment type (partial).
  * @param id Appointment type identifier.
  * @param payload Patch fields.
- * @param opts Optional UI flags.
  */
 export async function updateAppointmentType(
     id: number,
     payload: UpdateAppointmentTypeDto,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
     try {
         await api.put(`/appointmenttype/${id}`, payload);
-        if (opts.toastSuccess) toast.success("Appointment type updated.");
     } catch (err) {
         handleApiError(err, "Failed to update appointment type.");
     }
@@ -144,15 +137,12 @@ export async function updateAppointmentType(
 /**
  * Soft-deletes an appointment type.
  * @param id Appointment type identifier.
- * @param opts Optional UI flags.
  */
 export async function deleteAppointmentType(
     id: number,
-    opts: { toastSuccess?: boolean } = { toastSuccess: true }
 ): Promise<void> {
     try {
         await api.delete(`/appointmenttype/${id}`);
-        if (opts.toastSuccess) toast.success("Appointment type deleted.");
     } catch (err) {
         handleApiError(err, "Failed to delete appointment type.");
     }

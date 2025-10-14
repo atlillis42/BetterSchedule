@@ -40,7 +40,7 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage }) => {
             {canManage && (
                 <>
                     <NavLink
-                        to="/admin/appointment-types"
+                        to="/manager/appointment-types"
                         className={({ isActive }) => (isActive ? "font-semibold" : "")}
                     >
                         Appointment Types
@@ -48,15 +48,15 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage }) => {
 
                     {/* Packages: intentionally hidden for demo */}
 
-                    <NavLink to="/admin/resources" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/resources" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Resources
                     </NavLink>
 
-                    <NavLink to="/admin/users" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/users" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Users
                     </NavLink>
 
-                    <NavLink to="/admin/settings" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/settings" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
                         Settings
                     </NavLink>
                 </>

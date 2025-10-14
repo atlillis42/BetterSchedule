@@ -28,10 +28,27 @@ namespace BetterSchedule.Server.Controllers.Users
             _userManager = userManager;
         }
 
+        /// <summary>
+        /// Authoritative, allowed role names for assignment within an organization.
+        /// </summary>
         private static readonly string[] AllowedRoles = { "Manager", "ServiceProvider", "Client" };
 
         // ---------------------------------------------------------------------
-        // PROVIDERS
+        // Roles metadata
+        // ---------------------------------------------------------------------
+
+        /// <summary>
+        /// Returns the list of allowed role names for the current tenant.
+        /// </summary>
+        [HttpGet("roles")]
+        [ProducesResponseType(typeof(IEnumerable<string>), StatusCodes.Status200OK)]
+        public ActionResult<IEnumerable<string>> GetAllowedRoles()
+        {
+            return Ok(AllowedRoles);
+        }
+
+        // ---------------------------------------------------------------------
+        // Providers
         // ---------------------------------------------------------------------
 
         /// <summary>
@@ -78,7 +95,6 @@ namespace BetterSchedule.Server.Controllers.Users
             if (item is null) return NotFound();
             return Ok(item);
         }
-
 
         /// <summary>
         /// Returns detailed provider information with optional search and pagination.
@@ -135,7 +151,6 @@ namespace BetterSchedule.Server.Controllers.Users
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> SetAvailabilityPublic([FromRoute] string userId, [FromBody] SetAvailabilityPublicDto body, CancellationToken ct)
         {
-            // Providers may only change their own flag; managers can modify any provider
             var actingIsManager = User.IsInRole("Manager");
             var actingIsProvider = User.IsInRole("ServiceProvider");
 
@@ -145,7 +160,6 @@ namespace BetterSchedule.Server.Controllers.Users
             var user = await _db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.OrganizationId == OrganizationId, ct);
             if (user is null) return NotFound();
 
-            // Must be a ServiceProvider
             if (!await _userManager.IsInRoleAsync(user, "ServiceProvider"))
                 return BadRequest("User is not a ServiceProvider.");
 
@@ -157,12 +171,10 @@ namespace BetterSchedule.Server.Controllers.Users
         /// <summary>
         /// Request body for <see cref="SetAvailabilityPublic(string, SetAvailabilityPublicDto, CancellationToken)"/>.
         /// </summary>
-        public sealed record SetAvailabilityPublicDto(
-            bool Value
-        );
+        public sealed record SetAvailabilityPublicDto(bool Value);
 
         // ---------------------------------------------------------------------
-        // CLIENTS  
+        // Clients
         // ---------------------------------------------------------------------
 
         /// <summary>
@@ -203,7 +215,6 @@ namespace BetterSchedule.Server.Controllers.Users
 
         /// <summary>
         /// Resolves a single client (by GUID) to a lightweight display record.
-        /// Used by the modal to render the client’s name when only an ID is known.
         /// </summary>
         [HttpGet("clients-lite/{id}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
@@ -264,7 +275,7 @@ namespace BetterSchedule.Server.Controllers.Users
         }
 
         // ---------------------------------------------------------------------
-        // USERS (Manager-only)
+        // Users (Manager-only)
         // ---------------------------------------------------------------------
 
         /// <summary>
@@ -317,11 +328,15 @@ namespace BetterSchedule.Server.Controllers.Users
 
         /// <summary>
         /// Removes an allowed role from a user within the organization (Manager-only).
+        /// Guard rails:
+        /// - Cannot remove the last Manager in the organization.
+        /// - Managers cannot remove their own Manager role (self-demotion).
         /// </summary>
         [HttpDelete("{userId}/roles/{role}")]
         [Authorize(Roles = "Manager")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RemoveRole(string userId, string role, CancellationToken ct)
         {
@@ -329,6 +344,27 @@ namespace BetterSchedule.Server.Controllers.Users
 
             var user = await _db.Users.SingleOrDefaultAsync(u => u.Id == userId && u.OrganizationId == OrganizationId, ct);
             if (user is null) return NotFound();
+
+            if (string.Equals(role, "Manager", StringComparison.OrdinalIgnoreCase))
+            {
+                // Self-demotion is not allowed.
+                if (userId == UserId)
+                    return Forbid("Managers cannot remove their own Manager role.");
+
+                // Prevent removal if it would leave org with zero managers.
+                var managerCount = await (
+                    from u in _db.Users
+                    join ur in _db.UserRoles on u.Id equals ur.UserId
+                    join r in _db.Roles on ur.RoleId equals r.Id
+                    where u.OrganizationId == OrganizationId && r.Name == "Manager"
+                    select u.Id
+                ).Distinct().CountAsync(ct);
+
+                // If target user is not currently a Manager, proceed to default behavior (won't change the count).
+                var targetIsManager = await _userManager.IsInRoleAsync(user, "Manager");
+                if (targetIsManager && managerCount <= 1)
+                    return BadRequest("Organization must have at least one Manager.");
+            }
 
             var result = await _userManager.RemoveFromRoleAsync(user, role);
             if (!result.Succeeded) return BadRequest(result.Errors.First().Description);
