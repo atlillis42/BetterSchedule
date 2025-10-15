@@ -770,15 +770,6 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("OrganizationId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<bool>("AllowClientReschedule")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("AvailabilityEnforcement")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("AvailabilityPublic")
-                        .HasColumnType("bit");
-
                     b.Property<TimeSpan>("BusinessHoursEndLocal")
                         .HasColumnType("time");
 
@@ -787,15 +778,6 @@ namespace BetterSchedule.Server.Migrations
 
                     b.Property<int>("CancelWindowHours")
                         .HasColumnType("int");
-
-                    b.Property<int>("ClientCancelPolicy")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DefaultView")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("DisallowClientCancelAfterStart")
-                        .HasColumnType("bit");
 
                     b.Property<bool>("EmailEnabled")
                         .HasColumnType("bit");
@@ -808,9 +790,6 @@ namespace BetterSchedule.Server.Migrations
 
                     b.Property<bool>("FailOpenWhenNoTypeAssignments")
                         .HasColumnType("bit");
-
-                    b.Property<int>("LateCancelGraceMinutes")
-                        .HasColumnType("int");
 
                     b.Property<bool>("LimitProvidersToAssignedAppointmentTypes")
                         .HasColumnType("bit");
@@ -826,12 +805,6 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<int>("MinLeadMinutes")
                         .HasColumnType("int");
 
-                    b.Property<int>("ProviderCancelPolicy")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("ProvidersCanEditOwnAvailability")
-                        .HasColumnType("bit");
-
                     b.Property<int?>("ReminderHoursBefore")
                         .HasColumnType("int");
 
@@ -841,17 +814,8 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<bool>("SendBookingConfirmation")
                         .HasColumnType("bit");
 
-                    b.Property<int>("ShadingMode")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("ShowWeekends")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("SmsEnabled")
                         .HasColumnType("bit");
-
-                    b.Property<int>("StartOfWeek")
-                        .HasColumnType("int");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()

@@ -1,7 +1,6 @@
 ﻿using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.Organization;
 using BetterSchedule.Server.Models.Tenant;
-using BetterSchedule.Server.Models.Tenant.SettingsHelpers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,9 +8,9 @@ using Microsoft.EntityFrameworkCore;
 namespace BetterSchedule.Server.Controllers.Organization
 {
     /// <summary>
-    /// Read/write per-organization preferences that affect calendar display,
-    /// booking policy, availability enforcement, timezone/locale, and notifications.
-    /// Uses the authoritative booking fields: <see cref="OrganizationSettings.MinLeadMinutes"/>
+    /// Read/write per-organization preferences that affect booking windows,
+    /// business hours, timezone/locale, and notifications.
+    /// Authoritative booking fields: <see cref="OrganizationSettings.MinLeadMinutes"/>
     /// and <see cref="OrganizationSettings.CancelWindowHours"/>.
     /// </summary>
     [ApiController]
@@ -20,6 +19,10 @@ namespace BetterSchedule.Server.Controllers.Organization
     public sealed class OrgSettingsController : OrgControllerBase
     {
         private readonly ApplicationDbContext _db;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="OrgSettingsController"/>.
+        /// </summary>
         public OrgSettingsController(ApplicationDbContext db) => _db = db;
 
         /// <summary>Returns the current organization's settings (creating defaults on first access).</summary>
@@ -43,7 +46,7 @@ namespace BetterSchedule.Server.Controllers.Organization
 
         /// <summary>
         /// Partially updates the current organization's settings.
-        /// Only provided fields are applied. Enum parsing is case-insensitive.
+        /// Only provided fields are applied; out-of-range values are clamped.
         /// </summary>
         [HttpPut]
         [Authorize(Roles = "Manager")]
@@ -66,32 +69,23 @@ namespace BetterSchedule.Server.Controllers.Organization
             if (dto.CancelWindowHours.HasValue)
                 s.CancelWindowHours = Clamp(dto.CancelWindowHours.Value, 0, 168); // up to 7 days
 
-            // Cancel policies
-            if (!string.IsNullOrWhiteSpace(dto.ProviderCancelPolicy) &&
-                EnumTryParse(dto.ProviderCancelPolicy, out ProviderCancelPolicy pcp))
-                s.ProviderCancelPolicy = pcp;
+            // Business hours
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursStartLocal))
+                s.BusinessHoursStartLocal = TimeSpan.Parse(dto.BusinessHoursStartLocal!);
 
-            if (!string.IsNullOrWhiteSpace(dto.ClientCancelPolicy) &&
-                EnumTryParse(dto.ClientCancelPolicy, out ClientCancelPolicy ccp))
-                s.ClientCancelPolicy = ccp;
+            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursEndLocal))
+                s.BusinessHoursEndLocal = TimeSpan.Parse(dto.BusinessHoursEndLocal!);
 
-            // Calendar display
-            if (dto.ShowWeekends.HasValue) s.ShowWeekends = dto.ShowWeekends.Value;
-            if (dto.StartOfWeek.HasValue) s.StartOfWeek = Clamp(dto.StartOfWeek.Value, 0, 6);
-            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursStartLocal)) s.BusinessHoursStartLocal = TimeSpan.Parse(dto.BusinessHoursStartLocal!);
-            if (!string.IsNullOrWhiteSpace(dto.BusinessHoursEndLocal)) s.BusinessHoursEndLocal = TimeSpan.Parse(dto.BusinessHoursEndLocal!);
-            if (!string.IsNullOrWhiteSpace(dto.DefaultView) && EnumTryParse(dto.DefaultView, out DefaultCalendarView dv)) s.DefaultView = dv;
-
-            // Availability policy & visuals
-            if (!string.IsNullOrWhiteSpace(dto.ShadingMode) && EnumTryParse(dto.ShadingMode, out CalendarShadingMode sm)) s.ShadingMode = sm;
-            if (!string.IsNullOrWhiteSpace(dto.AvailabilityEnforcement) && EnumTryParse(dto.AvailabilityEnforcement, out AvailabilityEnforcement ae)) s.AvailabilityEnforcement = ae;
-            if (dto.RequireConfirmOnOverrides.HasValue) s.RequireConfirmOnOverrides = dto.RequireConfirmOnOverrides.Value;
-            if (dto.AvailabilityPublic.HasValue) s.AvailabilityPublic = dto.AvailabilityPublic.Value;
-            if (dto.ProvidersCanEditOwnAvailability.HasValue) s.ProvidersCanEditOwnAvailability = dto.ProvidersCanEditOwnAvailability.Value;
+            // Override confirmation policy
+            if (dto.RequireConfirmOnOverrides.HasValue)
+                s.RequireConfirmOnOverrides = dto.RequireConfirmOnOverrides.Value;
 
             // Locale / timezone
-            if (!string.IsNullOrWhiteSpace(dto.TimeZoneId) && dto.TimeZoneId.Length <= 64) s.TimeZoneId = dto.TimeZoneId;
-            if (!string.IsNullOrWhiteSpace(dto.Locale) && dto.Locale.Length <= 16) s.Locale = dto.Locale;
+            if (!string.IsNullOrWhiteSpace(dto.TimeZoneId) && dto.TimeZoneId.Length <= 64)
+                s.TimeZoneId = dto.TimeZoneId;
+
+            if (!string.IsNullOrWhiteSpace(dto.Locale) && dto.Locale.Length <= 16)
+                s.Locale = dto.Locale;
 
             // Notifications
             if (dto.EmailEnabled.HasValue) s.EmailEnabled = dto.EmailEnabled.Value;
@@ -103,41 +97,36 @@ namespace BetterSchedule.Server.Controllers.Organization
             return NoContent();
         }
 
+        // --------------------------
         // Mapping
+        // --------------------------
 
         private static OrgSettingsDto ToDto(OrganizationSettings s) => new()
         {
             MinLeadMinutes = s.MinLeadMinutes,
             CancelWindowHours = s.CancelWindowHours,
 
-            ProviderCancelPolicy = s.ProviderCancelPolicy.ToString(),
-            ClientCancelPolicy = s.ClientCancelPolicy.ToString(),
-
-            ShowWeekends = s.ShowWeekends,
-            StartOfWeek = s.StartOfWeek,
+            // Business hours
             BusinessHoursStartLocal = s.BusinessHoursStartLocal.ToString(@"hh\:mm\:ss"),
             BusinessHoursEndLocal = s.BusinessHoursEndLocal.ToString(@"hh\:mm\:ss"),
-            DefaultView = s.DefaultView.ToString(),
 
-            ShadingMode = s.ShadingMode.ToString(),
-            AvailabilityEnforcement = s.AvailabilityEnforcement.ToString(),
+            // Policy
             RequireConfirmOnOverrides = s.RequireConfirmOnOverrides,
-            AvailabilityPublic = s.AvailabilityPublic,
-            ProvidersCanEditOwnAvailability = s.ProvidersCanEditOwnAvailability,
 
+            // Locale / time
             TimeZoneId = s.TimeZoneId,
             Locale = s.Locale,
 
+            // Notifications
             EmailEnabled = s.EmailEnabled,
             SmsEnabled = s.SmsEnabled,
             SendBookingConfirmation = s.SendBookingConfirmation,
             ReminderHoursBefore = s.ReminderHoursBefore
         };
 
+        // --------------------------
         // Helpers
-
-        private static bool EnumTryParse<T>(string value, out T parsed) where T : struct, Enum
-            => Enum.TryParse(value, ignoreCase: true, out parsed);
+        // --------------------------
 
         private static int Clamp(int v, int min, int max) => v < min ? min : (v > max ? max : v);
     }

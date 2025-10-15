@@ -8,11 +8,10 @@ using Microsoft.EntityFrameworkCore;
 namespace BetterSchedule.Server.Services.Scheduling
 {
     /// <summary>
-    /// Centralized availability/conflict checks used by Reservations and BlockedTimes.
+    /// Centralized conflict checks used by Reservations and BlockedTimes.
     /// Overlap predicate: <c>(start1 &lt; end2 &amp;&amp; end1 &gt; start2)</c>.
     /// Queries are org-scoped and exclude soft-deleted rows. Update variants exclude the
-    /// current row by id to avoid self-overlap. Also validates that reservations lie
-    /// within ProviderAvailability windows (weekly rules in org-local time).
+    /// current row by id to avoid self-overlap.
     /// </summary>
     public sealed class SchedulingConflictService : ISchedulingConflictService
     {
@@ -99,8 +98,8 @@ namespace BetterSchedule.Server.Services.Scheduling
         // --------------------------------------------------------------------
 
         /// <summary>
-        /// Calculates reservation conflicts for a given provider and optional resource,
-        /// and verifies the window is fully within ProviderAvailability (local org time).
+        /// Calculates reservation conflicts for a given provider and optional resource.
+        /// Returns reservation-overlap and provider/resource blocked-time flags.
         /// </summary>
         private async Task<ReservationConflictResult> ComputeReservationConflictsAsync(
             string organizationId,
@@ -111,7 +110,7 @@ namespace BetterSchedule.Server.Services.Scheduling
             int? ignoreReservationId,
             CancellationToken ct)
         {
-            // Provider-level overlaps (exclude self on update).
+            // Provider-level reservation overlaps (exclude self on update).
             var providerReservations = _db.Reservations
                 .Where(r => r.OrganizationId == organizationId && !r.IsDeleted)
                 .Where(r => r.ServiceProviderId == serviceProviderId);
@@ -152,21 +151,16 @@ namespace BetterSchedule.Server.Services.Scheduling
             var resourceBlocked = await IsResourceBlockedAsync(
                 organizationId, resourceId, start, end, ct);
 
-            // Availability window coverage (weekly rules, evaluated in org local time).
-            var fullyWithinAvailability = await IsFullyWithinProviderAvailabilityAsync(
-                organizationId, serviceProviderId, start, end, ct);
-
             return new ReservationConflictResult(
                 ReservationOverlap: reservationOverlap,
                 ProviderBlocked: providerBlocked,
-                ResourceBlocked: resourceBlocked,
-                OutsideProviderAvailability: !fullyWithinAvailability
+                ResourceBlocked: resourceBlocked
             );
         }
 
         /// <summary>
         /// Calculates conflicts for a proposed blocked time window.
-        /// (Note: blocked times are allowed regardless of ProviderAvailability.)
+        /// Returns flags for reservation coverage and block collisions for the same provider/resource.
         /// </summary>
         private async Task<BlockedTimeConflictResult> ComputeBlockedTimeConflictsAsync(
             string organizationId,
@@ -226,75 +220,6 @@ namespace BetterSchedule.Server.Services.Scheduling
                 .Where(b => b.ResourceId != null && b.ResourceId == resourceId)
                 .Where(b => b.StartTime < end && b.EndTime > start)
                 .AnyAsync(ct);
-        }
-
-        // --------------------------------------------------------------------
-        // ProviderAvailability coverage (weekly local rules)
-        // --------------------------------------------------------------------
-
-        /// <summary>
-        /// Returns true if the <c>[start, end)</c> window is fully covered by one or more
-        /// <c>ProviderAvailability</c> rows for the provider, evaluated in the org's local time.
-        /// Spanning midnight is supported: each local-day segment must be covered by a single row.
-        /// </summary>
-        private async Task<bool> IsFullyWithinProviderAvailabilityAsync(
-            string organizationId,
-            string serviceProviderId,
-            DateTimeOffset startUtc,
-            DateTimeOffset endUtc,
-            CancellationToken ct)
-        {
-            if (endUtc <= startUtc) return false;
-
-            var tzId = await _db.OrganizationSettings
-                .Where(x => x.OrganizationId == organizationId)
-                .Select(x => x.TimeZoneId)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(ct) ?? "UTC";
-
-            var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-
-            var startLocal = TimeZoneInfo.ConvertTime(startUtc, tz);
-            var endLocal = TimeZoneInfo.ConvertTime(endUtc, tz);
-
-            var cur = startLocal;
-            while (cur < endLocal)
-            {
-                // End of the current local day (next midnight in local time)
-                var nextMidnightLocalDate = cur.Date.AddDays(1);
-                var nextMidnightOffset = new DateTimeOffset(
-                    nextMidnightLocalDate,
-                    tz.GetUtcOffset(nextMidnightLocalDate));
-
-                var segEnd = endLocal < nextMidnightOffset ? endLocal : nextMidnightOffset;
-
-                // Defensive: skip zero-length segments
-                if (segEnd <= cur)
-                {
-                    cur = segEnd;
-                    continue;
-                }
-
-                var segDateOnly = DateOnly.FromDateTime(cur.Date);
-                var segDay = cur.DayOfWeek;
-                var segStartT = cur.TimeOfDay;
-                var segEndT = segEnd.TimeOfDay; // 00:00 allowed (end-of-day)
-
-                // A single availability row must fully cover this local-day segment
-                var covered = await _db.ProviderAvailabilities
-                    .Where(a => a.OrganizationId == organizationId && !a.IsDeleted)
-                    .Where(a => a.ServiceProviderId == serviceProviderId)
-                    .Where(a => a.DayOfWeek == segDay)
-                    .Where(a => a.EffectiveFrom <= segDateOnly && a.EffectiveTo >= segDateOnly)
-                    .Where(a => a.StartLocalTime <= segStartT && a.EndLocalTime >= segEndT)
-                    .AnyAsync(ct);
-
-                if (!covered) return false;
-
-                cur = segEnd;
-            }
-
-            return true;
         }
     }
 }

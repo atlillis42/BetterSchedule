@@ -3,7 +3,6 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
-using BetterSchedule.Server.Models.Tenant.SettingsHelpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -70,22 +69,15 @@ namespace BetterSchedule.Server.DevTools
                 org1.Id,
                 minLeadMinutes: 60,
                 cancelWindowHours: 24,
-                showWeekends: true,
-                startOfWeek: 0,
                 businessStart: new TimeSpan(8, 0, 0),
                 businessEnd: new TimeSpan(18, 0, 0),
-                defaultView: DefaultCalendarView.Week,
-                shading: CalendarShadingMode.ProviderAvailability,
-                enforcement: AvailabilityEnforcement.BlockProvidersWarnManagers,
                 requireConfirmOnOverrides: true,
-                availabilityPublic: true,
-                providersCanEditOwn: true,
                 timeZoneId: "America/New_York",
                 locale: "en-US",
                 emailEnabled: false,
                 smsEnabled: false,
                 sendBookingConfirmation: false,
-                reminderHoursBefore: null
+                reminderHoursBefore: (int?)null
             );
 
             await EnsureOrgSettingsAsync(
@@ -93,22 +85,15 @@ namespace BetterSchedule.Server.DevTools
                 org2.Id,
                 minLeadMinutes: 30,
                 cancelWindowHours: 12,
-                showWeekends: true,
-                startOfWeek: 1,
                 businessStart: new TimeSpan(9, 0, 0),
                 businessEnd: new TimeSpan(17, 0, 0),
-                defaultView: DefaultCalendarView.Week,
-                shading: CalendarShadingMode.OrgBusinessHours,
-                enforcement: AvailabilityEnforcement.Warn,
                 requireConfirmOnOverrides: true,
-                availabilityPublic: true,
-                providersCanEditOwn: true,
                 timeZoneId: "America/Chicago",
                 locale: "en-US",
                 emailEnabled: false,
                 smsEnabled: false,
                 sendBookingConfirmation: false,
-                reminderHoursBefore: null
+                reminderHoursBefore: (int?)null
             );
 
             // fetch tz ids for helpers below
@@ -223,20 +208,20 @@ namespace BetterSchedule.Server.DevTools
             // Helpers
             // ============================================================
 
-            static DateOnly LocalToday(DateTimeOffset now, string tzId)
+            static DateOnly LocalToday(DateTimeOffset nowValue, string tzId)
             {
                 var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-                var localNow = TimeZoneInfo.ConvertTime(now, tz);
+                var localNow = TimeZoneInfo.ConvertTime(nowValue, tz);
                 return DateOnly.FromDateTime(localNow.Date);
             }
 
-            static DateTimeOffset AtLocal(DateTimeOffset now, string tzId, DateOnly baseLocalDay, int daysFromToday, int hour, int minute = 0)
+            static DateTimeOffset AtLocal(DateTimeOffset nowValue, string tzId, DateOnly baseLocalDay, int daysFromToday, int hour, int minute = 0)
             {
                 var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
                 var localDateTime = baseLocalDay.AddDays(daysFromToday).ToDateTime(new TimeOnly(hour, minute));
                 var unspecified = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
                 var offset = tz.GetUtcOffset(unspecified);
-                return new DateTimeOffset(unspecified, offset); // keep local offset; DB stores DateTimeOffset
+                return new DateTimeOffset(unspecified, offset);
             }
 
             async Task<ApplicationUser> EnsureDemoUserAsync(string username, string email, string fullName, string role, string organizationId)
@@ -269,43 +254,43 @@ namespace BetterSchedule.Server.DevTools
                 return user;
             }
 
-            static async Task<Organization> EnsureOrganizationAsync(ApplicationDbContext db, string id, string name)
+            static async Task<Organization> EnsureOrganizationAsync(ApplicationDbContext dbContext, string id, string name)
             {
-                var org = await db.Organizations.FirstOrDefaultAsync(o => o.Id == id);
+                var org = await dbContext.Organizations.FirstOrDefaultAsync(o => o.Id == id);
                 if (org is null)
                 {
                     org = new Organization { Id = id, Name = name };
-                    db.Organizations.Add(org);
-                    await db.SaveChangesAsync();
+                    dbContext.Organizations.Add(org);
+                    await dbContext.SaveChangesAsync();
                 }
                 else if (org.Name != name)
                 {
                     org.Name = name;
-                    await db.SaveChangesAsync();
+                    await dbContext.SaveChangesAsync();
                 }
                 return org;
             }
 
-            static async Task<CalendarResource> EnsureResourceAsync(ApplicationDbContext db, string organizationId, string name, string? backColor)
+            static async Task<CalendarResource> EnsureResourceAsync(ApplicationDbContext dbContext, string organizationId, string name, string? backColor)
             {
-                var res = await db.CalendarResources.FirstOrDefaultAsync(r => r.OrganizationId == organizationId && r.Name == name);
+                var res = await dbContext.CalendarResources.FirstOrDefaultAsync(r => r.OrganizationId == organizationId && r.Name == name);
                 if (res is null)
                 {
                     res = new CalendarResource { OrganizationId = organizationId, Name = name, BackColor = backColor, IsDeleted = false };
-                    db.CalendarResources.Add(res);
-                    await db.SaveChangesAsync();
+                    dbContext.CalendarResources.Add(res);
+                    await dbContext.SaveChangesAsync();
                 }
                 else
                 {
                     var changed = false;
                     if (res.BackColor != backColor) { res.BackColor = backColor; changed = true; }
-                    if (changed) await db.SaveChangesAsync();
+                    if (changed) await dbContext.SaveChangesAsync();
                 }
                 return res;
             }
 
             static async Task<AppointmentType> EnsureAppointmentTypeAsync(
-                ApplicationDbContext db,
+                ApplicationDbContext dbContext,
                 string organizationId,
                 string name,
                 TimeSpan duration,
@@ -316,7 +301,7 @@ namespace BetterSchedule.Server.DevTools
                 bool isPublic,
                 bool requiresWaiver)
             {
-                var type = await db.AppointmentTypes.FirstOrDefaultAsync(a => a.OrganizationId == organizationId && a.Name == name);
+                var type = await dbContext.AppointmentTypes.FirstOrDefaultAsync(a => a.OrganizationId == organizationId && a.Name == name);
                 if (type is null)
                 {
                     type = new AppointmentType
@@ -332,8 +317,8 @@ namespace BetterSchedule.Server.DevTools
                         RequiresWaiver = requiresWaiver,
                         IsDeleted = false
                     };
-                    db.AppointmentTypes.Add(type);
-                    await db.SaveChangesAsync();
+                    dbContext.AppointmentTypes.Add(type);
+                    await dbContext.SaveChangesAsync();
                 }
                 else
                 {
@@ -344,13 +329,13 @@ namespace BetterSchedule.Server.DevTools
                     if (type.AssignedResourceId != assignedResourceId) { type.AssignedResourceId = assignedResourceId; changed = true; }
                     if (type.IsPublic != isPublic) { type.IsPublic = isPublic; changed = true; }
                     if (type.RequiresWaiver != requiresWaiver) { type.RequiresWaiver = requiresWaiver; changed = true; }
-                    if (changed) await db.SaveChangesAsync();
+                    if (changed) await dbContext.SaveChangesAsync();
                 }
                 return type;
             }
 
             static async Task EnsureReservationCheckedAsync(
-                ApplicationDbContext db,
+                ApplicationDbContext dbContext,
                 UserManager<ApplicationUser> um,
                 string organizationId,
                 string clientId,
@@ -361,7 +346,7 @@ namespace BetterSchedule.Server.DevTools
                 int? resourceId,
                 ReservationStatus status,
                 string? notes,
-                DateTimeOffset nowUtc,
+                DateTimeOffset nowValue,
                 bool allowDuplicate = false)
             {
                 var client = await um.FindByIdAsync(clientId);
@@ -372,11 +357,11 @@ namespace BetterSchedule.Server.DevTools
                 if (provider is null || provider.OrganizationId != organizationId || !await um.IsInRoleAsync(provider, "ServiceProvider"))
                     throw new InvalidOperationException($"Seed error: providerId '{providerId}' must be a ServiceProvider in org '{organizationId}'.");
 
-                await EnsureReservationAsync(db, organizationId, clientId, providerId, typeId, start, end, resourceId, status, notes, nowUtc, allowDuplicate);
+                await EnsureReservationAsync(dbContext, organizationId, clientId, providerId, typeId, start, end, resourceId, status, notes, nowValue, allowDuplicate);
             }
 
             static async Task EnsureReservationAsync(
-                ApplicationDbContext db,
+                ApplicationDbContext dbContext,
                 string organizationId,
                 string clientId,
                 string providerId,
@@ -386,10 +371,10 @@ namespace BetterSchedule.Server.DevTools
                 int? resourceId,
                 ReservationStatus status,
                 string? notes,
-                DateTimeOffset nowUtc,
+                DateTimeOffset nowValue,
                 bool allowDuplicate = false)
             {
-                var exists = await db.Reservations.AnyAsync(r =>
+                var exists = await dbContext.Reservations.AnyAsync(r =>
                     r.OrganizationId == organizationId &&
                     r.ClientId == clientId &&
                     r.ServiceProviderId == providerId &&
@@ -402,7 +387,7 @@ namespace BetterSchedule.Server.DevTools
                     return; // already present; do not add another
                 }
 
-                db.Reservations.Add(new Reservation
+                dbContext.Reservations.Add(new Reservation
                 {
                     OrganizationId = organizationId,
                     ClientId = clientId,
@@ -413,14 +398,14 @@ namespace BetterSchedule.Server.DevTools
                     ResourceId = resourceId,
                     Status = status,
                     Notes = notes,
-                    CreatedAt = nowUtc,
+                    CreatedAt = nowValue,
                     IsDeleted = false
                 });
-                await db.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
             }
 
             static async Task EnsureBlockedTimeAsync(
-                ApplicationDbContext db,
+                ApplicationDbContext dbContext,
                 string organizationId,
                 int resourceId,
                 string reason,
@@ -429,7 +414,7 @@ namespace BetterSchedule.Server.DevTools
                 string? backColor,
                 string createdByUserId)
             {
-                var exists = await db.BlockedTimes.AnyAsync(b =>
+                var exists = await dbContext.BlockedTimes.AnyAsync(b =>
                     b.OrganizationId == organizationId &&
                     b.ResourceId == resourceId &&
                     b.Reason == reason &&
@@ -438,7 +423,7 @@ namespace BetterSchedule.Server.DevTools
 
                 if (exists) return;
 
-                db.BlockedTimes.Add(new BlockedTime
+                dbContext.BlockedTimes.Add(new BlockedTime
                 {
                     OrganizationId = organizationId,
                     ResourceId = resourceId,
@@ -449,89 +434,17 @@ namespace BetterSchedule.Server.DevTools
                     CreatedByUserId = createdByUserId,
                     IsDeleted = false
                 });
-                await db.SaveChangesAsync();
-            }
-
-            static async Task<int?> FindReservationIdAsync(
-                ApplicationDbContext db,
-                string organizationId,
-                string clientId,
-                string providerId,
-                int typeId,
-                DateTimeOffset start,
-                DateTimeOffset end)
-            {
-                return await db.Reservations
-                    .Where(r => r.OrganizationId == organizationId &&
-                                r.ClientId == clientId &&
-                                r.ServiceProviderId == providerId &&
-                                r.AppointmentTypeId == typeId &&
-                                r.StartTime == start &&
-                                r.EndTime == end)
-                    .Select(r => (int?)r.Id)
-                    .FirstOrDefaultAsync();
-            }
-
-            static async Task EnsureParticipantAsync(
-                ApplicationDbContext db,
-                int reservationId,
-                string organizationId,
-                ReservationParticipantRole role,
-                string? userId = null,
-                string? guestName = null,
-                string? guestPhone = null)
-            {
-                bool exists;
-                if (role == ReservationParticipantRole.Guest)
-                {
-                    exists = await db.ReservationParticipants.AnyAsync(rp =>
-                        rp.ReservationId == reservationId &&
-                        rp.OrganizationId == organizationId &&
-                        rp.Role == ReservationParticipantRole.Guest &&
-                        !rp.IsDeleted &&
-                        rp.GuestName == guestName &&
-                        rp.GuestPhone == guestPhone);
-                }
-                else
-                {
-                    if (string.IsNullOrWhiteSpace(userId)) return;
-                    exists = await db.ReservationParticipants.AnyAsync(rp =>
-                        rp.ReservationId == reservationId &&
-                        rp.OrganizationId == organizationId &&
-                        rp.UserId == userId &&
-                        !rp.IsDeleted);
-                }
-
-                if (exists) return;
-
-                db.ReservationParticipants.Add(new ReservationParticipant
-                {
-                    ReservationId = reservationId,
-                    OrganizationId = organizationId,
-                    Role = role,
-                    UserId = role == ReservationParticipantRole.Guest ? null : userId,
-                    GuestName = role == ReservationParticipantRole.Guest ? guestName : null,
-                    GuestPhone = role == ReservationParticipantRole.Guest ? guestPhone : null,
-                    IsDeleted = false
-                });
-                await db.SaveChangesAsync();
+                await dbContext.SaveChangesAsync();
             }
 
             static async Task EnsureOrgSettingsAsync(
-                ApplicationDbContext db,
+                ApplicationDbContext dbContext,
                 string organizationId,
                 int minLeadMinutes,
                 int cancelWindowHours,
-                bool showWeekends,
-                int startOfWeek,
                 TimeSpan businessStart,
                 TimeSpan businessEnd,
-                DefaultCalendarView defaultView,
-                CalendarShadingMode shading,
-                AvailabilityEnforcement enforcement,
                 bool requireConfirmOnOverrides,
-                bool availabilityPublic,
-                bool providersCanEditOwn,
                 string timeZoneId,
                 string locale,
                 bool emailEnabled,
@@ -539,24 +452,17 @@ namespace BetterSchedule.Server.DevTools
                 bool sendBookingConfirmation,
                 int? reminderHoursBefore)
             {
-                var s = await db.OrganizationSettings.FirstOrDefaultAsync(x => x.OrganizationId == organizationId);
-                if (s is null)
+                var settings = await dbContext.OrganizationSettings.FirstOrDefaultAsync(x => x.OrganizationId == organizationId);
+                if (settings is null)
                 {
-                    s = new OrganizationSettings
+                    settings = new OrganizationSettings
                     {
                         OrganizationId = organizationId,
                         MinLeadMinutes = minLeadMinutes,
                         CancelWindowHours = cancelWindowHours,
-                        ShowWeekends = showWeekends,
-                        StartOfWeek = startOfWeek,
                         BusinessHoursStartLocal = businessStart,
                         BusinessHoursEndLocal = businessEnd,
-                        DefaultView = defaultView,
-                        ShadingMode = shading,
-                        AvailabilityEnforcement = enforcement,
                         RequireConfirmOnOverrides = requireConfirmOnOverrides,
-                        AvailabilityPublic = availabilityPublic,
-                        ProvidersCanEditOwnAvailability = providersCanEditOwn,
                         TimeZoneId = timeZoneId,
                         Locale = locale,
                         EmailEnabled = emailEnabled,
@@ -564,69 +470,26 @@ namespace BetterSchedule.Server.DevTools
                         SendBookingConfirmation = sendBookingConfirmation,
                         ReminderHoursBefore = reminderHoursBefore
                     };
-                    db.OrganizationSettings.Add(s);
-                    await db.SaveChangesAsync();
+                    dbContext.OrganizationSettings.Add(settings);
+                    await dbContext.SaveChangesAsync();
                 }
                 else
                 {
                     var changed = false;
-                    if (s.MinLeadMinutes != minLeadMinutes) { s.MinLeadMinutes = minLeadMinutes; changed = true; }
-                    if (s.CancelWindowHours != cancelWindowHours) { s.CancelWindowHours = cancelWindowHours; changed = true; }
-                    if (s.ShowWeekends != showWeekends) { s.ShowWeekends = showWeekends; changed = true; }
-                    if (s.StartOfWeek != startOfWeek) { s.StartOfWeek = startOfWeek; changed = true; }
-                    if (s.BusinessHoursStartLocal != businessStart) { s.BusinessHoursStartLocal = businessStart; changed = true; }
-                    if (s.BusinessHoursEndLocal != businessEnd) { s.BusinessHoursEndLocal = businessEnd; changed = true; }
-                    if (s.DefaultView != defaultView) { s.DefaultView = defaultView; changed = true; }
-                    if (s.ShadingMode != shading) { s.ShadingMode = shading; changed = true; }
-                    if (s.AvailabilityEnforcement != enforcement) { s.AvailabilityEnforcement = enforcement; changed = true; }
-                    if (s.RequireConfirmOnOverrides != requireConfirmOnOverrides) { s.RequireConfirmOnOverrides = requireConfirmOnOverrides; changed = true; }
-                    if (s.AvailabilityPublic != availabilityPublic) { s.AvailabilityPublic = availabilityPublic; changed = true; }
-                    if (s.ProvidersCanEditOwnAvailability != providersCanEditOwn) { s.ProvidersCanEditOwnAvailability = providersCanEditOwn; changed = true; }
-                    if (s.TimeZoneId != timeZoneId) { s.TimeZoneId = timeZoneId; changed = true; }
-                    if (s.Locale != locale) { s.Locale = locale; changed = true; }
-                    if (s.EmailEnabled != emailEnabled) { s.EmailEnabled = emailEnabled; changed = true; }
-                    if (s.SmsEnabled != smsEnabled) { s.SmsEnabled = smsEnabled; changed = true; }
-                    if (s.SendBookingConfirmation != sendBookingConfirmation) { s.SendBookingConfirmation = sendBookingConfirmation; changed = true; }
-                    if (s.ReminderHoursBefore != reminderHoursBefore) { s.ReminderHoursBefore = reminderHoursBefore; changed = true; }
+                    if (settings.MinLeadMinutes != minLeadMinutes) { settings.MinLeadMinutes = minLeadMinutes; changed = true; }
+                    if (settings.CancelWindowHours != cancelWindowHours) { settings.CancelWindowHours = cancelWindowHours; changed = true; }
+                    if (settings.BusinessHoursStartLocal != businessStart) { settings.BusinessHoursStartLocal = businessStart; changed = true; }
+                    if (settings.BusinessHoursEndLocal != businessEnd) { settings.BusinessHoursEndLocal = businessEnd; changed = true; }
+                    if (settings.RequireConfirmOnOverrides != requireConfirmOnOverrides) { settings.RequireConfirmOnOverrides = requireConfirmOnOverrides; changed = true; }
+                    if (settings.TimeZoneId != timeZoneId) { settings.TimeZoneId = timeZoneId; changed = true; }
+                    if (settings.Locale != locale) { settings.Locale = locale; changed = true; }
+                    if (settings.EmailEnabled != emailEnabled) { settings.EmailEnabled = emailEnabled; changed = true; }
+                    if (settings.SmsEnabled != smsEnabled) { settings.SmsEnabled = smsEnabled; changed = true; }
+                    if (settings.SendBookingConfirmation != sendBookingConfirmation) { settings.SendBookingConfirmation = sendBookingConfirmation; changed = true; }
+                    if (settings.ReminderHoursBefore != reminderHoursBefore) { settings.ReminderHoursBefore = reminderHoursBefore; changed = true; }
 
-                    if (changed) await db.SaveChangesAsync();
+                    if (changed) await dbContext.SaveChangesAsync();
                 }
-            }
-
-            static async Task EnsureProviderAvailabilityAsync(
-                ApplicationDbContext db,
-                string organizationId,
-                string serviceProviderId,
-                DayOfWeek dayOfWeek,
-                TimeSpan startLocalTime,
-                TimeSpan endLocalTime,
-                DateOnly effectiveFrom,
-                DateOnly effectiveTo)
-            {
-                var exists = await db.ProviderAvailabilities.AnyAsync(a =>
-                    a.OrganizationId == organizationId &&
-                    a.ServiceProviderId == serviceProviderId &&
-                    a.DayOfWeek == dayOfWeek &&
-                    a.StartLocalTime == startLocalTime &&
-                    a.EndLocalTime == endLocalTime &&
-                    a.EffectiveFrom == effectiveFrom &&
-                    a.EffectiveTo == effectiveTo &&
-                    !a.IsDeleted);
-
-                if (exists) return;
-
-                db.ProviderAvailabilities.Add(new ProviderAvailability
-                {
-                    OrganizationId = organizationId,
-                    ServiceProviderId = serviceProviderId,
-                    DayOfWeek = dayOfWeek,
-                    StartLocalTime = startLocalTime,
-                    EndLocalTime = endLocalTime,
-                    EffectiveFrom = effectiveFrom,
-                    EffectiveTo = effectiveTo,
-                    IsDeleted = false
-                });
-                await db.SaveChangesAsync();
             }
         }
     }
