@@ -1,46 +1,23 @@
 import type { ViewMode } from "@/types/calendarView";
 
 /**
- * Flip this to false to instantly revert to the old "betterschedule" themes.
- * (We keep the mapping here so you can toggle without touching components.)
+ * Returns the DayPilot theme name for the given view.
+ * Must match the CSS classes you ship in styles.
  */
-const USE_NEW_THEMES = true;
-
-type ThemeName = string | undefined;
-
-/**
- * Returns the DayPilot theme name to use for the given view.
- * When USE_NEW_THEMES=false, we match your current setup.
- */
-export function themeForView(view: ViewMode): ThemeName {
-    if (!USE_NEW_THEMES) {
-        switch (view) {
-            case "Month":
-                return "monthlybetterschedule";
-            case "Resources":                
-                return undefined;
-            case "Day":
-            case "Week":
-            default:
-                return "betterschedule";
-        }
-    }
-
-    // Modular themes
+export function themeForView(view: ViewMode): string | undefined {
     switch (view) {
         case "Month":
             return "monthview";
         case "Resources":
             return "resourceview";
         case "Day":
-            return "weekview";
         case "Week":
         default:
             return "weekview";
     }
 }
 
-/** Navigator uses its own theme name. */
-export function navigatorTheme(): ThemeName {
-    return USE_NEW_THEMES ? "navigator" : "betterschedule_navigator";
+/** Theme for the date navigator widget. */
+export function navigatorTheme(): string | undefined {
+    return "navigator";
 }

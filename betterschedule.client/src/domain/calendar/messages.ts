@@ -3,17 +3,14 @@
  * Extracted for testability and consistency across entry points.
  */
 export const Messages = {
-    // Shading tooltips
-    OutsideProviderAvailability: "Outside provider availability",
-    OutsideOrgBusinessHours: "Outside organization business hours",
-
-    // Preflight validations
-    SelectionOutsideAvailability: "Selected time is outside provider availability.",
+    // Preflight / validation
+    ConflictOverlap: "This time overlaps an existing booking.",
+    ConflictBlocked: "This time is blocked by the provider or resource.",
 
     // Confirmations
-    ConfirmOutsideAvailability: "This is outside provider availability. Proceed anyway?",
     ConfirmCancelWindowOverride: "This is inside the organization’s change window. Override and proceed?",
 
-    // Toasts
+    // Toasts / notices
+    WarnDoubleBook: "Heads up: this overlaps another booking.",
     PermissionDenied: "You don’t have permission to perform this action.",
 };

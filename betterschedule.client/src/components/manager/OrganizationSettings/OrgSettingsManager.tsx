@@ -16,39 +16,30 @@ type Form = {
     providerCancelPolicy: ProviderCancelPolicy;
     clientCancelPolicy: ClientCancelPolicy;
 
-    // calendar
-    showWeekends: boolean;      // preserved
-    startOfWeek: number;        // preserved
+    // Calendar
+    showWeekends: boolean;
+    startOfWeek: number;
     businessHoursStartLocal: string; // "HH:mm:ss"
     businessHoursEndLocal: string;   // "HH:mm:ss"
-    defaultView: DefaultCalendarView; // preserved
+    defaultView: DefaultCalendarView;
 
-    // availability
+    // Availability flags (kept in model; not rendered here)
     availabilityEnforcement: AvailabilityEnforcement;
-    requireConfirmOnOverrides: boolean; // preserved
-    availabilityPublic: boolean;        // preserved
-    providersCanEditOwnAvailability: boolean; // preserved
+    requireConfirmOnOverrides: boolean;
+    availabilityPublic: boolean;
+    providersCanEditOwnAvailability: boolean;
 
-    // tz/locale
+    // Locale/TZ
     timeZoneId: string;
     locale: string;
 
-    // notifications
+    // Notifications
     emailEnabled: boolean;
     smsEnabled: boolean;
     sendBookingConfirmation: boolean;
     reminderHoursBefore: number | null;
 };
 
-function labelEnforcement(v: AvailabilityEnforcement) {
-    switch (v) {
-        case "None": return "None";
-        case "Warn": return "Warn (soft guard)";
-        case "BlockProvidersWarnManagers": return "Block providers, warn managers";
-        case "BlockAllRequireOverride": return "Block all (require override)";
-        default: return String(v);
-    }
-}
 function labelCancel(v: ProviderCancelPolicy | ClientCancelPolicy) {
     switch (v) {
         case "AnyTime": return "Any time";
@@ -68,32 +59,20 @@ function hhmmssTo12(hhmmss: string): string {
     return `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
-// "America/New_York" -> "EDT — UTC -4" (best-effort, with graceful fallback)
+// "America/New_York" -> "EDT — UTC -4" (best-effort)
 function formatTimeZoneDisplay(tzId: string): string {
     const now = new Date();
 
-    // Try to get abbreviation like "EDT" / "CET" / or "GMT-4"
     let abbr = tzId;
     try {
-        const parts = new Intl.DateTimeFormat("en-US", {
-            timeZone: tzId,
-            timeZoneName: "short",
-        }).formatToParts(now);
-        const tzPart = parts.find(p => p.type === "timeZoneName")?.value;
-        if (tzPart) abbr = tzPart;
-    } catch {
-        // keep tzId
-    }
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: tzId, timeZoneName: "short" }).formatToParts(now);
+        abbr = parts.find((p) => p.type === "timeZoneName")?.value ?? tzId;
+    } catch { /* noop */ }
 
-    // Try to get "UTC -4" using shortOffset if available, else parse from short
     let utc = "UTC";
     try {
-        const parts = new Intl.DateTimeFormat("en-US", {
-            timeZone: tzId,
-            timeZoneName: "shortOffset",
-        }).formatToParts(now);
-        const val = parts.find(p => p.type === "timeZoneName")?.value ?? "";
-        // Expect "GMT-4" or "UTC-4"
+        const parts = new Intl.DateTimeFormat("en-US", { timeZone: tzId, timeZoneName: "shortOffset" }).formatToParts(now);
+        const val = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
         const m = val.match(/([UG]MT|UTC)([+-]\d{1,2})(?::(\d{2}))?/i);
         if (m) {
             const sign = m[2].startsWith("-") ? "-" : "+";
@@ -103,10 +82,7 @@ function formatTimeZoneDisplay(tzId: string): string {
         }
     } catch {
         try {
-            const s = new Intl.DateTimeFormat("en-US", {
-                timeZone: tzId,
-                timeZoneName: "short",
-            }).format(now); // might be "... GMT-4"
+            const s = new Intl.DateTimeFormat("en-US", { timeZone: tzId, timeZoneName: "short" }).format(now);
             const m = s.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
             if (m) {
                 const sign = m[1].startsWith("-") ? "-" : "+";
@@ -114,9 +90,7 @@ function formatTimeZoneDisplay(tzId: string): string {
                 const mins = m[2] ? `:${m[2]}` : "";
                 utc = `UTC ${sign}${hours}${mins}`;
             }
-        } catch {
-            // leave as "UTC"
-        }
+        } catch { /* noop */ }
     }
 
     return `${abbr} — ${utc}`;
@@ -137,17 +111,21 @@ export default function OrgSettingsManager() {
                     cancelWindowHours: s.cancelWindowHours,
                     providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
                     clientCancelPolicy: s.clientCancelPolicy ?? "RespectWindow",
+
                     showWeekends: s.showWeekends,
                     startOfWeek: s.startOfWeek,
                     businessHoursStartLocal: s.businessHoursStartLocal,
                     businessHoursEndLocal: s.businessHoursEndLocal,
-                    defaultView: s.defaultView, // preserved
+                    defaultView: s.defaultView,
+
                     availabilityEnforcement: s.availabilityEnforcement,
                     requireConfirmOnOverrides: s.requireConfirmOnOverrides,
                     availabilityPublic: s.availabilityPublic,
                     providersCanEditOwnAvailability: s.providersCanEditOwnAvailability,
+
                     timeZoneId: s.timeZoneId,
                     locale: s.locale,
+
                     emailEnabled: s.emailEnabled,
                     smsEnabled: s.smsEnabled,
                     sendBookingConfirmation: s.sendBookingConfirmation,
@@ -186,9 +164,9 @@ export default function OrgSettingsManager() {
                     </button>
                 </header>
 
-                {/* Booking & Availability */}
+                {/* Booking Policy */}
                 <section className="rounded-2xl border bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-gray-800">Booking & Availability</div>
+                    <div className="mb-3 text-sm font-medium text-gray-800">Booking Policy</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
                             <dt className="text-gray-500">Min lead time</dt>
@@ -205,10 +183,6 @@ export default function OrgSettingsManager() {
                         <div>
                             <dt className="text-gray-500">Client cancel policy</dt>
                             <dd className="font-medium">{labelCancel(settings.clientCancelPolicy)}</dd>
-                        </div>
-                        <div className="sm:col-span-2">
-                            <dt className="text-gray-500">Availability enforcement</dt>
-                            <dd className="font-medium">{labelEnforcement(settings.availabilityEnforcement)}</dd>
                         </div>
                     </dl>
                 </section>
@@ -253,7 +227,7 @@ export default function OrgSettingsManager() {
                             <dd className="font-medium">{settings.smsEnabled ? "Enabled" : "Disabled"}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Reminders</dt>
+                            <dt className="text-gray-500">Send confirmations</dt>
                             <dd className="font-medium">{settings.sendBookingConfirmation ? "On" : "Off"}</dd>
                         </div>
                         <div>

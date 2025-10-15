@@ -16,9 +16,7 @@ import { useAuth } from "@/components/auth/auth-context";
 export type TopNavProps = {
     /** Primary navigation links, rendered with capability flags. */
     NavLinks: React.ComponentType<{
-        canSeeProviderAvailability: boolean;
         canManage: boolean;
-        isProvider: boolean;
     }>;
     /** Optional explicit logout override; otherwise uses AuthContext.logout(). */
     onLogout?: () => Promise<void>;
@@ -34,7 +32,7 @@ type DemoAccount = {
     password: string;
 };
 
-/** Curated list of seeded demo accounts — keep in sync with DbInitializer. */
+/** Seeded Demo accounts for Demoing different Users/Orgs — keep in sync with DbInitializer. */
 const DEMO_ACCOUNTS: DemoAccount[] = [
     // Org 1 — First Demo Holistic Wellness
     {
@@ -76,7 +74,7 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
         organizationLabel: "Demo Two, Health Strikes Back",
         role: "Provider",
         name: "Eric Evans",
-        email: "eric@example.com",
+        email: "e@example.com",
         password: "Password123!",
     },
     {
@@ -96,18 +94,18 @@ const toTitle = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLow
 const useResolveDisplayName = () =>
     React.useCallback((emailOrName?: string | null) => {
         const raw = (emailOrName ?? "").trim();
-        const mapped = DEMO_ACCOUNTS.find(a => a.email.toLowerCase() === raw.toLowerCase())?.name;
+        const mapped = DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === raw.toLowerCase())?.name;
         return mapped ?? (raw || "current user");
     }, []);
 
-/** Derive a *first-name* label for "Signed in as" — works for non-demo users too. */
+/** Derive a first-name label for "Signed in as" — works for non-demo users too. */
 const useResolveFirstNameLabel = () =>
     React.useCallback((emailOrName?: string | null) => {
         const raw = (emailOrName ?? "").trim();
         if (!raw) return "";
 
         // Prefer friendly demo mapping if present
-        const mapped = DEMO_ACCOUNTS.find(a => a.email.toLowerCase() === raw.toLowerCase())?.name;
+        const mapped = DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === raw.toLowerCase())?.name;
         if (mapped) {
             const first = mapped.trim().split(/\s+/)[0] ?? mapped;
             return toTitle(first);
@@ -131,8 +129,6 @@ const useResolveFirstNameLabel = () =>
 const TopNav: React.FC<TopNavProps> = ({ NavLinks, onLogout }) => {
     const navigate = useNavigate();
     const { user, isManager, isProvider, login, logout: authLogout } = useAuth();
-
-    const canSeeProviderAvailability = isManager || isProvider;
 
     const handleLogout = async () => {
         if (onLogout) {
@@ -162,11 +158,7 @@ const TopNav: React.FC<TopNavProps> = ({ NavLinks, onLogout }) => {
                     BetterSchedule
                 </button>
 
-                <NavLinks
-                    canSeeProviderAvailability={canSeeProviderAvailability}
-                    canManage={isManager}
-                    isProvider={isProvider}
-                />
+                <NavLinks canManage={isManager} />
             </div>
 
             {/* Right: Demo role switcher + Signed-in as + Logout */}
@@ -225,24 +217,24 @@ type DemoRoleSwitcherProps = {
  * Small inline component providing a “DEMO ONLY:” role switcher.
  * Defaults to the current user's organization and role when possible.
  */
-const DemoRoleSwitcher: React.FC<DemoRoleSwitcherProps> = ({ currentUserEmail, isManager, isProvider, onSwitch }) => {
-    // Determine initial selection from the current user email (if it matches a demo account).
+const DemoRoleSwitcher: React.FC<DemoRoleSwitcherProps> = ({
+    currentUserEmail,
+    isManager,
+    isProvider,
+    onSwitch,
+}) => {
     const matched = React.useMemo(
-        () => DEMO_ACCOUNTS.find(a => a.email.toLowerCase() === (currentUserEmail ?? "").toLowerCase()),
+        () => DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === (currentUserEmail ?? "").toLowerCase()),
         [currentUserEmail]
     );
 
-    // Fallback role if no demo match: Manager > Provider > Client
-    const fallbackRole: "Manager" | "Provider" | "Client" = isManager ? "Manager" : (isProvider ? "Provider" : "Client");
+    const fallbackRole: "Manager" | "Provider" | "Client" = isManager ? "Manager" : isProvider ? "Provider" : "Client";
 
     const [organizationId, setOrganizationId] = React.useState<"demo-org-1" | "demo-org-2">(
-        (matched?.organizationId ?? "demo-org-1")
+        matched?.organizationId ?? "demo-org-1"
     );
-    const [role, setRole] = React.useState<"Manager" | "Provider" | "Client">(
-        (matched?.role ?? fallbackRole)
-    );
+    const [role, setRole] = React.useState<"Manager" | "Provider" | "Client">(matched?.role ?? fallbackRole);
 
-    // Keep selection in sync when auth identity changes.
     React.useEffect(() => {
         if (matched) {
             setOrganizationId(matched.organizationId);
@@ -257,13 +249,14 @@ const DemoRoleSwitcher: React.FC<DemoRoleSwitcherProps> = ({ currentUserEmail, i
         for (const a of DEMO_ACCOUNTS) {
             if (!unique.has(a.organizationId)) unique.set(a.organizationId, a.organizationLabel);
         }
-        return Array.from(unique, ([id, label]) => ({ id, label })) as { id: "demo-org-1" | "demo-org-2"; label: string }[];
+        return Array.from(unique, ([id, label]) => ({ id, label })) as {
+            id: "demo-org-1" | "demo-org-2";
+            label: string;
+        }[];
     }, []);
 
     const handleSwitchClick = async () => {
-        const target = DEMO_ACCOUNTS.find(
-            (a) => a.organizationId === organizationId && a.role === role
-        );
+        const target = DEMO_ACCOUNTS.find((a) => a.organizationId === organizationId && a.role === role);
         if (!target) {
             toast.error("No demo account found for the selected organization and role.");
             return;

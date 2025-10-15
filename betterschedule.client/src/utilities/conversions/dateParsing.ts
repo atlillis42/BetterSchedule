@@ -2,8 +2,7 @@ import { DayPilot } from "@daypilot/daypilot-lite-react";
 
 /**
  * Formats a local calendar date (YYYY-MM-DD).
- * - When given a DayPilot.Date, formats directly from it to avoid timezone shifts.
- * - When given a string or Date, interprets it as *local* time and formats components.
+ * When given a DayPilot.Date, formats directly to avoid timezone shifts.
  */
 export function getLocalDateString(
     value: DayPilot.Date | string | Date | { toDate?: () => Date }
@@ -31,8 +30,7 @@ export function getLocalDateString(
 
 /**
  * Formats a local time (HH:mm).
- * - When given a DayPilot.Date, formats directly from it to avoid timezone shifts.
- * - When given a string or Date, interprets it as *local* time and formats components.
+ * When given a DayPilot.Date, formats directly to avoid timezone shifts.
  */
 export function getLocalTimeString(
     value: DayPilot.Date | string | Date | { toDate?: () => Date }
@@ -60,8 +58,8 @@ export function getLocalTimeString(
 }
 
 /**
- * Combines *local* date and time strings (YYYY-MM-DD + HH:mm) into a UTC ISO-8601 string.
- * The input strings are interpreted as local wall time; the result is ISO in UTC (with 'Z').
+ * Combines local date/time strings (YYYY-MM-DD + HH:mm) into a UTC ISO-8601 string.
+ * Inputs are interpreted as local wall time; output is ISO in UTC (with 'Z').
  */
 export function combineDateTime(
     dateStr: string,
@@ -71,28 +69,16 @@ export function combineDateTime(
     const timePart = (timeStr || "").trim().slice(0, 5);
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-        return {
-            iso: null,
-            errorField: "startDate",
-            errorMsg: "Please select a valid date (YYYY-MM-DD).",
-        };
+        return { iso: null, errorField: "startDate", errorMsg: "Please select a valid date (YYYY-MM-DD)." };
     }
     if (!/^\d{2}:\d{2}$/.test(timePart)) {
-        return {
-            iso: null,
-            errorField: "startTime",
-            errorMsg: "Please select a valid time (HH:mm).",
-        };
+        return { iso: null, errorField: "startTime", errorMsg: "Please select a valid time (HH:mm)." };
     }
 
     const localDateTimeString = `${datePart}T${timePart}:00`;
     const d = new Date(localDateTimeString);
     if (isNaN(d.getTime())) {
-        return {
-            iso: null,
-            errorField: "startTime",
-            errorMsg: "Invalid date or time combination.",
-        };
+        return { iso: null, errorField: "startTime", errorMsg: "Invalid date or time combination." };
     }
 
     return { iso: d.toISOString() };
@@ -105,17 +91,21 @@ export function toISODate(mdyyyy: string): string {
     return `${year.padStart(4, "0")}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
-/** Parses "hh:mm:ss" (or "mm:ss"/"h:mm") to milliseconds. */
+/** Parses "hh:mm:ss" (or "mm:ss"/"h") to milliseconds. */
 export function parseTimeSpanToMs(span: string): number {
     if (!span) return 0;
     const parts = span.split(":").map((n) => Number(n));
     if (parts.some(Number.isNaN)) return 0;
-    let h = 0,
-        m = 0,
-        s = 0;
-    if (parts.length === 3) [h, m, s] = parts as [number, number, number];
-    else if (parts.length === 2) [m, s] = parts as [number, number];
-    else[m] = parts as [number];
+
+    let h = 0, m = 0, s = 0;
+    if (parts.length === 3) {
+        [h, m, s] = parts as [number, number, number];
+    } else if (parts.length === 2) {
+        [m, s] = parts as [number, number];
+    } else {
+        m = parts[0] ?? 0; // single-number form treated as minutes
+    }
+
     return ((h * 60 + m) * 60 + s) * 1000;
 }
 
@@ -136,8 +126,8 @@ export function roundToIncrement(
 }
 
 /**
- * Adds a duration ("hh:mm:ss") to local date+time and optionally snaps the result to a minute grid.
- * Returns the resulting local { date: "YYYY-MM-DD", time: "HH:mm" }.
+ * Adds a duration ("hh:mm:ss") to local date+time and optionally snaps to a minute grid.
+ * Returns local { date: "YYYY-MM-DD", time: "HH:mm" }.
  */
 export function addDurationToLocal(
     dateStr: string,

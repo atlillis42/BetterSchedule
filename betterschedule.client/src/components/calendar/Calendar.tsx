@@ -9,25 +9,24 @@ import CalendarBody from "./CalendarBody";
 import EventModal from "@/components/modals/eventModals/EventModal";
 
 import { useCalendarData } from "@/hooks/useCalendarData";
-import { useAvailabilityOverlay } from "@/hooks/useAvailabilityOverlay";
 import { useCalendarView } from "@/hooks/useCalendarView";
 import { useEventModal } from "@/hooks/useEventModal";
 import { filterEventsByDeleted, filterBlockedTimesForView } from "@/services/eventsService";
 
-import { buildBusinessHours } from "@/services/availabilityService";
+import { buildBusinessHours } from "@/services/businessHoursService";
 import { createBeforeCellRender, createBeforeSchedulerCellRender } from "@/adapters/daypilot/beforeCellRenderFactory";
 import { createBeforeEventRender } from "@/adapters/daypilot/beforeEventRenderFactory";
 
 import type { UiEvent, CalendarResource, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 import type { ProviderLite } from "@/services/providersService";
-import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
 import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekHeader";
+import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
 
 /**
  * Calendar (root shell)
  * -----------------------------------------------------------------------------
- * Orchestrates data, overlays, DayPilot view rendering, and modal workflows.
+ * Orchestrates data, DayPilot view rendering, and modal workflows.
  *
  * Key behaviors:
  * - Resources view uses DayPilotCalendar(Resources) with a 1-day fetch window.
@@ -41,10 +40,8 @@ const Calendar = () => {
     const canManageBlocks = isManager || isProvider;
 
     const { org, view, setView, startDate, setStartDate, tzLabel } = useCalendarView();
-    const { resources, events, providers, refreshEvents, appointmentTypesById } = useCalendarData(startDate, view);
-    const { overlayProviderId, availabilityByProvider } = useAvailabilityOverlay(
-        isProvider ? userId ?? undefined : undefined
-    );
+    const { resources, events, providers, refreshEvents, appointmentTypesById } =
+        useCalendarData(startDate, view);
 
     const {
         open,
@@ -68,8 +65,6 @@ const Calendar = () => {
         isManager,
         userId,
         org,
-        overlayProviderId,
-        availabilityByProvider,
         refreshEvents,
     });
 
@@ -79,7 +74,7 @@ const Calendar = () => {
         return filterBlockedTimesForView(base as UiEvent[], view as ViewMode, { userId, isManager });
     }, [events, view, userId, isManager]);
 
-    // Organization business hours → DayPilot hour integers.
+    // Organization business hours → DayPilot hour integers and shading helpers.
     const businessHours = useMemo(() => buildBusinessHours(org), [org]);
 
     const businessBeginsHour = useMemo<number>(() => {
@@ -94,35 +89,19 @@ const Calendar = () => {
         return Number.isFinite(hh) ? hh : 17;
     }, [businessHours]);
 
-    // Shading and event rendering callbacks.
-    const beforeCellRender = useMemo(() => {
-        const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        return createBeforeCellRender({
-            shadingMode,
-            availabilityByProvider,
-            overlayProviderId,
-            businessHours,
-            isProvider,
-            isManager,
-        });
-    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
+    // Cell shading: business-hours off-hours tint + odd-hour hint
+    const beforeCellRender = useMemo(() => createBeforeCellRender({ businessHours }), [businessHours]);
+    const beforeSchedulerCellRender = useMemo(
+        () => createBeforeSchedulerCellRender({ businessHours }),
+        [businessHours]
+    );
 
-    const beforeSchedulerCellRender = useMemo(() => {
-        const shadingMode = org?.shadingMode ?? "ProviderAvailability";
-        return createBeforeSchedulerCellRender({
-            shadingMode,
-            availabilityByProvider,
-            overlayProviderId,
-            businessHours,
-            isProvider,
-            isManager,
-        });
-    }, [org, availabilityByProvider, overlayProviderId, businessHours, isProvider, isManager]);
-
+    // Event rendering: include client label hooks via clientNameCache
     const beforeEventRender = useMemo(
         () =>
             createBeforeEventRender({
-                getTypeLabel: (id?: number) => (typeof id === "number" ? appointmentTypesById.get(id) : undefined),
+                getTypeLabel: (id?: number) =>
+                    typeof id === "number" ? appointmentTypesById.get(id) : undefined,
                 getClientLabelSync: (id?: string) => (id ? peekClientName(id) : undefined),
                 primeClient: (id: string) => getClientNameCached(id),
             }),
@@ -133,12 +112,9 @@ const Calendar = () => {
      * Day label shown in the legend when view === "Resources".
      * Delegates to a utility that ensures local interpretation and ordinal suffix.
      */
-    const resourcesDayLabel = useMemo(
-        () => formatResourcesDayLabel(startDate as any),
-        [startDate]
-    );
+    const resourcesDayLabel = useMemo(() => formatResourcesDayLabel(startDate as any), [startDate]);
 
-    // Lite best practice: keep business hours visible by default; off-hours remain reachable via scroll.
+    // Keep business hours visible by default; off-hours remain reachable via scroll.
     const heightSpec: "Full" | "BusinessHours" = "BusinessHours";
 
     return (
@@ -167,11 +143,7 @@ const Calendar = () => {
                 />
 
                 <div className="calendar-main flex flex-col flex-1 min-w-0">
-                    <CalendarToolbar
-                        view={view as ViewMode}
-                        onSetView={(v) => setView(v)}
-                        tzLabel={tzLabel}
-                    />
+                    <CalendarToolbar view={view as ViewMode} onSetView={(v) => setView(v)} tzLabel={tzLabel} />
 
                     <CalendarLegend
                         view={view as ViewMode}
