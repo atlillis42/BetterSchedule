@@ -1,48 +1,33 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
 import {
     getOrgSettings,
-    updateOrgSettings,
     type DefaultCalendarView,
-    type CalendarShadingMode,
     type AvailabilityEnforcement,
     type ProviderCancelPolicy,
     type ClientCancelPolicy,
 } from "@/api/org-settings-api";
 import { useAuth } from "@auth/auth-context";
-import ProviderAccessManager from "@/components/manager/Users/ProviderAccessManager";
+import OrgSettingsModal from "./OrgSettingsModal";
 
-/**
- * Organization Settings Manager (Manager-only).
- * - Loads current organization settings.
- * - Provides a UI for editing booking guardrails, cancel policies, calendar display,
- *   availability policy/visuals, timezone/locale, and notifications.
- * - Persists changes via PUT /org-settings.
- */
-
-/** Local form model (UI-friendly fields). */
 type Form = {
-    // booking windows (server uses authoritative integers)
     minLeadMinutes: number;
     cancelWindowHours: number;
-
-    // cancel policies
     providerCancelPolicy: ProviderCancelPolicy;
     clientCancelPolicy: ClientCancelPolicy;
 
-    // calendar display
-    showWeekends: boolean;
-    startOfWeek: number;
-    businessHoursStartLocal: string; // "HH:mm:ss" or "HH:mm"
-    businessHoursEndLocal: string;   // "HH:mm:ss" or "HH:mm"
-    defaultView: DefaultCalendarView;
+    // calendar
+    showWeekends: boolean;      // preserved
+    startOfWeek: number;        // preserved
+    businessHoursStartLocal: string; // "HH:mm:ss"
+    businessHoursEndLocal: string;   // "HH:mm:ss"
+    defaultView: DefaultCalendarView; // preserved
 
     // availability
-    shadingMode: CalendarShadingMode;
     availabilityEnforcement: AvailabilityEnforcement;
-    requireConfirmOnOverrides: boolean;
-    availabilityPublic: boolean;
-    providersCanEditOwnAvailability: boolean;
+    requireConfirmOnOverrides: boolean; // preserved
+    availabilityPublic: boolean;        // preserved
+    providersCanEditOwnAvailability: boolean; // preserved
 
     // tz/locale
     timeZoneId: string;
@@ -55,39 +40,108 @@ type Form = {
     reminderHoursBefore: number | null;
 };
 
-type TabKey = "general" | "access";
+function labelEnforcement(v: AvailabilityEnforcement) {
+    switch (v) {
+        case "None": return "None";
+        case "Warn": return "Warn (soft guard)";
+        case "BlockProvidersWarnManagers": return "Block providers, warn managers";
+        case "BlockAllRequireOverride": return "Block all (require override)";
+        default: return String(v);
+    }
+}
+function labelCancel(v: ProviderCancelPolicy | ClientCancelPolicy) {
+    switch (v) {
+        case "AnyTime": return "Any time";
+        case "RespectWindow": return "Respect cancel window";
+        case "None": return "None (managers only)";
+        default: return String(v);
+    }
+}
 
-/** Ensures "HH:mm:ss" (appends ":00" when given "HH:mm"). */
-const normalizeHHmmOrHHmmss = (v: string) => (/^\d{1,2}:\d{2}$/.test(v) ? `${v}:00` : v);
-/** Trims a "HH:mm:ss" string to "HH:mm" for input[type=time]. */
-const hhmm = (ts: string) => ts.slice(0, 5);
+// "HH:mm:ss" -> "h:mmam/pm"
+function hhmmssTo12(hhmmss: string): string {
+    const [hStr, mStr] = hhmmss.split(":");
+    const h = Math.max(0, Math.min(23, parseInt(hStr || "0", 10)));
+    const m = Math.max(0, Math.min(59, parseInt(mStr || "0", 10)));
+    const suffix = h < 12 ? "am" : "pm";
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
+}
+
+// "America/New_York" -> "EDT — UTC -4" (best-effort, with graceful fallback)
+function formatTimeZoneDisplay(tzId: string): string {
+    const now = new Date();
+
+    // Try to get abbreviation like "EDT" / "CET" / or "GMT-4"
+    let abbr = tzId;
+    try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone: tzId,
+            timeZoneName: "short",
+        }).formatToParts(now);
+        const tzPart = parts.find(p => p.type === "timeZoneName")?.value;
+        if (tzPart) abbr = tzPart;
+    } catch {
+        // keep tzId
+    }
+
+    // Try to get "UTC -4" using shortOffset if available, else parse from short
+    let utc = "UTC";
+    try {
+        const parts = new Intl.DateTimeFormat("en-US", {
+            timeZone: tzId,
+            timeZoneName: "shortOffset",
+        }).formatToParts(now);
+        const val = parts.find(p => p.type === "timeZoneName")?.value ?? "";
+        // Expect "GMT-4" or "UTC-4"
+        const m = val.match(/([UG]MT|UTC)([+-]\d{1,2})(?::(\d{2}))?/i);
+        if (m) {
+            const sign = m[2].startsWith("-") ? "-" : "+";
+            const hours = Math.abs(parseInt(m[2], 10));
+            const mins = m[3] ? `:${m[3]}` : "";
+            utc = `UTC ${sign}${hours}${mins}`;
+        }
+    } catch {
+        try {
+            const s = new Intl.DateTimeFormat("en-US", {
+                timeZone: tzId,
+                timeZoneName: "short",
+            }).format(now); // might be "... GMT-4"
+            const m = s.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/);
+            if (m) {
+                const sign = m[1].startsWith("-") ? "-" : "+";
+                const hours = Math.abs(parseInt(m[1], 10));
+                const mins = m[2] ? `:${m[2]}` : "";
+                utc = `UTC ${sign}${hours}${mins}`;
+            }
+        } catch {
+            // leave as "UTC"
+        }
+    }
+
+    return `${abbr} — ${utc}`;
+}
 
 export default function OrgSettingsManager() {
     const { isManager } = useAuth();
-    const [activeTab, setActiveTab] = useState<TabKey>("general");
-
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [f, setF] = useState<Form | null>(null);
+    const [settings, setSettings] = useState<Form | null>(null);
+    const [editing, setEditing] = useState(false);
 
-    // Load → map server DTO to local Form
     useEffect(() => {
         (async () => {
             try {
                 const s = await getOrgSettings();
-                setF({
+                setSettings({
                     minLeadMinutes: s.minLeadMinutes,
                     cancelWindowHours: s.cancelWindowHours,
-
                     providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
                     clientCancelPolicy: s.clientCancelPolicy ?? "RespectWindow",
-
                     showWeekends: s.showWeekends,
                     startOfWeek: s.startOfWeek,
                     businessHoursStartLocal: s.businessHoursStartLocal,
                     businessHoursEndLocal: s.businessHoursEndLocal,
-                    defaultView: s.defaultView,
-                    shadingMode: s.shadingMode,
+                    defaultView: s.defaultView, // preserved
                     availabilityEnforcement: s.availabilityEnforcement,
                     requireConfirmOnOverrides: s.requireConfirmOnOverrides,
                     availabilityPublic: s.availabilityPublic,
@@ -109,375 +163,117 @@ export default function OrgSettingsManager() {
 
     const canEdit = isManager;
 
-    const businessHoursInvalid = useMemo(() => {
-        if (!f) return false;
-        const start = normalizeHHmmOrHHmmss(f.businessHoursStartLocal);
-        const end = normalizeHHmmOrHHmmss(f.businessHoursEndLocal);
-        // Lexicographic compare is valid for HH:mm:ss strings.
-        return end <= start;
-    }, [f]);
+    if (loading) return <div className="p-6 text-sm text-gray-600">Loading settings…</div>;
+    if (!settings) return <div className="p-6 text-sm text-red-600">Unable to load settings.</div>;
 
-    const save = async () => {
-        if (!f) return;
-        if (businessHoursInvalid) {
-            toast.error("Business hours end must be after start.");
-            return;
-        }
-
-        setSaving(true);
-        try {
-            await updateOrgSettings({
-                // booking windows
-                minLeadMinutes: f.minLeadMinutes,
-                cancelWindowHours: f.cancelWindowHours,
-
-                // cancel policies
-                providerCancelPolicy: f.providerCancelPolicy,
-                clientCancelPolicy: f.clientCancelPolicy,
-
-                // calendar display
-                showWeekends: f.showWeekends,
-                startOfWeek: f.startOfWeek,
-                businessHoursStartLocal: normalizeHHmmOrHHmmss(f.businessHoursStartLocal),
-                businessHoursEndLocal: normalizeHHmmOrHHmmss(f.businessHoursEndLocal),
-                defaultView: f.defaultView,
-
-                // availability
-                shadingMode: f.shadingMode,
-                availabilityEnforcement: f.availabilityEnforcement,
-                requireConfirmOnOverrides: f.requireConfirmOnOverrides,
-                availabilityPublic: f.availabilityPublic,
-                providersCanEditOwnAvailability: f.providersCanEditOwnAvailability,
-
-                // tz/locale
-                timeZoneId: f.timeZoneId,
-                locale: f.locale,
-
-                // notifications
-                emailEnabled: f.emailEnabled,
-                smsEnabled: f.smsEnabled,
-                sendBookingConfirmation: f.sendBookingConfirmation,
-                reminderHoursBefore: f.reminderHoursBefore,
-            });
-            toast.success("Settings saved.");
-        } catch {
-            toast.error("Failed to save settings.");
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    if (loading) return <div className="p-4 text-sm text-gray-600">Loading settings…</div>;
-    if (!f) return <div className="p-4 text-sm text-red-600">Unable to load settings.</div>;
+    const hours12 = `${hhmmssTo12(settings.businessHoursStartLocal)}–${hhmmssTo12(settings.businessHoursEndLocal)}`;
+    const tzDisplay = formatTimeZoneDisplay(settings.timeZoneId);
 
     return (
-        <div className="p-6 space-y-6">
-            <header className="flex items-center justify-between">
-                <h1 className="text-xl font-semibold">Organization Settings</h1>
-
-                {/* Tab switcher */}
-                <div className="flex gap-2 border rounded-lg bg-white overflow-hidden">
-                    <button
-                        className={`px-3 py-2 text-sm ${activeTab === "general" ? "bg-gray-900 text-white" : "text-gray-700"}`}
-                        onClick={() => setActiveTab("general")}
-                    >
-                        General
-                    </button>
-                    <button
-                        className={`px-3 py-2 text-sm ${activeTab === "access" ? "bg-gray-900 text-white" : "text-gray-700"}`}
-                        onClick={() => setActiveTab("access")}
-                    >
-                        Access
-                    </button>
-                </div>
-            </header>
-
-            {activeTab === "general" && (
-                <>
-                    {/* Booking guardrails */}
-                    <section className="rounded-xl border p-4 space-y-3 bg-white">
-                        <div className="font-medium">Booking Guardrails</div>
-                        <div className="grid md:grid-cols-3 gap-3 text-sm">
-                            <label className="flex flex-col">
-                                <span>Min lead time (minutes)</span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    className="border rounded px-2 py-1"
-                                    value={f.minLeadMinutes}
-                                    onChange={(e) => setF({ ...f, minLeadMinutes: Math.max(0, Number(e.target.value || 0)) })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-                            <label className="flex flex-col">
-                                <span>Cancel window (hours)</span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    className="border rounded px-2 py-1"
-                                    value={f.cancelWindowHours}
-                                    onChange={(e) => setF({ ...f, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-
-                            {/* Provider cancel policy */}
-                            <label className="flex flex-col">
-                                <span>Provider cancel policy</span>
-                                <select
-                                    className="border rounded px-2 py-1"
-                                    value={f.providerCancelPolicy}
-                                    onChange={(e) => setF({ ...f, providerCancelPolicy: e.target.value as ProviderCancelPolicy })}
-                                    disabled={!canEdit}
-                                >
-                                    <option value="AnyTime">AnyTime (default; friendliest)</option>
-                                    <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
-                                    <option value="None">None (managers only)</option>
-                                </select>
-                            </label>
-
-                            {/* Client cancel policy */}
-                            <label className="flex flex-col">
-                                <span>Client cancel policy</span>
-                                <select
-                                    className="border rounded px-2 py-1"
-                                    value={f.clientCancelPolicy}
-                                    onChange={(e) => setF({ ...f, clientCancelPolicy: e.target.value as ClientCancelPolicy })}
-                                    disabled={!canEdit}
-                                >
-                                    <option value="AnyTime">AnyTime</option>
-                                    <option value="RespectWindow">RespectWindow (no cancel inside window)</option>
-                                    <option value="None">None (manager only)</option>
-                                </select>
-                                <span className="text-xs text-gray-500 mt-1">
-                                    Note: If Provider policy is <b>None</b>, client self-cancel is disabled regardless of this value.
-                                </span>
-                            </label>
-                        </div>
-                    </section>
-
-                    {/* Calendar display */}
-                    <section className="rounded-xl border p-4 space-y-3 bg-white">
-                        <div className="font-medium">Calendar Display</div>
-                        <div className="grid md:grid-cols-3 gap-3 text-sm">
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.showWeekends}
-                                    onChange={(e) => setF({ ...f, showWeekends: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Show weekends</span>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Start of week (0=Sun)</span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    max={6}
-                                    className="border rounded px-2 py-1"
-                                    value={f.startOfWeek}
-                                    onChange={(e) => setF({ ...f, startOfWeek: Math.min(6, Math.max(0, Number(e.target.value || 0))) })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Default view</span>
-                                <select
-                                    className="border rounded px-2 py-1"
-                                    value={f.defaultView}
-                                    onChange={(e) => setF({ ...f, defaultView: e.target.value as DefaultCalendarView })}
-                                    disabled={!canEdit}
-                                >
-                                    <option>Day</option>
-                                    <option>Week</option>
-                                    <option>Month</option>
-                                    <option>Resources</option>
-                                </select>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Business start (local)</span>
-                                <input
-                                    type="time"
-                                    className="border rounded px-2 py-1"
-                                    value={hhmm(f.businessHoursStartLocal)}
-                                    onChange={(e) => setF({ ...f, businessHoursStartLocal: `${e.target.value}:00` })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Business end (local)</span>
-                                <input
-                                    type="time"
-                                    className={`border rounded px-2 py-1 ${businessHoursInvalid ? "border-red-500" : ""}`}
-                                    value={hhmm(f.businessHoursEndLocal)}
-                                    onChange={(e) => setF({ ...f, businessHoursEndLocal: `${e.target.value}:00` })}
-                                    disabled={!canEdit}
-                                />
-                                {businessHoursInvalid && <span className="text-xs text-red-600 mt-1">End must be after start.</span>}
-                            </label>
-                        </div>
-                    </section>
-
-                    {/* Availability */}
-                    <section className="rounded-xl border p-4 space-y-3 bg-white">
-                        <div className="font-medium">Availability</div>
-                        <div className="grid md:grid-cols-3 gap-3 text-sm">
-                            <label className="flex flex-col">
-                                <span>Shading mode</span>
-                                <select
-                                    className="border rounded px-2 py-1"
-                                    value={f.shadingMode}
-                                    onChange={(e) => setF({ ...f, shadingMode: e.target.value as any })}
-                                    disabled={!canEdit}
-                                >
-                                    <option value="None">None</option>
-                                    <option value="OrgBusinessHours">OrgBusinessHours</option>
-                                    <option value="ProviderAvailability">ProviderAvailability</option>
-                                </select>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Enforcement</span>
-                                <select
-                                    className="border rounded px-2 py-1"
-                                    value={f.availabilityEnforcement}
-                                    onChange={(e) => setF({ ...f, availabilityEnforcement: e.target.value as any })}
-                                    disabled={!canEdit}
-                                >
-                                    <option>None</option>
-                                    <option>Warn</option>
-                                    <option>BlockProvidersWarnManagers</option>
-                                    <option>BlockAllRequireOverride</option>
-                                </select>
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.requireConfirmOnOverrides}
-                                    onChange={(e) => setF({ ...f, requireConfirmOnOverrides: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Require confirm on overrides</span>
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.availabilityPublic}
-                                    onChange={(e) => setF({ ...f, availabilityPublic: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Availability visible to all users</span>
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.providersCanEditOwnAvailability}
-                                    onChange={(e) => setF({ ...f, providersCanEditOwnAvailability: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Providers can edit their own availability</span>
-                            </label>
-                        </div>
-                    </section>
-
-                    {/* Locale / Notifications */}
-                    <section className="rounded-xl border p-4 space-y-3 bg-white">
-                        <div className="font-medium">Locale & Notifications</div>
-                        <div className="grid md:grid-cols-3 gap-3 text-sm">
-                            <label className="flex flex-col">
-                                <span>Time zone (IANA)</span>
-                                <input
-                                    className="border rounded px-2 py-1"
-                                    value={f.timeZoneId}
-                                    onChange={(e) => setF({ ...f, timeZoneId: e.target.value })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Locale</span>
-                                <input
-                                    className="border rounded px-2 py-1"
-                                    value={f.locale}
-                                    onChange={(e) => setF({ ...f, locale: e.target.value })}
-                                    disabled={!canEdit}
-                                />
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.emailEnabled}
-                                    onChange={(e) => setF({ ...f, emailEnabled: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Email enabled</span>
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.smsEnabled}
-                                    onChange={(e) => setF({ ...f, smsEnabled: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>SMS enabled</span>
-                            </label>
-
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={f.sendBookingConfirmation}
-                                    onChange={(e) => setF({ ...f, sendBookingConfirmation: e.target.checked })}
-                                    disabled={!canEdit}
-                                />
-                                <span>Send booking confirmations</span>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Reminder (hours before)</span>
-                                <input
-                                    type="number"
-                                    min={0}
-                                    className="border rounded px-2 py-1"
-                                    value={f.reminderHoursBefore ?? ""}
-                                    onChange={(e) =>
-                                        setF({
-                                            ...f,
-                                            reminderHoursBefore: e.target.value === "" ? null : Math.max(0, Number(e.target.value || 0)),
-                                        })
-                                    }
-                                    disabled={!canEdit}
-                                />
-                            </label>
-                        </div>
-                    </section>
-
-                    <div className="flex justify-end">
-                        <button
-                            className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
-                            onClick={save}
-                            disabled={!canEdit || saving}
-                        >
-                            {saving ? "Saving…" : "Save Settings"}
-                        </button>
+        <div className="p-6">
+            <div className="mx-auto w-full max-w-3xl space-y-6">
+                <header className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-xl font-semibold">Organization Settings</h1>
+                        <p className="text-sm text-gray-600">Current configuration overview</p>
                     </div>
-                </>
-            )}
+                    <button
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        onClick={() => setEditing(true)}
+                        disabled={!canEdit}
+                    >
+                        Edit Settings
+                    </button>
+                </header>
 
-            {activeTab === "access" && (
-                <div className="space-y-6">
-                    <ProviderAccessManager />
-                </div>
-            )}
+                {/* Booking & Availability */}
+                <section className="rounded-2xl border bg-white p-4">
+                    <div className="mb-3 text-sm font-medium text-gray-800">Booking & Availability</div>
+                    <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        <div>
+                            <dt className="text-gray-500">Min lead time</dt>
+                            <dd className="font-medium">{settings.minLeadMinutes} minutes</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Cancel window</dt>
+                            <dd className="font-medium">{settings.cancelWindowHours} hours</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Provider cancel policy</dt>
+                            <dd className="font-medium">{labelCancel(settings.providerCancelPolicy)}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Client cancel policy</dt>
+                            <dd className="font-medium">{labelCancel(settings.clientCancelPolicy)}</dd>
+                        </div>
+                        <div className="sm:col-span-2">
+                            <dt className="text-gray-500">Availability enforcement</dt>
+                            <dd className="font-medium">{labelEnforcement(settings.availabilityEnforcement)}</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                {/* Business Time & Calendar */}
+                <section className="rounded-2xl border bg-white p-4">
+                    <div className="mb-3 text-sm font-medium text-gray-800">Business Time &amp; Calendar</div>
+                    <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        <div>
+                            <dt className="text-gray-500">Business hours</dt>
+                            <dd className="font-medium">{hours12}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Business time zone</dt>
+                            <dd className="font-medium">
+                                <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-gray-200">
+                                    {tzDisplay}
+                                </span>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Locale</dt>
+                            <dd className="font-medium">
+                                <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-gray-200">
+                                    {settings.locale}
+                                </span>
+                            </dd>
+                        </div>
+                    </dl>
+                </section>
+
+                {/* Notifications */}
+                <section className="rounded-2xl border bg-white p-4">
+                    <div className="mb-3 text-sm font-medium text-gray-800">Notifications &amp; Messaging</div>
+                    <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                        <div>
+                            <dt className="text-gray-500">Email delivery</dt>
+                            <dd className="font-medium">{settings.emailEnabled ? "Enabled" : "Disabled"}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">SMS delivery</dt>
+                            <dd className="font-medium">{settings.smsEnabled ? "Enabled" : "Disabled"}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Reminders</dt>
+                            <dd className="font-medium">{settings.sendBookingConfirmation ? "On" : "Off"}</dd>
+                        </div>
+                        <div>
+                            <dt className="text-gray-500">Reminder (hours before)</dt>
+                            <dd className="font-medium">{settings.reminderHoursBefore ?? "—"}</dd>
+                        </div>
+                    </dl>
+                </section>
+            </div>
+
+            <OrgSettingsModal
+                open={editing}
+                initial={settings}
+                onClose={() => setEditing(false)}
+                onSaved={(next) => {
+                    setSettings(next);
+                    setEditing(false);
+                    toast.success("Settings saved.");
+                }}
+            />
         </div>
     );
 }
