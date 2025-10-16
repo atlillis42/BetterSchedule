@@ -21,17 +21,27 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     /// <summary>
     /// Reservation API
     ///
-    /// Responsibilities
-    /// - Read/write reservations within the caller's organization.
-    /// - Classify late cancellations (no grace).
-    /// - Check reservation/resource overlaps and blocked-time conflicts.
-    /// - Perform package redemption bookkeeping when status transitions to/from <c>Completed</c>.
+    /// Responsibilities:
+    /// <list type="bullet">
+    /// <item><description>Read/write reservations within the caller's organization.</description></item>
+    /// <item><description>Classify late cancellations (no grace).</description></item>
+    /// <item><description>Check reservation/resource overlaps and blocked-time conflicts.</description></item>
+    /// <item><description>Perform package redemption bookkeeping when status transitions to/from <see cref="ReservationStatus.Completed"/>.</description></item>
+    /// </list>
     ///
-    /// Security/Visibility
-    /// - All endpoints are org-scoped via <see cref="OrgControllerBase"/>.
-    /// - Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.
-    /// - Create/Update/Delete are allowed for Managers and Service Providers (subject to scope).
-    /// - Clients can self-cancel pre-start via <see cref="CancelAsClient"/>; inside the window they are marked late.
+    /// Security/Visibility:
+    /// <list type="bullet">
+    /// <item><description>All endpoints are org-scoped via <see cref="OrgControllerBase"/>.</description></item>
+    /// <item><description>Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.</description></item>
+    /// <item><description>Create/Update/Delete allowed for Managers and Service Providers (subject to scope).</description></item>
+    /// <item><description>Clients can self-cancel pre-start via <see cref="CancelAsClient"/>; inside the window they are marked late.</description></item>
+    /// </list>
+    ///
+    /// Policy highlights:
+    /// <list type="bullet">
+    /// <item><description><b>Lead time:</b> Managers and a Provider booking their own schedule are allowed inside lead time with a soft warning (header <c>X-Warned-Lead-Time: true</c>). Providers booking for other staff are blocked with a personalized message. Clients are hard-blocked (generic message).</description></item>
+    /// <item><description><b>Conflicts:</b> For staff (Managers/Providers), provider/resource blocked windows and reservation overlaps are returned as soft warnings via headers (<c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>) and do not prevent create/update. Clients must be hard-blocked on provider/resource conflicts in client-facing endpoints.</description></item>
+    /// </list>
     /// </summary>
     [ApiController]
     [Route("api/reservation")]
@@ -42,6 +52,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         private readonly IDateTimeProvider _clock;
         private readonly ISchedulingConflictService _conflicts;
 
+        /// <summary>Initializes a new <see cref="ReservationController"/>.</summary>
         public ReservationController(ApplicationDbContext db, IDateTimeProvider clock, ISchedulingConflictService conflicts)
         {
             _db = db;
@@ -52,7 +63,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Lists reservations overlapping an optional [start, end) time window and visible to the caller.
         /// </summary>
+        /// <param name="start">Optional inclusive start of the window (UTC).</param>
+        /// <param name="end">Optional exclusive end of the window (UTC).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Visible reservations ordered by start time.</returns>
         [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<ReservationDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end,
@@ -71,7 +87,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Gets a reservation by identifier if visible to the caller.
         /// </summary>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The reservation when found and visible; <c>404</c> otherwise.</returns>
         [HttpGet("{id:int}")]
+        [ProducesResponseType(typeof(ReservationDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
             var dto = await _db.Reservations
@@ -85,10 +106,28 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Creates a new reservation (Managers and Service Providers).
-        /// Enforces lead time; checks for reservation/resource overlaps and blocked times.
         /// </summary>
+        /// <remarks>
+        /// Enforcement:
+        /// <list type="bullet">
+        /// <item><description><b>Lead time:</b>
+        /// <para>- Manager: warn only (<c>X-Warned-Lead-Time: true</c>), allow.</para>
+        /// <para>- Provider booking own schedule: warn only (<c>X-Warned-Lead-Time: true</c>), allow.</para>
+        /// <para>- Provider booking for other staff: <c>400</c> with personalized message.</para>
+        /// <para>- Client: <c>400</c> with generic message (not applicable on this route due to role restriction).</para>
+        /// </description></item>
+        /// <item><description><b>Conflicts:</b> For Managers/Providers, provider/resource blocked windows and reservation overlaps are soft warnings via headers:
+        /// <c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>. No hard block. Client-facing endpoints should hard-block provider/resource conflicts.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="dto">Create payload.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created reservation.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(ReservationDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<ReservationDto>> Create(
             [FromBody] CreateReservationDto dto,
             CancellationToken ct)
@@ -99,16 +138,37 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var settings = await _db.OrganizationSettings.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
 
+            // Lead-time policy
             if (settings is not null &&
                 BookingPolicy.ViolatesLeadTime(settings.MinLeadMinutes, _clock.UtcNow, dto.StartTime))
             {
-                // Allow assigned provider to create inside lead time; otherwise block.
                 var providerSelf = IsProvider && dto.ServiceProviderId == UserId;
-                if (!providerSelf)
+
+                if (IsManager)
+                {
+                    // Manager override allowed, warn only.
+                    Response.Headers["X-Warned-Lead-Time"] = "true";
+                }
+                else if (providerSelf)
+                {
+                    // Provider creating on own calendar allowed, warn only.
+                    Response.Headers["X-Warned-Lead-Time"] = "true";
+                }
+                else if (IsProvider)
+                {
+                    // Provider booking for another staff member: block with personalized message.
+                    return BadRequest(ApiError.Validation(
+                        $"Reservations for other staff members must be created at least {settings.MinLeadMinutes} minutes in advance."));
+                }
+                else
+                {
+                    // Generic client message (this route is staff-only, but keep for clarity).
                     return BadRequest(ApiError.Validation(
                         $"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance."));
+                }
             }
 
+            // Conflict checks (soft warnings for staff; clients should be blocked on public endpoints)
             var c = await _conflicts.CheckReservationCreateAsync(
                 OrganizationId,
                 dto.ServiceProviderId,
@@ -117,12 +177,22 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 dto.ResourceId,
                 ct);
 
-            // Hard blocks: provider/resource blocked windows
+            // Provider/resource blocked -> warn (staff) or block (clients if ever applicable here)
             if (c.ProviderBlocked || c.ResourceBlocked)
-                return Conflict(ApiError.ReservationConflict("This time is blocked by the provider or resource."));
+            {
+                if (IsManager || IsProvider)
+                {
+                    if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
+                    if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
+                }
+                else
+                {
+                    return Conflict(ApiError.ReservationConflict("This time is blocked by the provider or resource."));
+                }
+            }
 
-            // Optional signal if double-booking the provider (soft — just a header)
-            var warnDoubleBook = c.ReservationOverlap && IsProvider;
+            // Reservation overlap -> soft warning header for all roles on this route (staff)
+            var warnDoubleBook = c.ReservationOverlap;
 
             // Validate package assignment, if any (no decrement on create)
             if (dto.PackageAssignmentId.HasValue)
@@ -169,12 +239,24 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Updates an existing reservation (Managers and Service Providers).
-        /// Handles status transitions and package redemption bookkeeping atomically.
-        /// Staff may reschedule/cancel at any time; conflicts produce soft warnings for overlaps
-        /// and hard errors for blocked-time collisions.
         /// </summary>
+        /// <remarks>
+        /// Behavior:
+        /// <list type="bullet">
+        /// <item><description>Staff may reschedule at any time; only requires <c>EndTime &gt; StartTime</c>.</description></item>
+        /// <item><description>Provider/resource blocked windows and reservation overlaps return soft warnings via headers
+        /// (<c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>) and do not prevent update.</description></item>
+        /// <item><description>Handles status transitions and package redemption bookkeeping atomically.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="dto">Update payload.</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Update(
             [FromRoute] int id,
             [FromBody] UpdateReservationDto dto,
@@ -234,11 +316,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 var c = await _conflicts.CheckReservationUpdateAsync(
                     id, OrganizationId, newProviderId, newStart, newEnd, newResourceId, ct);
 
-                if (c.ProviderBlocked || c.ResourceBlocked)
-                    return Conflict(ApiError.ReservationConflict("This time is blocked by the provider or resource."));
+                // Provider/resource blocked -> warn for staff
+                if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
+                if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
 
-                // Soft warning header for provider double-book
-                warnDoubleBook = c.ReservationOverlap && IsProvider;
+                // Double-book warning for staff updates
+                warnDoubleBook = c.ReservationOverlap;
             }
 
             // Package validations / consumption bookkeeping
@@ -383,11 +466,21 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Allows a client to cancel their own upcoming reservation (or a Manager to cancel on behalf of a client).
-        /// Policy: client cancels are allowed pre-start; inside the window they are marked as "late".
-        /// Managers may cancel anytime.
         /// </summary>
+        /// <remarks>
+        /// Policy:
+        /// <list type="bullet">
+        /// <item><description>Client cancels are allowed pre-start; inside the window they are recorded as late and may be subject to policy.</description></item>
+        /// <item><description>Managers may cancel at any time.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpPost("{id:int}/cancel")]
         [Authorize(Roles = "Client,Manager")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> CancelAsClient([FromRoute] int id, CancellationToken ct)
         {
             var reservation = await _db.Reservations
@@ -440,7 +533,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         // Helpers
         // --------------------------
 
-        /// <summary>Map entity -> DTO (status as string). Note: cancellation metadata is not projected yet.</summary>
+        /// <summary>Projects <see cref="Reservation"/> to <see cref="ReservationDto"/> (status as string). Cancellation metadata is not projected.</summary>
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,

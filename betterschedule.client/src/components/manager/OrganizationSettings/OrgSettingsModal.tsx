@@ -1,44 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-    updateOrgSettings,
-    type DefaultCalendarView,
-    type AvailabilityEnforcement,
-    type ProviderCancelPolicy,
-    type ClientCancelPolicy,
-} from "@/api/org-settings-api";
+import { updateOrgSettings } from "@/api/org-settings-api";
 import { toast } from "react-toastify";
+import type { OrgSettingsForm } from "./OrgSettingsManager";
 
-type Form = {
-    minLeadMinutes: number;
-    cancelWindowHours: number;
-    providerCancelPolicy: ProviderCancelPolicy;
-    clientCancelPolicy: ClientCancelPolicy;
-
-    // calendar (Default view preserved, not shown)
-    showWeekends: boolean;
-    startOfWeek: number;
-    businessHoursStartLocal: string; // "HH:mm:ss"
-    businessHoursEndLocal: string;   // "HH:mm:ss"
-    defaultView: DefaultCalendarView;
-
-    // availability
-    availabilityEnforcement: AvailabilityEnforcement;
-    requireConfirmOnOverrides: boolean; // preserved
-    availabilityPublic: boolean;        // preserved
-    providersCanEditOwnAvailability: boolean; // preserved
-
-    // tz/locale
-    timeZoneId: string;
-    locale: string;
-
-    // notifications
-    emailEnabled: boolean;
-    smsEnabled: boolean;
-    sendBookingConfirmation: boolean; // Reminders enabled
-    reminderHoursBefore: number | null;
-};
-
-/** Reusable toggle switch */
+/**
+ * Small accessible toggle switch.
+ */
 function Toggle({
     enabled,
     onToggle,
@@ -66,7 +33,10 @@ function Toggle({
     );
 }
 
-/** "America/New_York" -> "EDT — UTC -4" (best-effort) */
+/**
+ * Formats an IANA time zone into a short label like "EDT — UTC -4".
+ * @param tzId - IANA time zone.
+ */
 function formatTimeZoneDisplay(tzId: string): string {
     const now = new Date();
     let abbr = tzId;
@@ -77,7 +47,7 @@ function formatTimeZoneDisplay(tzId: string): string {
         }).formatToParts(now);
         const tzPart = parts.find((p) => p.type === "timeZoneName")?.value;
         if (tzPart) abbr = tzPart;
-    } catch { /* empty */ }
+    } catch { /* noop */ }
 
     let utc = "UTC";
     try {
@@ -106,21 +76,25 @@ function formatTimeZoneDisplay(tzId: string): string {
                 const mins = m[2] ? `:${m[2]}` : "";
                 utc = `UTC ${sign}${hours}${mins}`;
             }
-        } catch { /* empty */ }
+        } catch { /* noop */ }
     }
 
     return `${abbr} — ${utc}`;
 }
 
+/**
+ * Modal to edit organization settings. Matches OrgSettingsDto/UpdateOrgSettingsDto.
+ * Keeps placeholder Email/SMS provider previews and reminders UX.
+ */
 export default function OrgSettingsModal(props: {
     open: boolean;
-    initial: Form;
-    onSaved: (next: Form) => void;
+    initial: OrgSettingsForm;
+    onSaved: (next: OrgSettingsForm) => void;
     onClose: () => void;
 }) {
     const { open, initial, onSaved, onClose } = props;
 
-    const [f, setF] = useState<Form>(initial);
+    const [form, setForm] = useState<OrgSettingsForm>(initial);
     const [saving, setSaving] = useState(false);
 
     // Demo-only provider setup UI state (not persisted)
@@ -128,25 +102,22 @@ export default function OrgSettingsModal(props: {
     const SMS_PROVIDERS = ["Twilio", "Vonage", "MessageBird"] as const;
 
     const [emailFrom, setEmailFrom] = useState("");
-    const [emailProvider, setEmailProvider] =
-        useState<(typeof EMAIL_PROVIDERS)[number]>("SMTP");
+    const [emailProvider, setEmailProvider] = useState<(typeof EMAIL_PROVIDERS)[number]>("SMTP");
 
     const [smsFrom, setSmsFrom] = useState("");
-    const [smsProvider, setSmsProvider] =
-        useState<(typeof SMS_PROVIDERS)[number]>("Twilio");
+    const [smsProvider, setSmsProvider] = useState<(typeof SMS_PROVIDERS)[number]>("Twilio");
 
     useEffect(() => {
-        setF(initial);
+        setForm(initial);
     }, [initial, open]);
 
-    const normalizeHHmmOrHHmmss = (v: string) =>
-        /^\d{1,2}:\d{2}$/.test(v) ? `${v}:00` : v;
+    const normalizeHHmmOrHHmmss = (v: string) => (/^\d{1,2}:\d{2}$/.test(v) ? `${v}:00` : v);
 
     const businessHoursInvalid = useMemo(() => {
-        const start = normalizeHHmmOrHHmmss(f.businessHoursStartLocal);
-        const end = normalizeHHmmOrHHmmss(f.businessHoursEndLocal);
+        const start = normalizeHHmmOrHHmmss(form.businessHoursStartLocal);
+        const end = normalizeHHmmOrHHmmss(form.businessHoursEndLocal);
         return end <= start;
-    }, [f]);
+    }, [form]);
 
     async function save() {
         if (businessHoursInvalid) {
@@ -156,32 +127,24 @@ export default function OrgSettingsModal(props: {
         setSaving(true);
         try {
             await updateOrgSettings({
-                minLeadMinutes: f.minLeadMinutes,
-                cancelWindowHours: f.cancelWindowHours,
-                providerCancelPolicy: f.providerCancelPolicy,
-                clientCancelPolicy: f.clientCancelPolicy,
-
-                showWeekends: f.showWeekends,
-                startOfWeek: f.startOfWeek,
-                businessHoursStartLocal: normalizeHHmmOrHHmmss(f.businessHoursStartLocal),
-                businessHoursEndLocal: normalizeHHmmOrHHmmss(f.businessHoursEndLocal),
-                defaultView: f.defaultView,
-
-                availabilityEnforcement: f.availabilityEnforcement,
-                requireConfirmOnOverrides: f.requireConfirmOnOverrides,
-                availabilityPublic: f.availabilityPublic,
-                providersCanEditOwnAvailability: f.providersCanEditOwnAvailability,
-
-                timeZoneId: f.timeZoneId,
-                locale: f.locale,
-
-                emailEnabled: f.emailEnabled,
-                smsEnabled: f.smsEnabled,
-                sendBookingConfirmation: f.sendBookingConfirmation,
-                reminderHoursBefore: f.reminderHoursBefore,
+                minLeadMinutes: form.minLeadMinutes,
+                cancelWindowHours: form.cancelWindowHours,
+                businessHoursStartLocal: normalizeHHmmOrHHmmss(form.businessHoursStartLocal),
+                businessHoursEndLocal: normalizeHHmmOrHHmmss(form.businessHoursEndLocal),
+                requireConfirmOnOverrides: form.requireConfirmOnOverrides,
+                timeZoneId: form.timeZoneId,
+                locale: form.locale,
+                emailEnabled: form.emailEnabled,
+                smsEnabled: form.smsEnabled,
+                sendBookingConfirmation: form.sendBookingConfirmation,
+                reminderHoursBefore: form.reminderHoursBefore,
             });
 
-            onSaved(f);
+            onSaved({
+                ...form,
+                businessHoursStartLocal: normalizeHHmmOrHHmmss(form.businessHoursStartLocal),
+                businessHoursEndLocal: normalizeHHmmOrHHmmss(form.businessHoursEndLocal),
+            });
         } catch {
             toast.error("Failed to save settings.");
         } finally {
@@ -190,9 +153,7 @@ export default function OrgSettingsModal(props: {
     }
 
     // Previews
-    const emailPreviewSubject = f.sendBookingConfirmation
-        ? "Your appointment is confirmed"
-        : "Sample email subject";
+    const emailPreviewSubject = form.sendBookingConfirmation ? "Your appointment is confirmed" : "Sample email subject";
 
     const emailPreviewBody = [
         "Hi {{ClientName}},",
@@ -200,8 +161,8 @@ export default function OrgSettingsModal(props: {
         "Thanks for booking with {{OrganizationName}}.",
         "Your {{ServiceName}} is scheduled for {{StartLocal}} with {{ProviderName}}.",
         "",
-        f.reminderHoursBefore
-            ? `We’ll remind you ${f.reminderHoursBefore} hour(s) before the appointment.`
+        form.reminderHoursBefore
+            ? `We’ll remind you ${form.reminderHoursBefore} hour(s) before the appointment.`
             : "Reminders are currently disabled.",
         "",
         "Need to make changes? Visit {{ManageLink}}.",
@@ -211,14 +172,14 @@ export default function OrgSettingsModal(props: {
 
     const smsPreviewBody = [
         "Hi {{ClientName}},",
-        `Your {{ServiceName}} with {{ProviderName}} is confirmed for {{StartLocal}}.`,
+        "Your {{ServiceName}} with {{ProviderName}} is confirmed for {{StartLocal}}.",
         "Manage or cancel: {{ManageLink}}",
         "Reply STOP to opt out.",
     ].join("\n");
 
     if (!open) return null;
 
-    const tzDisplay = formatTimeZoneDisplay(f.timeZoneId);
+    const tzDisplay = formatTimeZoneDisplay(form.timeZoneId);
 
     return (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
@@ -242,84 +203,59 @@ export default function OrgSettingsModal(props: {
 
                 {/* Body */}
                 <div className="max-h-[75vh] overflow-auto px-5 py-4">
-                    {/* Booking & Availability */}
+                    {/* Booking & Policy */}
                     <section className="mb-4 rounded-xl border bg-white p-3">
-                        <div className="mb-2 text-sm font-medium text-gray-800">Booking &amp; Availability</div>
+                        <div className="mb-2 text-sm font-medium text-gray-800">Booking &amp; Policy</div>
                         <div className="grid gap-3 text-sm md:grid-cols-3">
                             <label className="flex flex-col">
-                                <span>Min lead time (minutes)</span>
+                                <span>Minimum advance booking time (minutes)</span>
                                 <input
                                     type="number"
                                     min={0}
                                     className="rounded border px-2 py-1"
-                                    value={f.minLeadMinutes}
+                                    value={form.minLeadMinutes}
                                     onChange={(e) =>
-                                        setF({ ...f, minLeadMinutes: Math.max(0, Number(e.target.value || 0)) })
+                                        setForm({ ...form, minLeadMinutes: Math.max(0, Number(e.target.value || 0)) })
                                     }
+                                    aria-describedby="desc-minlead"
                                 />
+                                <span id="desc-minlead" className="mt-1 text-xs text-gray-500">
+                                    Clients must book or reschedule at least this many minutes before start time of appointment.
+                                </span>
                             </label>
 
                             <label className="flex flex-col">
-                                <span>Cancel window (hours)</span>
+                                <span>Late-cancellation window (hours)</span>
                                 <input
                                     type="number"
                                     min={0}
                                     className="rounded border px-2 py-1"
-                                    value={f.cancelWindowHours}
+                                    value={form.cancelWindowHours}
                                     onChange={(e) =>
-                                        setF({ ...f, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })
+                                        setForm({ ...form, cancelWindowHours: Math.max(0, Number(e.target.value || 0)) })
                                     }
+                                    aria-describedby="desc-cancelwin"
                                 />
+                                <span id="desc-cancelwin" className="mt-1 text-xs text-gray-500">
+                                    Cancellations within this many hours of start are marked late for reporting/policy; this does not block cancellation.
+                                </span>
                             </label>
 
-                            <label className="flex flex-col">
-                                <span>Availability enforcement</span>
-                                <select
-                                    className="rounded border px-2 py-1"
-                                    value={f.availabilityEnforcement}
-                                    onChange={(e) =>
-                                        setF({
-                                            ...f,
-                                            availabilityEnforcement: e.target.value as AvailabilityEnforcement,
-                                        })
-                                    }
-                                >
-                                    <option value="None">None</option>
-                                    <option value="Warn">Warn</option>
-                                    <option value="BlockProvidersWarnManagers">BlockProvidersWarnManagers</option>
-                                    <option value="BlockAllRequireOverride">BlockAllRequireOverride</option>
-                                </select>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Provider cancel policy</span>
-                                <select
-                                    className="rounded border px-2 py-1"
-                                    value={f.providerCancelPolicy}
-                                    onChange={(e) =>
-                                        setF({ ...f, providerCancelPolicy: e.target.value as ProviderCancelPolicy })
-                                    }
-                                >
-                                    <option value="AnyTime">AnyTime</option>
-                                    <option value="RespectWindow">RespectWindow</option>
-                                    <option value="None">None</option>
-                                </select>
-                            </label>
-
-                            <label className="flex flex-col">
-                                <span>Client cancel policy</span>
-                                <select
-                                    className="rounded border px-2 py-1"
-                                    value={f.clientCancelPolicy}
-                                    onChange={(e) =>
-                                        setF({ ...f, clientCancelPolicy: e.target.value as ClientCancelPolicy })
-                                    }
-                                >
-                                    <option value="AnyTime">AnyTime</option>
-                                    <option value="RespectWindow">RespectWindow</option>
-                                    <option value="None">None</option>
-                                </select>
-                            </label>
+                            <div className="flex flex-col justify-between rounded border px-3 py-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-800">Confirm overrides</span>
+                                    <Toggle
+                                        enabled={form.requireConfirmOnOverrides}
+                                        onToggle={() =>
+                                            setForm({ ...form, requireConfirmOnOverrides: !form.requireConfirmOnOverrides })
+                                        }
+                                        ariaLabel="Confirm overrides"
+                                    />
+                                </div>
+                                <span className="mt-2 text-xs text-gray-500">
+                                    Prompts staff to confirm when bypassing booking rules (e.g., lead time).
+                                </span>
+                            </div>
                         </div>
                     </section>
 
@@ -333,11 +269,15 @@ export default function OrgSettingsModal(props: {
                                 <input
                                     type="time"
                                     className="rounded border px-2 py-1"
-                                    value={f.businessHoursStartLocal.slice(0, 5)}
+                                    value={form.businessHoursStartLocal.slice(0, 5)}
                                     onChange={(e) =>
-                                        setF({ ...f, businessHoursStartLocal: `${e.target.value}:00` })
+                                        setForm({ ...form, businessHoursStartLocal: `${e.target.value}:00` })
                                     }
+                                    aria-describedby="desc-busstart"
                                 />
+                                <span id="desc-busstart" className="mt-1 text-xs text-gray-500">
+                                    Start of your standard office hours in the org time zone. Used for displays and defaults; does not restrict booking by itself.
+                                </span>
                             </label>
 
                             <div className="flex flex-col">
@@ -355,22 +295,27 @@ export default function OrgSettingsModal(props: {
                                 <span>Business end</span>
                                 <input
                                     type="time"
-                                    className={`rounded border px-2 py-1 ${businessHoursInvalid ? "border-red-500" : ""
-                                        }`}
-                                    value={f.businessHoursEndLocal.slice(0, 5)}
+                                    className={`rounded border px-2 py-1 ${businessHoursInvalid ? "border-red-500" : ""}`}
+                                    value={form.businessHoursEndLocal.slice(0, 5)}
                                     onChange={(e) =>
-                                        setF({ ...f, businessHoursEndLocal: `${e.target.value}:00` })
+                                        setForm({ ...form, businessHoursEndLocal: `${e.target.value}:00` })
                                     }
+                                    aria-describedby="desc-busend"
                                 />
                                 {businessHoursInvalid && (
                                     <span className="mt-1 text-xs text-red-600">End must be after start.</span>
+                                )}
+                                {!businessHoursInvalid && (
+                                    <span id="desc-busend" className="mt-1 text-xs text-gray-500">
+                                        End of your standard office hours. Used for displays and defaults; does not restrict booking by itself.
+                                    </span>
                                 )}
                             </label>
 
                             <div className="flex flex-col">
                                 <span>Locale</span>
                                 <div className="rounded border bg-gray-50 px-2 py-1 text-sm text-gray-800">
-                                    {f.locale}
+                                    {form.locale}
                                 </div>
                                 <span className="mt-1 text-xs text-gray-500">
                                     Affects dates, numbers, and formatting across the app.
@@ -390,14 +335,14 @@ export default function OrgSettingsModal(props: {
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className="text-gray-700">Enable Email</span>
                                     <Toggle
-                                        enabled={f.emailEnabled}
-                                        onToggle={() => setF({ ...f, emailEnabled: !f.emailEnabled })}
+                                        enabled={form.emailEnabled}
+                                        onToggle={() => setForm({ ...form, emailEnabled: !form.emailEnabled })}
                                         ariaLabel="Enable Email"
                                     />
                                 </div>
                             </div>
 
-                            {f.emailEnabled && (
+                            {form.emailEnabled && (
                                 <>
                                     <div className="grid gap-3 text-sm md:grid-cols-2">
                                         <label className="flex flex-col">
@@ -433,7 +378,9 @@ export default function OrgSettingsModal(props: {
 
                                         {/* Merge fields explainer */}
                                         <div className="mb-3 rounded-lg bg-gray-50 p-2">
-                                            <div className="mb-1 text-xs font-medium text-gray-700">Merge fields (auto-filled in messages)</div>
+                                            <div className="mb-1 text-xs font-medium text-gray-700">
+                                                Merge fields (auto-filled in messages)
+                                            </div>
                                             <ul className="flex flex-wrap gap-2 text-[11px] text-gray-700">
                                                 <li className="rounded-full bg-white px-2 py-0.5 ring-1 ring-inset ring-gray-200">
                                                     <span className="font-medium">Client Name</span>
@@ -455,7 +402,9 @@ export default function OrgSettingsModal(props: {
 
                                         <div className="rounded-lg border bg-white p-3">
                                             <div className="mb-2 text-sm font-semibold">{emailPreviewSubject}</div>
-                                            <pre className="whitespace-pre-wrap text-xs text-gray-800">{emailPreviewBody}</pre>
+                                            <pre className="whitespace-pre-wrap text-xs text-gray-800">
+                                                {emailPreviewBody}
+                                            </pre>
                                         </div>
 
                                         <div className="mt-3 flex gap-2">
@@ -478,14 +427,14 @@ export default function OrgSettingsModal(props: {
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className="text-gray-700">Enable SMS</span>
                                     <Toggle
-                                        enabled={f.smsEnabled}
-                                        onToggle={() => setF({ ...f, smsEnabled: !f.smsEnabled })}
+                                        enabled={form.smsEnabled}
+                                        onToggle={() => setForm({ ...form, smsEnabled: !form.smsEnabled })}
                                         ariaLabel="Enable SMS"
                                     />
                                 </div>
                             </div>
 
-                            {f.smsEnabled && (
+                            {form.smsEnabled && (
                                 <>
                                     <div className="grid gap-3 text-sm md:grid-cols-2">
                                         <label className="flex flex-col">
@@ -515,12 +464,14 @@ export default function OrgSettingsModal(props: {
                                         </label>
                                     </div>
 
-                                    {/* SMS template preview (more robust) */}
+                                    {/* SMS template preview */}
                                     <div className="mt-3 rounded-xl border p-3">
                                         <div className="mb-2 text-sm font-medium text-gray-800">SMS Template Preview</div>
 
                                         <div className="mb-3 rounded-lg bg-gray-50 p-2">
-                                            <div className="mb-1 text-xs font-medium text-gray-700">Merge fields (auto-filled in messages)</div>
+                                            <div className="mb-1 text-xs font-medium text-gray-700">
+                                                Merge fields (auto-filled in messages)
+                                            </div>
                                             <ul className="flex flex-wrap gap-2 text-[11px] text-gray-700">
                                                 <li className="rounded-full bg-white px-2 py-0.5 ring-1 ring-inset ring-gray-200">
                                                     <span className="font-medium">Client Name</span>
@@ -563,12 +514,9 @@ export default function OrgSettingsModal(props: {
                                 <div className="text-sm font-medium text-gray-800">Reminders</div>
 
                                 {/* Presets + custom on one line */}
-                                <div
-                                    className={`ml-3 flex items-center gap-2 ${f.sendBookingConfirmation ? "" : "opacity-50"
-                                        }`}
-                                >
+                                <div className={`ml-3 flex items-center gap-2 ${form.sendBookingConfirmation ? "" : "opacity-50"}`}>
                                     {[48, 24, 12, 2].map((h) => {
-                                        const active = f.reminderHoursBefore === h;
+                                        const active = form.reminderHoursBefore === h;
                                         return (
                                             <button
                                                 key={h}
@@ -577,10 +525,10 @@ export default function OrgSettingsModal(props: {
                                                         : "text-gray-700 ring-gray-300 hover:bg-gray-50"
                                                     }`}
                                                 onClick={() =>
-                                                    f.sendBookingConfirmation &&
-                                                    setF({ ...f, reminderHoursBefore: h })
+                                                    form.sendBookingConfirmation &&
+                                                    setForm({ ...form, reminderHoursBefore: h })
                                                 }
-                                                disabled={!f.sendBookingConfirmation}
+                                                disabled={!form.sendBookingConfirmation}
                                             >
                                                 {h}h
                                             </button>
@@ -592,17 +540,17 @@ export default function OrgSettingsModal(props: {
                                             type="number"
                                             min={0}
                                             className="w-20 rounded border px-2 py-1 text-sm"
-                                            value={f.reminderHoursBefore ?? ""}
+                                            value={form.reminderHoursBefore ?? ""}
                                             onChange={(e) =>
-                                                setF({
-                                                    ...f,
+                                                setForm({
+                                                    ...form,
                                                     reminderHoursBefore:
                                                         e.target.value === ""
                                                             ? null
                                                             : Math.max(0, Number(e.target.value || 0)),
                                                 })
                                             }
-                                            disabled={!f.sendBookingConfirmation}
+                                            disabled={!form.sendBookingConfirmation}
                                         />
                                         <span className="text-xs text-gray-500">hours</span>
                                     </div>
@@ -613,9 +561,9 @@ export default function OrgSettingsModal(props: {
                                 <div className="flex items-center gap-2 text-sm">
                                     <span className="text-gray-700">Enable Reminders</span>
                                     <Toggle
-                                        enabled={f.sendBookingConfirmation}
+                                        enabled={form.sendBookingConfirmation}
                                         onToggle={() =>
-                                            setF((prev) => ({
+                                            setForm((prev) => ({
                                                 ...prev,
                                                 sendBookingConfirmation: !prev.sendBookingConfirmation,
                                                 reminderHoursBefore:
@@ -639,11 +587,7 @@ export default function OrgSettingsModal(props: {
 
                 {/* Footer */}
                 <div className="flex items-center justify-end gap-3 border-t px-5 py-3">
-                    <button
-                        className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={onClose}
-                        disabled={saving}
-                    >
+                    <button className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" onClick={onClose} disabled={saving}>
                         Close
                     </button>
                     <button

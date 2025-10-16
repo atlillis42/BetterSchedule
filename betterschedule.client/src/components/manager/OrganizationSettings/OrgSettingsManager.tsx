@@ -1,55 +1,30 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-toastify";
-import {
-    getOrgSettings,
-    type DefaultCalendarView,
-    type AvailabilityEnforcement,
-    type ProviderCancelPolicy,
-    type ClientCancelPolicy,
-} from "@/api/org-settings-api";
+import { getOrgSettings } from "@/api/org-settings-api";
 import { useAuth } from "@auth/auth-context";
 import OrgSettingsModal from "./OrgSettingsModal";
 
-type Form = {
+/**
+ * Shape aligned to OrgSettingsDto.
+ */
+export type OrgSettingsForm = {
     minLeadMinutes: number;
     cancelWindowHours: number;
-    providerCancelPolicy: ProviderCancelPolicy;
-    clientCancelPolicy: ClientCancelPolicy;
-
-    // Calendar
-    showWeekends: boolean;
-    startOfWeek: number;
     businessHoursStartLocal: string; // "HH:mm:ss"
     businessHoursEndLocal: string;   // "HH:mm:ss"
-    defaultView: DefaultCalendarView;
-
-    // Availability flags (kept in model; not rendered here)
-    availabilityEnforcement: AvailabilityEnforcement;
     requireConfirmOnOverrides: boolean;
-    availabilityPublic: boolean;
-    providersCanEditOwnAvailability: boolean;
-
-    // Locale/TZ
     timeZoneId: string;
     locale: string;
-
-    // Notifications
     emailEnabled: boolean;
     smsEnabled: boolean;
     sendBookingConfirmation: boolean;
     reminderHoursBefore: number | null;
 };
 
-function labelCancel(v: ProviderCancelPolicy | ClientCancelPolicy) {
-    switch (v) {
-        case "AnyTime": return "Any time";
-        case "RespectWindow": return "Respect cancel window";
-        case "None": return "None (managers only)";
-        default: return String(v);
-    }
-}
-
-// "HH:mm:ss" -> "h:mmam/pm"
+/**
+ * Convert "HH:mm:ss" to a 12-hour label like "h:mmam/pm".
+ * @param hhmmss - Time string in "HH:mm:ss".
+ */
 function hhmmssTo12(hhmmss: string): string {
     const [hStr, mStr] = hhmmss.split(":");
     const h = Math.max(0, Math.min(23, parseInt(hStr || "0", 10)));
@@ -59,7 +34,11 @@ function hhmmssTo12(hhmmss: string): string {
     return `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
-// "America/New_York" -> "EDT — UTC -4" (best-effort)
+/**
+ * Formats an IANA time zone into a short label like "EDT — UTC -4".
+ * Falls back gracefully if the environment lacks support.
+ * @param tzId - IANA zone.
+ */
 function formatTimeZoneDisplay(tzId: string): string {
     const now = new Date();
 
@@ -96,41 +75,34 @@ function formatTimeZoneDisplay(tzId: string): string {
     return `${abbr} — ${utc}`;
 }
 
+/**
+ * Read-only overview of organization settings with an Edit action for managers.
+ * Strictly limited to the server DTO surface.
+ */
 export default function OrgSettingsManager() {
     const { isManager } = useAuth();
     const [loading, setLoading] = useState(true);
-    const [settings, setSettings] = useState<Form | null>(null);
+    const [settings, setSettings] = useState<OrgSettingsForm | null>(null);
     const [editing, setEditing] = useState(false);
 
     useEffect(() => {
         (async () => {
             try {
                 const s = await getOrgSettings();
-                setSettings({
+                const next: OrgSettingsForm = {
                     minLeadMinutes: s.minLeadMinutes,
                     cancelWindowHours: s.cancelWindowHours,
-                    providerCancelPolicy: s.providerCancelPolicy ?? "AnyTime",
-                    clientCancelPolicy: s.clientCancelPolicy ?? "RespectWindow",
-
-                    showWeekends: s.showWeekends,
-                    startOfWeek: s.startOfWeek,
                     businessHoursStartLocal: s.businessHoursStartLocal,
                     businessHoursEndLocal: s.businessHoursEndLocal,
-                    defaultView: s.defaultView,
-
-                    availabilityEnforcement: s.availabilityEnforcement,
                     requireConfirmOnOverrides: s.requireConfirmOnOverrides,
-                    availabilityPublic: s.availabilityPublic,
-                    providersCanEditOwnAvailability: s.providersCanEditOwnAvailability,
-
                     timeZoneId: s.timeZoneId,
                     locale: s.locale,
-
                     emailEnabled: s.emailEnabled,
                     smsEnabled: s.smsEnabled,
                     sendBookingConfirmation: s.sendBookingConfirmation,
                     reminderHoursBefore: s.reminderHoursBefore ?? null,
-                });
+                };
+                setSettings(next);
             } catch {
                 toast.error("Failed to load organization settings.");
             } finally {
@@ -169,27 +141,23 @@ export default function OrgSettingsManager() {
                     <div className="mb-3 text-sm font-medium text-gray-800">Booking Policy</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
-                            <dt className="text-gray-500">Min lead time</dt>
+                            <dt className="text-gray-500">Minimum advance booking time</dt>
                             <dd className="font-medium">{settings.minLeadMinutes} minutes</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Cancel window</dt>
+                            <dt className="text-gray-500">Late-cancellation window</dt>
                             <dd className="font-medium">{settings.cancelWindowHours} hours</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Provider cancel policy</dt>
-                            <dd className="font-medium">{labelCancel(settings.providerCancelPolicy)}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-gray-500">Client cancel policy</dt>
-                            <dd className="font-medium">{labelCancel(settings.clientCancelPolicy)}</dd>
+                            <dt className="text-gray-500">Confirm overrides</dt>
+                            <dd className="font-medium">{settings.requireConfirmOnOverrides ? "On" : "Off"}</dd>
                         </div>
                     </dl>
                 </section>
 
-                {/* Business Time & Calendar */}
+                {/* Business Time */}
                 <section className="rounded-2xl border bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-gray-800">Business Time &amp; Calendar</div>
+                    <div className="mb-3 text-sm font-medium text-gray-800">Business Time &amp; Locale</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
                             <dt className="text-gray-500">Business hours</dt>
@@ -227,7 +195,7 @@ export default function OrgSettingsManager() {
                             <dd className="font-medium">{settings.smsEnabled ? "Enabled" : "Disabled"}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Send confirmations</dt>
+                            <dt className="text-gray-500">Reminders enabled</dt>
                             <dd className="font-medium">{settings.sendBookingConfirmation ? "On" : "Off"}</dd>
                         </div>
                         <div>

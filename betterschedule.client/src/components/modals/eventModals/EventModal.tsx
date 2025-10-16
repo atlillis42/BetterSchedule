@@ -26,7 +26,14 @@ type EventModalProps = {
 
 type ReservationTab = "details" | "group";
 
-/** Extracts a robust numeric id for quick-status and participant ops. */
+/**
+ * Extracts a robust numeric reservation id from modal values for
+ * quick-status and participant operations.
+ *
+ * @param values - Modal values object
+ * @returns Reservation id if detectable; otherwise `undefined`
+ * @internal
+ */
 function quickStatusReservationId(values: any): number | undefined {
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
     const raw = values?.id;
@@ -38,6 +45,11 @@ function quickStatusReservationId(values: any): number | undefined {
     return undefined;
 }
 
+/**
+ * Segmented button used in the modal header to switch tabs/types.
+ *
+ * @internal
+ */
 const SegButton: React.FC<{
     active: boolean;
     onClick: () => void;
@@ -57,6 +69,15 @@ const SegButton: React.FC<{
     </button>
 );
 
+/**
+ * Unified modal wrapper for reservation and blocked time editing.
+ *
+ * Notes:
+ * - Client-only principals see a reduced surface (no group/blocked time tabs).
+ * - Conflict pill is shown for blocked-time overlaps (server-enforced).
+ *
+ * @public
+ */
 const EventModal: React.FC<EventModalProps> = ({
     open,
     mode,
@@ -78,13 +99,21 @@ const EventModal: React.FC<EventModalProps> = ({
     const [resTab, setResTab] = useState<ReservationTab>("details");
 
     // Create-mode unsaved protection when on "Group" tab
-    const pending = Array.isArray(values?.pendingParticipants) ? values.pendingParticipants : [];
+    const pending = Array.isArray(values?.pendingParticipants)
+        ? values.pendingParticipants
+        : [];
     const hasUnsavedGroupChanges =
-        open && type === "reservation" && mode === "create" && resTab === "group" && pending.length > 0;
+        open &&
+        type === "reservation" &&
+        mode === "create" &&
+        resTab === "group" &&
+        pending.length > 0;
 
     const handleCancel = () => {
         if (hasUnsavedGroupChanges) {
-            const leave = window.confirm("You have unsaved changes. Leave without saving?");
+            const leave = window.confirm(
+                "You have unsaved changes. Leave without saving?"
+            );
             if (!leave) return;
         }
         onCancel();
@@ -109,7 +138,9 @@ const EventModal: React.FC<EventModalProps> = ({
 
     // Show the conflict pill ONLY for blocked-time conflicts.
     const isBlockedTimeConflict =
-        type === "blockedTime" && typeof error === "string" && /(overlap|conflict)/i.test(error || "");
+        type === "blockedTime" &&
+        typeof error === "string" &&
+        /(overlap|conflict)/i.test(error || "");
 
     // When user is client-only, force reservation/details view and hide staff-only tabs/buttons
     const canSeeGroupTab = !isClientOnly;
@@ -124,7 +155,10 @@ const EventModal: React.FC<EventModalProps> = ({
             aria-modal="true"
             onClick={handleCancel}
         >
-            <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div
+                className="w-full max-w-3xl rounded-2xl bg-white shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -146,14 +180,21 @@ const EventModal: React.FC<EventModalProps> = ({
                                     setResTab("group");
                                 }}
                                 disabled={type !== "reservation"}
-                                title={type !== "reservation" ? "Switch to Reservation to manage participants" : undefined}
+                                title={
+                                    type !== "reservation"
+                                        ? "Switch to Reservation to manage participants"
+                                        : undefined
+                                }
                             >
                                 Group Reservation
                             </SegButton>
                         )}
 
                         {canSeeBlockedTimeTab && (
-                            <SegButton active={type === "blockedTime"} onClick={() => setType("blockedTime")}>
+                            <SegButton
+                                active={type === "blockedTime"}
+                                onClick={() => setType("blockedTime")}
+                            >
                                 Blocked Time
                             </SegButton>
                         )}
@@ -161,7 +202,9 @@ const EventModal: React.FC<EventModalProps> = ({
 
                     <div className="ml-auto flex items-center gap-3">
                         {isBlockedTimeConflict && <ConflictPill message={error} />}
-                        <div className="text-sm text-gray-500">{mode === "edit" ? "Edit" : "Create"}</div>
+                        <div className="text-sm text-gray-500">
+                            {mode === "edit" ? "Edit" : "Create"}
+                        </div>
 
                         {/* Close icon */}
                         <button
@@ -213,7 +256,11 @@ const EventModal: React.FC<EventModalProps> = ({
                     )}
 
                     {type === "blockedTime" && canSeeBlockedTimeTab && (
-                        <BlockedTimeModal values={values} setValues={setValues} resources={resources} />
+                        <BlockedTimeModal
+                            values={values}
+                            setValues={setValues}
+                            resources={resources}
+                        />
                     )}
 
                     {error && !isBlockedTimeConflict && (
@@ -226,16 +273,26 @@ const EventModal: React.FC<EventModalProps> = ({
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t px-4 py-3">
                     <div className="text-xs text-gray-500">
-                        {type === "reservation" ? (resTab === "group" ? "Group Reservation" : "Reservation") : "Blocked time"}
+                        {type === "reservation"
+                            ? resTab === "group"
+                                ? "Group Reservation"
+                                : "Reservation"
+                            : "Blocked time"}
                     </div>
                     <div className="flex items-center gap-2">
                         {showFooterDelete && (
-                            <button className="px-3 py-2 rounded-lg border text-red-700" onClick={onDelete}>
+                            <button
+                                className="px-3 py-2 rounded-lg border text-red-700"
+                                onClick={onDelete}
+                            >
                                 Delete
                             </button>
                         )}
                         {showFooterSave && (
-                            <button className="px-3 py-2 rounded-lg border bg-gray-900 text-white" onClick={onSubmit}>
+                            <button
+                                className="px-3 py-2 rounded-lg border bg-gray-900 text-white"
+                                onClick={onSubmit}
+                            >
                                 Save
                             </button>
                         )}
