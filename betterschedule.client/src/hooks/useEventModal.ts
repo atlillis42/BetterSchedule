@@ -117,8 +117,7 @@ export function useEventModal(params: {
         end: DayPilot.Date;
         resource?: number | string;
     }) {
-        if (!canManageReservations) return;
-
+        // Allow clients to select; saving is permission-gated in submit().
         setType("reservation");
         setMode("create");
         setValues({
@@ -127,7 +126,8 @@ export function useEventModal(params: {
             endDate: args.end.toString("yyyy-MM-dd"),
             endTime: args.end.toString("HH:mm"),
             resourceId: args.resource ? Number(args.resource) : undefined,
-            serviceProviderId: isProvider && !isManager ? userId : "",
+            serviceProviderId: isProvider && !isManager ? (userId ?? "") : "",
+            clientId: "", // set during form editing; kept for typing consistency
             type: "reservation",
             participants: [],
             pendingParticipants: [] as PendingParticipantAdd[],
@@ -142,7 +142,13 @@ export function useEventModal(params: {
             originalEndTime: undefined,
         });
         setOpen(true);
-        setFormError(null);
+
+        // Friendly banner for clients
+        if (!canManageReservations) {
+            setFormError("Client self-booking will be implemented in the future.");
+        } else {
+            setFormError(null);
+        }
     }
 
     /**
@@ -158,9 +164,6 @@ export function useEventModal(params: {
         const isOwnBlock =
             t === "blockedTime" &&
             (!createdByUserId || createdByUserId === userId);
-        const canEdit =
-            (t === "reservation" && canManageReservations) ||
-            (t === "blockedTime" && (isManager || isOwnBlock));
 
         const res = args.e?.data?.reservation;
 
@@ -191,7 +194,8 @@ export function useEventModal(params: {
 
         const base = extractEventFields(args.e);
 
-        setMode(canEdit ? "edit" : "create");
+        // Always open in edit; `readOnly` disables controls for clients.
+        setMode("edit");
         setType(t);
         setValues({
             ...base,
@@ -220,6 +224,16 @@ export function useEventModal(params: {
         });
         setOpen(true);
         setFormError(null);
+
+        // Optional FYI for non-editable cases.
+        if (
+            !(
+                (t === "reservation" && canManageReservations) ||
+                (t === "blockedTime" && (isManager || isOwnBlock))
+            )
+        ) {
+            // toast.info("You can view details, but you don't have permission to edit.");
+        }
     }
 
     /**
@@ -256,9 +270,11 @@ export function useEventModal(params: {
                     // --- Reservation update with preflight + confirm + commit ---
                     const id = resolveReservationId(values)!;
 
+                    // Include clientId and appointmentTypeId for typing (intersection requires them).
                     const payload = {
-                        // required for preflight/commit
-                        serviceProviderId: values.serviceProviderId || "",
+                        clientId: String(values.clientId || ""),
+                        serviceProviderId: String(values.serviceProviderId || ""),
+                        appointmentTypeId: Number(values.appointmentTypeId),
                         startTime: start,
                         endTime: end,
                         resourceId:
@@ -267,11 +283,7 @@ export function useEventModal(params: {
                                 : values.resourceId
                                     ? Number(values.resourceId)
                                     : undefined,
-                        // optional patch fields
                         notes: values.notes ?? undefined,
-                        appointmentTypeId: values.appointmentTypeId
-                            ? Number(values.appointmentTypeId)
-                            : undefined,
                     };
 
                     await saveReservationWithConfirm({
@@ -315,12 +327,12 @@ export function useEventModal(params: {
                 if (type === "reservation") {
                     // --- Reservation create with preflight + confirm + commit ---
                     const payload = {
-                        clientId: values.clientId,
-                        serviceProviderId: values.serviceProviderId,
+                        clientId: String(values.clientId || ""),
+                        serviceProviderId: String(values.serviceProviderId || ""),
                         appointmentTypeId: Number(values.appointmentTypeId),
                         startTime: start,
                         endTime: end,
-                        notes: values.notes ?? "",
+                        notes: String(values.notes ?? ""),
                         resourceId:
                             typeof values.resourceId === "number"
                                 ? values.resourceId

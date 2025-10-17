@@ -76,6 +76,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         {
             var items = await _db.Reservations
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .Where(r => !r.IsDeleted)
                 .Overlapping(start, end)
                 .OrderBy(r => r.StartTime)
                 .Select(ToDto())
@@ -97,7 +98,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         {
             var dto = await _db.Reservations
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
-                .Where(r => r.Id == id)
+                .Where(r => r.Id == id && !r.IsDeleted)
                 .Select(ToDto())
                 .FirstOrDefaultAsync(ct);
 
@@ -524,6 +525,40 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             reservation.CancelSource = IsManager ? CancellationSource.Staff : CancellationSource.ClientPortal;
             reservation.IsLateCancel = isLate;
             reservation.UpdatedAt = now;
+
+            await _db.SaveChangesAsync(ct);
+            return NoContent();
+        }
+
+        /// <summary>
+        /// Soft-deletes a reservation (Managers and Service Providers).
+        /// Sets <see cref="Reservation.IsDeleted"/> = <c>true</c> and updates <see cref="Reservation.UpdatedAt"/>.
+        /// </summary>
+        /// <remarks>
+        /// Visibility: org-scoped; only Managers and Service Providers may delete.
+        /// Notes:
+        /// - Soft-deleted rows are hidden by UI and (ideally) by list/get queries.
+        /// - Does not alter package redemptions; if you want deletes to restore uses, that should be handled here.
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><c>204 No Content</c> on success; <c>404</c> if not found; <c>403</c> if forbidden.</returns>
+        [HttpDelete("{id:int}")]
+        [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
+        {
+            var reservation = await _db.Reservations
+                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
+
+            if (reservation is null) return NotFound();
+
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false))
+                return Forbid();
+
+            reservation.IsDeleted = true;
+            reservation.UpdatedAt = _clock.UtcNow;
 
             await _db.SaveChangesAsync(ct);
             return NoContent();

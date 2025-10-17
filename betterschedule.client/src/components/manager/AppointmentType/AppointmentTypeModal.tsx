@@ -335,9 +335,10 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                                 </button>
                             ) : null}
                         </div>
+
                         <span className="mt-1 text-xs text-gray-500">
-                            <span className="font-medium">Provider scoping</span> is coming soon—this will help limit
-                            which providers can perform an appointment type.
+                            Assign location or equipment this service uses. Depending on your organization's rules, bookings can
+                            reserve the resource and help prevent double-booking. 
                         </span>
                     </label>
 

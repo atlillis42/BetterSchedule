@@ -24,7 +24,7 @@ function friendlyError(err: unknown, fallback: string): string {
     return typeof msg === "string" ? msg : fallback;
 }
 
-/** Internal row model allowing local-only demo edits. */
+/** Internal row model allowing local-only (session) edits. */
 type UserRow = UserDto & {
     /** Indicates the row was created locally for demo, not persisted on the server. */
     isLocalPlaceholder?: boolean;
@@ -34,8 +34,7 @@ type UserRow = UserDto & {
 
 /** Returns a short random code; used for demo invite links. */
 function randomCode(length = 10): string {
-    const alphabet =
-        "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnopqrstuvwxyz";
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghijkmnopqrstuvwxyz";
     let result = "";
     for (let i = 0; i < length; i++) {
         result += alphabet[Math.floor(Math.random() * alphabet.length)];
@@ -43,19 +42,52 @@ function randomCode(length = 10): string {
     return result;
 }
 
-/**
- * Demo modal for creating an invite link.
- * Generates a client-side link and supports copy-to-clipboard.
- */
+// ---------------------------------------------------------------------
+// Session-backed placeholders (persist per browser tab)
+// ---------------------------------------------------------------------
+const SESSION_PLACEHOLDERS_KEY = "userManager.placeholders";
+
+function readPlaceholders(): UserRow[] {
+    try {
+        const raw = sessionStorage.getItem(SESSION_PLACEHOLDERS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw) as UserRow[];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writePlaceholders(next: UserRow[]): void {
+    try {
+        sessionStorage.setItem(SESSION_PLACEHOLDERS_KEY, JSON.stringify(next));
+    } catch {
+        // ignore quota errors
+    }
+}
+
+function upsertPlaceholder(row: UserRow): void {
+    const list = readPlaceholders();
+    const next = [row, ...list.filter((r) => r.id !== row.id)];
+    writePlaceholders(next);
+}
+
+function patchPlaceholder(userId: string, patch: Partial<UserRow>): void {
+    const list = readPlaceholders();
+    const next = list.map((u) => (u.id === userId ? { ...u, ...patch } : u));
+    writePlaceholders(next);
+}
+
+// ---------------------------------------------------------------------
+// Invite Link Modal (demo)
+// ---------------------------------------------------------------------
 function CreateInviteLinkModal(props: {
     open: boolean;
     onClose: () => void;
     availableRoles: readonly RoleName[];
 }) {
     const { open, onClose, availableRoles } = props;
-    const [selectedRole, setSelectedRole] = useState<RoleName>(
-        availableRoles[0] ?? "Client"
-    );
+    const [selectedRole, setSelectedRole] = useState<RoleName>(availableRoles[0] ?? "Client");
     const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
 
     useEffect(() => {
@@ -68,9 +100,7 @@ function CreateInviteLinkModal(props: {
 
     function handleGenerate(): void {
         const code = randomCode(12);
-        const url = `${window.location.origin}/join?role=${encodeURIComponent(
-            selectedRole
-        )}&code=${code}`;
+        const url = `${window.location.origin}/join?role=${encodeURIComponent(selectedRole)}&code=${code}`;
         setGeneratedUrl(url);
     }
 
@@ -103,9 +133,7 @@ function CreateInviteLinkModal(props: {
                 <div className="px-5 py-4">
                     <div className="space-y-4">
                         <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                Role for invite
-                            </label>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Role for invite</label>
                             <select
                                 className="w-full rounded-lg border px-3 py-2"
                                 value={selectedRole}
@@ -118,8 +146,7 @@ function CreateInviteLinkModal(props: {
                                 ))}
                             </select>
                             <p className="mt-1 text-xs text-gray-500">
-                                Generates a shareable link for someone to join this organization
-                                with the selected role. (Demo only)
+                                Generates a shareable link for someone to join this organization with the selected role. (Demo only)
                             </p>
                         </div>
 
@@ -132,10 +159,7 @@ function CreateInviteLinkModal(props: {
                     </div>
                 </div>
                 <div className="flex items-center justify-end gap-3 border-t px-5 py-3">
-                    <button
-                        className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={onClose}
-                    >
+                    <button className="rounded-lg border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" onClick={onClose}>
                         Close
                     </button>
                     <button
@@ -150,10 +174,9 @@ function CreateInviteLinkModal(props: {
     );
 }
 
-/**
- * Demo modal for adding a placeholder client.
- * Tries a backend endpoint; if not present, adds a local-only row.
- */
+// ---------------------------------------------------------------------
+// Add Placeholder Client Modal (demo)
+// ---------------------------------------------------------------------
 function AddPlaceholderClientModal(props: {
     open: boolean;
     onClose: () => void;
@@ -165,9 +188,17 @@ function AddPlaceholderClientModal(props: {
     const [submitting, setSubmitting] = useState(false);
     if (!open) return null;
 
+    // Generate a stable client-side id (non-GUID) for session placeholders
+    function newTempId(): string {
+        // Prefer crypto.randomUUID if available; fallback to time+random
+        const anyCrypto = crypto as any;
+        return `temp-${anyCrypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    }
+
     async function handleCreate(): Promise<void> {
         setSubmitting(true);
         try {
+            // Try server first (if you later wire up a real endpoint)
             const resp = await fetch("/api/users/placeholder-client", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -179,39 +210,31 @@ function AddPlaceholderClientModal(props: {
 
             if (resp.ok) {
                 const created = (await resp.json()) as UserDto;
+                // Real server user (not a local placeholder)
                 onAdded({ ...created, isLocalPlaceholder: false });
                 toast.success("Placeholder client created.");
                 onClose();
-            } else {
-                const temp: UserRow = {
-                    id: `temp-${Date.now()}`,
-                    name: fullName || "Placeholder Client",
-                    email: email || "",
-                    userName: undefined,
-                    roles: ["Client"],
-                    isLocalPlaceholder: true,
-                    phone: null,
-                };
-                onAdded(temp);
-                toast.info("Added local-only placeholder client (not saved to server).");
-                onClose();
+                return;
             }
         } catch {
-            const temp: UserRow = {
-                id: `temp-${Date.now()}`,
-                name: fullName || "Placeholder Client",
-                email: email || "",
-                userName: undefined,
-                roles: ["Client"],
-                isLocalPlaceholder: true,
-                phone: null,
-            };
-            onAdded(temp);
-            toast.info("Added local-only placeholder client (not saved to server).");
-            onClose();
+            // swallow and fallback to local session placeholder
         } finally {
             setSubmitting(false);
         }
+
+        // Local-only session placeholder
+        const temp: UserRow = {
+            id: newTempId(),
+            name: fullName || "Placeholder Client",
+            email: email || "",
+            userName: undefined,
+            roles: ["Client"],
+            isLocalPlaceholder: true,
+            phone: null,
+        };
+        onAdded(temp);
+        toast.info("Added local-only placeholder client (not saved to server).");
+        onClose();
     }
 
     return (
@@ -235,9 +258,7 @@ function AddPlaceholderClientModal(props: {
                 <div className="px-5 py-4">
                     <div className="space-y-4">
                         <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                Full name
-                            </label>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Full name</label>
                             <input
                                 type="text"
                                 className="w-full rounded-lg border px-3 py-2"
@@ -247,9 +268,7 @@ function AddPlaceholderClientModal(props: {
                             />
                         </div>
                         <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                Email (optional)
-                            </label>
+                            <label className="mb-1 block text-sm font-medium text-gray-700">Email (optional)</label>
                             <input
                                 type="email"
                                 className="w-full rounded-lg border px-3 py-2"
@@ -339,9 +358,25 @@ export default function UserManager() {
             } catch {
                 // roles endpoint might not exist yet; fallback after fetching users
             }
+
             const data = await getUsers();
-            setUsers((data as UserRow[]).map((u) => ({ ...u, phone: u.phone ?? null })));
-            if (roles.length === 0) roles = unionRoles(data as UserRow[]);
+
+            // Merge server users with session placeholders (placeholders override by id)
+            const serverUsers: UserRow[] = (data as UserRow[]).map((u) => ({
+                ...u,
+                phone: u.phone ?? null,
+                isLocalPlaceholder: false,
+            }));
+            const placeholders = readPlaceholders();
+
+            const byId = new Map<string, UserRow>();
+            serverUsers.forEach((u) => byId.set(u.id, u));
+            placeholders.forEach((p) => byId.set(p.id, { ...p, isLocalPlaceholder: true }));
+
+            const merged = Array.from(byId.values());
+            setUsers(merged);
+
+            if (roles.length === 0) roles = unionRoles(merged);
             setAvailableRoles(roles);
         } catch (err) {
             toast.error(friendlyError(err, "Failed to load users/roles."));
@@ -356,13 +391,9 @@ export default function UserManager() {
 
     /**
      * Adds or removes a role for a specific user, updating the table after the API succeeds.
-     * Falls back to local-only updates for placeholder rows.
+     * For session placeholders, only local/session state is updated.
      */
-    async function toggleRole(
-        userId: string,
-        role: RoleName,
-        enable: boolean
-    ): Promise<void> {
+    async function toggleRole(userId: string, role: RoleName, enable: boolean): Promise<void> {
         const key = `${userId}:${role}`;
         if (isBusy(key)) return;
 
@@ -372,11 +403,8 @@ export default function UserManager() {
             const isLocal = target?.isLocalPlaceholder === true;
 
             if (!isLocal) {
-                if (enable) {
-                    await addUserRole(userId, role);
-                } else {
-                    await removeUserRole(userId, role);
-                }
+                if (enable) await addUserRole(userId, role);
+                else await removeUserRole(userId, role);
             }
 
             setUsers((prev) =>
@@ -385,6 +413,11 @@ export default function UserManager() {
                     const nextRoles = enable
                         ? Array.from(new Set([...u.roles, role]))
                         : u.roles.filter((r) => r !== role);
+
+                    if (u.isLocalPlaceholder) {
+                        // Mirror change to session storage
+                        patchPlaceholder(userId, { roles: nextRoles });
+                    }
                     return { ...u, roles: nextRoles };
                 })
             );
@@ -404,16 +437,18 @@ export default function UserManager() {
     /** Demo-only local persistence for email/phone. */
     function handleSaveLocalContact(userId: string, email: string, phone: string) {
         setUsers((prev) =>
-            prev.map((u) => (u.id === userId ? { ...u, email, phone } : u))
+            prev.map((u) => {
+                if (u.id !== userId) return u;
+                if (u.isLocalPlaceholder) {
+                    patchPlaceholder(userId, { email, phone });
+                }
+                return { ...u, email, phone };
+            })
         );
     }
 
     if (!isManager) {
-        return (
-            <div className="p-6 text-sm text-gray-700">
-                You don’t have permission to view this page.
-            </div>
-        );
+        return <div className="p-6 text-sm text-gray-700">You don’t have permission to view this page.</div>;
     }
 
     return (
@@ -423,9 +458,7 @@ export default function UserManager() {
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h1 className="text-2xl font-semibold">Users</h1>
-                        <p className="text-sm text-gray-600">
-                            Manage members, roles, and demo invites/clients.
-                        </p>
+                        <p className="text-sm text-gray-600">Manage members, roles, and demo invites/clients.</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -500,9 +533,7 @@ export default function UserManager() {
                                                         </span>
                                                     )}
                                                 </span>
-                                                {u.email && (
-                                                    <span className="truncate text-xs text-gray-500">{u.email}</span>
-                                                )}
+                                                {u.email && <span className="truncate text-xs text-gray-500">{u.email}</span>}
                                             </div>
                                         </td>
                                         <td className="px-3 py-2 align-top">
@@ -566,9 +597,7 @@ export default function UserManager() {
                                                 </span>
                                             )}
                                         </div>
-                                        {u.email && (
-                                            <div className="truncate text-xs text-gray-500">{u.email}</div>
-                                        )}
+                                        {u.email && <div className="truncate text-xs text-gray-500">{u.email}</div>}
                                     </div>
                                     <button
                                         className="rounded p-1 text-gray-500 hover:bg-gray-100"
@@ -623,15 +652,17 @@ export default function UserManager() {
             />
 
             {/* Demo Modals */}
-            <CreateInviteLinkModal
-                open={inviteOpen}
-                onClose={() => setInviteOpen(false)}
-                availableRoles={availableRoles}
-            />
+            <CreateInviteLinkModal open={inviteOpen} onClose={() => setInviteOpen(false)} availableRoles={availableRoles} />
             <AddPlaceholderClientModal
                 open={addClientOpen}
                 onClose={() => setAddClientOpen(false)}
-                onAdded={(row) => setUsers((prev) => [row, ...prev])}
+                onAdded={(row) => {
+                    // If server created a real user, don't persist to session; otherwise upsert the placeholder.
+                    if (row.isLocalPlaceholder) {
+                        upsertPlaceholder(row);
+                    }
+                    setUsers((prev) => [row, ...prev.filter((u) => u.id !== row.id)]);
+                }}
             />
         </div>
     );
