@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Initial_CreateV4 : Migration
+    public partial class Demo_CreateV3 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -135,23 +135,14 @@ namespace BetterSchedule.Server.Migrations
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     MinLeadMinutes = table.Column<int>(type: "int", nullable: false),
                     CancelWindowHours = table.Column<int>(type: "int", nullable: false),
-                    ProviderCancelPolicy = table.Column<int>(type: "int", nullable: false),
-                    ClientCancelPolicy = table.Column<int>(type: "int", nullable: false),
-                    ShowWeekends = table.Column<bool>(type: "bit", nullable: false),
-                    StartOfWeek = table.Column<int>(type: "int", nullable: false),
-                    BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
-                    BusinessHoursEndLocal = table.Column<TimeSpan>(type: "time", nullable: false),
-                    DefaultView = table.Column<int>(type: "int", nullable: false),
-                    ShadingMode = table.Column<int>(type: "int", nullable: false),
-                    AvailabilityEnforcement = table.Column<int>(type: "int", nullable: false),
                     RequireConfirmOnOverrides = table.Column<bool>(type: "bit", nullable: false),
-                    AvailabilityPublic = table.Column<bool>(type: "bit", nullable: false),
-                    ProvidersCanEditOwnAvailability = table.Column<bool>(type: "bit", nullable: false),
                     LimitProvidersToAssignedResources = table.Column<bool>(type: "bit", nullable: false),
                     FailOpenWhenNoResourceAssignments = table.Column<bool>(type: "bit", nullable: false),
                     LimitProvidersToAssignedAppointmentTypes = table.Column<bool>(type: "bit", nullable: false),
                     FailOpenWhenNoTypeAssignments = table.Column<bool>(type: "bit", nullable: false),
                     EnforceAppointmentTypeResourceRules = table.Column<bool>(type: "bit", nullable: false),
+                    BusinessHoursStartLocal = table.Column<TimeSpan>(type: "time", nullable: false),
+                    BusinessHoursEndLocal = table.Column<TimeSpan>(type: "time", nullable: false),
                     TimeZoneId = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
                     Locale = table.Column<string>(type: "nvarchar(16)", maxLength: 16, nullable: false),
                     EmailEnabled = table.Column<bool>(type: "bit", nullable: false),
@@ -600,7 +591,12 @@ namespace BetterSchedule.Server.Migrations
                     CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     OrganizationId = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    IsDeleted = table.Column<bool>(type: "bit", nullable: false)
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    CancelledAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    CancelledByUserId = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CancelReason = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    IsLateCancel = table.Column<bool>(type: "bit", nullable: false),
+                    CancelSource = table.Column<int>(type: "int", nullable: false)
                 },
                 constraints: table =>
                 {

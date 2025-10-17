@@ -7,7 +7,6 @@ import { classForReservationStatus, colorForReservationStatus, tooltipForReserva
  * Maps a {@link ReservationDto} into a DayPilot-compatible {@link UiEvent}.
  * - Keeps canceled reservations visible (styling reflects status).
  * - Uses the status class for consistent theming across views.
- * - Provides a compact tooltip and stable id prefix ("reservation-").
  */
 export function reservationToUiEvent(reservation: ReservationDto): UiEvent {
     const statusClass = classForReservationStatus(reservation.status);
@@ -29,9 +28,6 @@ export function reservationToUiEvent(reservation: ReservationDto): UiEvent {
         reservation,
         participants: reservation.participants,
         toolTip: tooltipForReservation(reservation.status),
-        // Hide DayPilot's inner duration bar; our CSS chip handles visuals.
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
         barHidden: true,
         backColor: statusColor,
     } as UiEvent;

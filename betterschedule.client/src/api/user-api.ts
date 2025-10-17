@@ -36,6 +36,9 @@ export type UserDto = UserFull & {
     roles: string[];
 };
 
+/** Strong (runtime-driven) role name. */
+export type RoleName = string;
+
 /**
  * Minimal provider listing record.
  * Mirrors server `ProviderLiteDto` (Id, Name, AvailabilityPublic).
@@ -87,7 +90,9 @@ export async function getProvidersLite(): Promise<ProviderLite[]> {
  * @returns A `ProviderLite` with display name and `availabilityPublic`.
  */
 export async function getProviderLiteById(id: string): Promise<ProviderLite> {
-    const { data } = await api.get<ProviderLite>(`/users/providers-lite/${encodeURIComponent(id)}`);
+    const { data } = await api.get<ProviderLite>(
+        `/users/providers-lite/${encodeURIComponent(id)}`
+    );
     return data;
 }
 
@@ -140,7 +145,7 @@ export async function searchProviders(
         signal: opts?.signal,
     });
 
-    return data.map(p => ({
+    return data.map((p) => ({
         id: p.id,
         name: p.name,
         availabilityPublic: p.availabilityPublic,
@@ -159,20 +164,31 @@ export async function getUsers(): Promise<UserDto[]> {
 /**
  * Adds a role to the specified user (Manager-only).
  * @param userId - Target user identifier.
- * @param role - Role name to add (`Manager` | `ServiceProvider` | `Client`).
+ * @param role - Role name to add.
  */
-export async function addUserRole(userId: string, role: string): Promise<void> {
-    await api.post(`/users/${userId}/roles/${role}`);
+export async function addUserRole(userId: string, role: RoleName): Promise<void> {
+    await api.post(`/users/${userId}/roles/${encodeURIComponent(role)}`);
 }
 
 /**
  * Removes a role from the specified user (Manager-only).
  * @param userId - Target user identifier.
- * @param role - Role name to remove (`Manager` | `ServiceProvider` | `Client`).
+ * @param role - Role name to remove.
  */
 export async function removeUserRole(
     userId: string,
-    role: string
+    role: RoleName
 ): Promise<void> {
-    await api.delete(`/users/${userId}/roles/${role}`);
+    await api.delete(`/users/${userId}/roles/${encodeURIComponent(role)}`);
+}
+
+/**
+ * Retrieves the list of allowed role names for the current organization.
+ * Maps to `GET /users/roles`.
+ *
+ * @returns Array of role names (e.g., ["Manager","ServiceProvider","Client"]).
+ */
+export async function getAvailableRoles(): Promise<RoleName[]> {
+    const { data } = await api.get<RoleName[]>("/users/roles");
+    return data;
 }

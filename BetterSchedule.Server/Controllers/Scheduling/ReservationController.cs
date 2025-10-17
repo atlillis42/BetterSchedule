@@ -7,6 +7,7 @@ using BetterSchedule.Server.Models.DTOs.ReservationParticipant;
 using BetterSchedule.Server.Models.Scheduling;
 using BetterSchedule.Server.Models.Tenant;
 using BetterSchedule.Server.Models.Tenant.SettingsHelpers;
+using BetterSchedule.Server.Services.Errors;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authorization;
@@ -20,17 +21,27 @@ namespace BetterSchedule.Server.Controllers.Scheduling
     /// <summary>
     /// Reservation API
     ///
-    /// Responsibilities
-    /// - Read/write reservations within the caller's organization.
-    /// - Enforce MinLeadMinutes and CancelWindowHours via <see cref="OrganizationSettings"/>.
-    /// - Enforce provider availability + blocked-time constraints via <see cref="ISchedulingConflictService"/>.
-    /// - Perform package redemption bookkeeping when status transitions to/from <c>Completed</c>.
+    /// Responsibilities:
+    /// <list type="bullet">
+    /// <item><description>Read/write reservations within the caller's organization.</description></item>
+    /// <item><description>Classify late cancellations (no grace).</description></item>
+    /// <item><description>Check reservation/resource overlaps and blocked-time conflicts.</description></item>
+    /// <item><description>Perform package redemption bookkeeping when status transitions to/from <see cref="ReservationStatus.Completed"/>.</description></item>
+    /// </list>
     ///
-    /// Security &amp; Visibility
-    /// - All endpoints are org-scoped via <see cref="OrgControllerBase"/>.
-    /// - Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.
-    /// - Create/Update/Delete are allowed for Managers and Service Providers (subject to scope).
-    /// - Clients can self-cancel via <see cref="CancelAsClient"/> when org policy allows.
+    /// Security/Visibility:
+    /// <list type="bullet">
+    /// <item><description>All endpoints are org-scoped via <see cref="OrgControllerBase"/>.</description></item>
+    /// <item><description>Visibility for list/get is governed by <see cref="ReservationScopes.VisibleTo"/>.</description></item>
+    /// <item><description>Create/Update/Delete allowed for Managers and Service Providers (subject to scope).</description></item>
+    /// <item><description>Clients can self-cancel pre-start via <see cref="CancelAsClient"/>; inside the window they are marked late.</description></item>
+    /// </list>
+    ///
+    /// Policy highlights:
+    /// <list type="bullet">
+    /// <item><description><b>Lead time:</b> Managers and a Provider booking their own schedule are allowed inside lead time with a soft warning (header <c>X-Warned-Lead-Time: true</c>). Providers booking for other staff are blocked with a personalized message. Clients are hard-blocked (generic message).</description></item>
+    /// <item><description><b>Conflicts:</b> For staff (Managers/Providers), provider/resource blocked windows and reservation overlaps are returned as soft warnings via headers (<c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>) and do not prevent create/update. Clients must be hard-blocked on provider/resource conflicts in client-facing endpoints.</description></item>
+    /// </list>
     /// </summary>
     [ApiController]
     [Route("api/reservation")]
@@ -41,6 +52,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         private readonly IDateTimeProvider _clock;
         private readonly ISchedulingConflictService _conflicts;
 
+        /// <summary>Initializes a new <see cref="ReservationController"/>.</summary>
         public ReservationController(ApplicationDbContext db, IDateTimeProvider clock, ISchedulingConflictService conflicts)
         {
             _db = db;
@@ -51,7 +63,12 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Lists reservations overlapping an optional [start, end) time window and visible to the caller.
         /// </summary>
+        /// <param name="start">Optional inclusive start of the window (UTC).</param>
+        /// <param name="end">Optional exclusive end of the window (UTC).</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>Visible reservations ordered by start time.</returns>
         [HttpGet]
+        [ProducesResponseType(typeof(IEnumerable<ReservationDto>), StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<ReservationDto>>> List(
             [FromQuery] DateTimeOffset? start,
             [FromQuery] DateTimeOffset? end,
@@ -59,6 +76,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         {
             var items = await _db.Reservations
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
+                .Where(r => !r.IsDeleted)
                 .Overlapping(start, end)
                 .OrderBy(r => r.StartTime)
                 .Select(ToDto())
@@ -70,12 +88,17 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         /// <summary>
         /// Gets a reservation by identifier if visible to the caller.
         /// </summary>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The reservation when found and visible; <c>404</c> otherwise.</returns>
         [HttpGet("{id:int}")]
+        [ProducesResponseType(typeof(ReservationDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<ReservationDto>> GetById([FromRoute] int id, CancellationToken ct)
         {
             var dto = await _db.Reservations
                 .VisibleTo(OrganizationId, UserId, IsManager, IsProvider, IsClient)
-                .Where(r => r.Id == id)
+                .Where(r => r.Id == id && !r.IsDeleted)
                 .Select(ToDto())
                 .FirstOrDefaultAsync(ct);
 
@@ -84,30 +107,69 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Creates a new reservation (Managers and Service Providers).
-        /// Enforces lead time, provider availability, and blocked-time rules.
         /// </summary>
+        /// <remarks>
+        /// Enforcement:
+        /// <list type="bullet">
+        /// <item><description><b>Lead time:</b>
+        /// <para>- Manager: warn only (<c>X-Warned-Lead-Time: true</c>), allow.</para>
+        /// <para>- Provider booking own schedule: warn only (<c>X-Warned-Lead-Time: true</c>), allow.</para>
+        /// <para>- Provider booking for other staff: <c>400</c> with personalized message.</para>
+        /// <para>- Client: <c>400</c> with generic message (not applicable on this route due to role restriction).</para>
+        /// </description></item>
+        /// <item><description><b>Conflicts:</b> For Managers/Providers, provider/resource blocked windows and reservation overlaps are soft warnings via headers:
+        /// <c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>. No hard block. Client-facing endpoints should hard-block provider/resource conflicts.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="dto">Create payload.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The created reservation.</returns>
         [HttpPost]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(typeof(ReservationDto), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
         public async Task<ActionResult<ReservationDto>> Create(
             [FromBody] CreateReservationDto dto,
-            CancellationToken ct,
-            bool overrideAvailability = false)
+            CancellationToken ct)
         {
             if (dto.StartTime >= dto.EndTime)
-                return BadRequest("EndTime must be after StartTime.");
+                return BadRequest(ApiError.Validation("EndTime must be after StartTime."));
 
             var settings = await _db.OrganizationSettings.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
 
+            // Lead-time policy
             if (settings is not null &&
                 BookingPolicy.ViolatesLeadTime(settings.MinLeadMinutes, _clock.UtcNow, dto.StartTime))
             {
                 var providerSelf = IsProvider && dto.ServiceProviderId == UserId;
-                if (!providerSelf)
-                    return BadRequest($"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance.");
+
+                if (IsManager)
+                {
+                    // Manager override allowed, warn only.
+                    Response.Headers["X-Warned-Lead-Time"] = "true";
+                }
+                else if (providerSelf)
+                {
+                    // Provider creating on own calendar allowed, warn only.
+                    Response.Headers["X-Warned-Lead-Time"] = "true";
+                }
+                else if (IsProvider)
+                {
+                    // Provider booking for another staff member: block with personalized message.
+                    return BadRequest(ApiError.Validation(
+                        $"Reservations for other staff members must be created at least {settings.MinLeadMinutes} minutes in advance."));
+                }
+                else
+                {
+                    // Generic client message (this route is staff-only, but keep for clarity).
+                    return BadRequest(ApiError.Validation(
+                        $"Reservations must be created at least {settings.MinLeadMinutes} minutes in advance."));
+                }
             }
 
-
+            // Conflict checks (soft warnings for staff; clients should be blocked on public endpoints)
             var c = await _conflicts.CheckReservationCreateAsync(
                 OrganizationId,
                 dto.ServiceProviderId,
@@ -116,18 +178,22 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 dto.ResourceId,
                 ct);
 
-            if (c.OutsideProviderAvailability)
+            // Provider/resource blocked -> warn (staff) or block (clients if ever applicable here)
+            if (c.ProviderBlocked || c.ResourceBlocked)
             {
-                var canOverride =
-                    (IsManager && overrideAvailability) ||
-                    (IsProvider && overrideAvailability && dto.ServiceProviderId == UserId);
-
-                if (!canOverride)
-                    return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
+                if (IsManager || IsProvider)
+                {
+                    if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
+                    if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
+                }
+                else
+                {
+                    return Conflict(ApiError.ReservationConflict("This time is blocked by the provider or resource."));
+                }
             }
 
-            if (c.ProviderBlocked || c.ResourceBlocked)
-                return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
+            // Reservation overlap -> soft warning header for all roles on this route (staff)
+            var warnDoubleBook = c.ReservationOverlap;
 
             // Validate package assignment, if any (no decrement on create)
             if (dto.PackageAssignmentId.HasValue)
@@ -142,8 +208,6 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                     ct: ct);
                 if (validation is not null) return validation;
             }
-
-            var warnDoubleBook = c.ReservationOverlap && IsProvider;
 
             var entity = new Reservation
             {
@@ -176,17 +240,28 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Updates an existing reservation (Managers and Service Providers).
-        /// Handles status transitions and package redemption bookkeeping atomically.
         /// </summary>
+        /// <remarks>
+        /// Behavior:
+        /// <list type="bullet">
+        /// <item><description>Staff may reschedule at any time; only requires <c>EndTime &gt; StartTime</c>.</description></item>
+        /// <item><description>Provider/resource blocked windows and reservation overlaps return soft warnings via headers
+        /// (<c>X-Warned-Provider-Blocked</c>, <c>X-Warned-Resource-Blocked</c>, <c>X-Warned-Double-Booking</c>) and do not prevent update.</description></item>
+        /// <item><description>Handles status transitions and package redemption bookkeeping atomically.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="dto">Update payload.</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> Update(
             [FromRoute] int id,
             [FromBody] UpdateReservationDto dto,
-            CancellationToken ct,
-            [FromQuery] bool managerOverride = false,
-            [FromQuery] bool overrideAvailability = false,
-            [FromQuery] bool providerOverride = false) 
+            CancellationToken ct)
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
@@ -208,10 +283,9 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (isStatusProvided)
             {
                 if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var sParsed))
-                    return BadRequest($"Unknown status '{dto.Status}'.");
+                    return BadRequest(ApiError.Validation($"Unknown status '{dto.Status}'."));
                 parsedStatus = sParsed;
             }
-            var wantsCancel = parsedStatus == ReservationStatus.Canceled;
 
             var isOnlyStatusChange =
                 isStatusProvided &&
@@ -232,79 +306,23 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             var newEnd = dto.EndTime ?? reservation.EndTime;
             var newResourceId = dto.ResourceId ?? reservation.ResourceId;
 
-            // Lead-time check for any schedule change
-            if (!isOnlyStatusChange)
-            {
-                if (newEnd <= newStart)
-                    return BadRequest("EndTime must be after StartTime.");
+            // For staff, allow rescheduling anytime; only require that End > Start
+            if (!isOnlyStatusChange && newEnd <= newStart)
+                return BadRequest(ApiError.Validation("EndTime must be after StartTime."));
 
-                var providerSelf = IsProvider && newProviderId == UserId;
-                if (!providerSelf)
-                    return BadRequest($"Reservations must be scheduled at least {settings.MinLeadMinutes} minutes in advance.");
-            }
-
-            // Cancel-window / policy checks
-            if (settings is not null)
-            {
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                var insideCancelWindow = reservation.StartTime - now < cancelWindow;
-
-                if (wantsCancel && parsedStatus.HasValue)
-                {
-                    if (IsManager)
-                    {
-                        if (insideCancelWindow && !managerOverride)
-                            return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager approval.");
-                    }
-                    else if (IsProvider)
-                    {
-                        var allowPerPolicy = BookingPolicy.CanProviderCancel(settings.ProviderCancelPolicy, cancelWindow, now, reservation.StartTime);
-                        var isAssignedProvider = reservation.ServiceProviderId == UserId;
-
-                        // If policy disallows, permit only when inside window AND assigned provider confirmed override
-                        if (!allowPerPolicy)
-                        {
-                            if (!(insideCancelWindow && isAssignedProvider && providerOverride))
-                                return BadRequest("Providers are not allowed to cancel at this time per organization policy.");
-                        }
-                    }
-                }
-                else
-                {
-                    // Non-cancel modifications inside window:
-                    // allow manager override, or assigned provider override.
-                    if (insideCancelWindow)
-                    {
-                        var isAssignedProvider = IsProvider && reservation.ServiceProviderId == UserId;
-                        var allowed = (IsManager && managerOverride) || (isAssignedProvider && providerOverride);
-                        if (!allowed)
-                            return BadRequest($"Reservations cannot be modified within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
-                    }
-                }
-            }
-
-            // Availability/resource checks when changing schedule
+            // Conflict checks when changing schedule
             var warnDoubleBook = false;
             if (!isOnlyStatusChange)
             {
                 var c = await _conflicts.CheckReservationUpdateAsync(
                     id, OrganizationId, newProviderId, newStart, newEnd, newResourceId, ct);
 
-                if (c.OutsideProviderAvailability)
-                {
-                    var isOwnProvider = IsProvider && newProviderId == UserId;
-                    var canOverride =
-                        (IsManager && overrideAvailability) ||
-                        (isOwnProvider && overrideAvailability);
+                // Provider/resource blocked -> warn for staff
+                if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
+                if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
 
-                    if (!canOverride)
-                        return Conflict(new { code = "OUTSIDE_AVAILABILITY", message = "This time is outside provider availability." });
-                }
-
-                if (c.ProviderBlocked || c.ResourceBlocked)
-                    return Conflict(new { code = "UNAVAILABLE", message = "This time is blocked by the provider or resource." });
-
-                warnDoubleBook = c.ReservationOverlap && IsProvider;
+                // Double-book warning for staff updates
+                warnDoubleBook = c.ReservationOverlap;
             }
 
             // Package validations / consumption bookkeeping
@@ -339,7 +357,23 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             if (dto.Notes is not null) reservation.Notes = dto.Notes;
             if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
             if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
-            if (parsedStatus.HasValue) reservation.Status = parsedStatus.Value;
+
+            if (parsedStatus.HasValue)
+            {
+                // Transition to Canceled -> record metadata and classify lateness
+                if (parsedStatus.Value == ReservationStatus.Canceled && reservation.Status != ReservationStatus.Canceled)
+                {
+                    var orgSettings = settings ?? new OrganizationSettings();
+                    reservation.CancelledAt = now;
+                    reservation.CancelledByUserId = UserId;
+                    reservation.CancelReason = "StaffAction";
+                    reservation.CancelSource = CancellationSource.Staff;
+                    reservation.IsLateCancel = BookingPolicy.IsLateCancel(
+                        now, reservation.StartTime, orgSettings.TimeZoneId, orgSettings.CancelWindowHours);
+                }
+
+                reservation.Status = parsedStatus.Value;
+            }
 
             reservation.ServiceProviderId = newProviderId;
             reservation.AppointmentTypeId = newTypeId;
@@ -433,17 +467,29 @@ namespace BetterSchedule.Server.Controllers.Scheduling
 
         /// <summary>
         /// Allows a client to cancel their own upcoming reservation (or a Manager to cancel on behalf of a client).
-        /// Enforces organization cancel window and ties client permission to provider policy.
         /// </summary>
+        /// <remarks>
+        /// Policy:
+        /// <list type="bullet">
+        /// <item><description>Client cancels are allowed pre-start; inside the window they are recorded as late and may be subject to policy.</description></item>
+        /// <item><description>Managers may cancel at any time.</description></item>
+        /// </list>
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
         [HttpPost("{id:int}/cancel")]
         [Authorize(Roles = "Client,Manager")]
-        public async Task<IActionResult> CancelAsClient([FromRoute] int id, CancellationToken ct, [FromQuery] bool managerOverride = false)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> CancelAsClient([FromRoute] int id, CancellationToken ct)
         {
             var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
 
             if (reservation is null) return NotFound();
 
+            // Role/scope: client can cancel self; manager can cancel anyone
             if (!IsManager)
             {
                 if (!IsClient || reservation.ClientId != UserId)
@@ -454,77 +500,66 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 return NoContent();
 
             if (reservation.Status == ReservationStatus.Completed || reservation.Status == ReservationStatus.NoShow)
-                return BadRequest("This reservation cannot be canceled in its current state.");
+                return BadRequest(ApiError.Validation("This reservation cannot be canceled in its current state."));
 
             var now = _clock.UtcNow;
-            if (now >= reservation.StartTime)
-                return BadRequest("Cannot cancel after the reservation start time.");
 
             var settings = await _db.OrganizationSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct) ?? new OrganizationSettings();
 
-            if (settings is not null)
-            {
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
+            // Client policy: pre-start only (hard rule). Managers are unrestricted.
+            if (!IsManager && now >= reservation.StartTime)
+                return BadRequest(ApiError.Validation("Cannot cancel after the reservation start time."));
 
-                var allowed = BookingPolicy.CanClientCancel(
-                    settings.ClientCancelPolicy,
-                    settings.ProviderCancelPolicy,
-                    cancelWindow,
-                    now,
-                    reservation.StartTime);
-
-                if (!allowed && !(IsManager && managerOverride))
-                    return BadRequest("This reservation cannot be canceled per organization policy.");
-            }
+            // Classify lateness (org-local)
+            var isLate = BookingPolicy.IsLateCancel(
+                now,
+                reservation.StartTime,
+                settings.TimeZoneId,
+                settings.CancelWindowHours);
 
             reservation.Status = ReservationStatus.Canceled;
+            reservation.CancelledAt = now;
+            reservation.CancelledByUserId = UserId;
+            reservation.CancelReason = IsManager ? "StaffAction" : "ClientRequest";
+            reservation.CancelSource = IsManager ? CancellationSource.Staff : CancellationSource.ClientPortal;
+            reservation.IsLateCancel = isLate;
             reservation.UpdatedAt = now;
-            await _db.SaveChangesAsync(ct);
 
+            await _db.SaveChangesAsync(ct);
             return NoContent();
         }
 
         /// <summary>
-        /// Soft deletes a reservation (Managers and Service Providers).
-        /// Does not automatically restore package usage; use status transitions for that.
+        /// Soft-deletes a reservation (Managers and Service Providers).
+        /// Sets <see cref="Reservation.IsDeleted"/> = <c>true</c> and updates <see cref="Reservation.UpdatedAt"/>.
         /// </summary>
+        /// <remarks>
+        /// Visibility: org-scoped; only Managers and Service Providers may delete.
+        /// Notes:
+        /// - Soft-deleted rows are hidden by UI and (ideally) by list/get queries.
+        /// - Does not alter package redemptions; if you want deletes to restore uses, that should be handled here.
+        /// </remarks>
+        /// <param name="id">Reservation identifier.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns><c>204 No Content</c> on success; <c>404</c> if not found; <c>403</c> if forbidden.</returns>
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Manager,ServiceProvider")]
-        public async Task<ActionResult> Delete(
-            [FromRoute] int id,
-            CancellationToken ct,
-            [FromQuery] bool managerOverride = false,
-            [FromQuery] bool providerOverride = false)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
-            var entity = await _db.Reservations
+            var reservation = await _db.Reservations
                 .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-            if (entity is null) return NotFound();
 
-            if (!ReservationScopes.CanModify(entity, UserId, IsManager, IsProvider, isClient: false))
+            if (reservation is null) return NotFound();
+
+            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false))
                 return Forbid();
 
-            var settings = await _db.OrganizationSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
+            reservation.IsDeleted = true;
+            reservation.UpdatedAt = _clock.UtcNow;
 
-            if (settings is not null)
-            {
-                var now = _clock.UtcNow;
-                var cancelWindow = TimeSpan.FromHours(settings.CancelWindowHours);
-                var inside = entity.StartTime - now < cancelWindow;
-
-                if (inside)
-                {
-                    var isAssignedProvider = IsProvider && entity.ServiceProviderId == UserId;
-                    var allowed =
-                        (IsManager && managerOverride) ||
-                        (isAssignedProvider && providerOverride);
-                    if (!allowed)
-                        return BadRequest($"Reservations cannot be deleted within {settings.CancelWindowHours} hours of start time without manager override or assigned provider confirmation.");
-                }
-            }
-
-            entity.IsDeleted = true;
             await _db.SaveChangesAsync(ct);
             return NoContent();
         }
@@ -533,7 +568,7 @@ namespace BetterSchedule.Server.Controllers.Scheduling
         // Helpers
         // --------------------------
 
-        /// <summary>Map entity -> DTO (status as string).</summary>
+        /// <summary>Projects <see cref="Reservation"/> to <see cref="ReservationDto"/> (status as string). Cancellation metadata is not projected.</summary>
         private static Expression<Func<Reservation, ReservationDto>> ToDto() => r => new ReservationDto
         {
             Id = r.Id,
@@ -590,25 +625,25 @@ namespace BetterSchedule.Server.Controllers.Scheduling
                 select new { assign, pkg })
                 .FirstOrDefaultAsync(ct);
 
-            if (row is null) return BadRequest("Package assignment not found.");
+            if (row is null) return BadRequest(ApiError.Validation("Package assignment not found."));
 
             var a = row.assign;
             var p = row.pkg;
 
-            if (a.ClientId != clientId) return BadRequest("Package assignment belongs to a different client.");
-            if (p.AppointmentTypeId != appointmentTypeId) return BadRequest("Package does not match appointment type.");
+            if (a.ClientId != clientId) return BadRequest(ApiError.Validation("Package assignment belongs to a different client."));
+            if (p.AppointmentTypeId != appointmentTypeId) return BadRequest(ApiError.Validation("Package does not match appointment type."));
 
             if (p.ProviderLocked)
             {
                 if (string.IsNullOrWhiteSpace(p.ProviderId) || p.ProviderId != serviceProviderId)
-                    return BadRequest("This package is locked to a different provider.");
+                    return BadRequest(ApiError.Validation("This package is locked to a different provider."));
             }
 
             if (a.ExpiresAtUtc.HasValue && _clock.UtcNow > a.ExpiresAtUtc.Value)
-                return BadRequest("Package assignment is expired.");
+                return BadRequest(ApiError.Validation("Package assignment is expired."));
 
             if (requireRemainingUse && a.RemainingUses <= 0)
-                return BadRequest("No remaining uses on the selected package.");
+                return BadRequest(ApiError.Validation("No remaining uses on the selected package."));
 
             return null;
         }

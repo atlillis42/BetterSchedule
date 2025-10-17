@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BetterSchedule.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251009221333_Initial_CreateV4")]
-    partial class Initial_CreateV4
+    [Migration("20251017230604_Demo_CreateV3")]
+    partial class Demo_CreateV3
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -596,6 +596,18 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<int>("AppointmentTypeId")
                         .HasColumnType("int");
 
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("CancelSource")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CancelledByUserId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("ClientId")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -607,6 +619,9 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsLateCancel")
                         .HasColumnType("bit");
 
                     b.Property<string>("Notes")
@@ -758,12 +773,6 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("OrganizationId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<int>("AvailabilityEnforcement")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("AvailabilityPublic")
-                        .HasColumnType("bit");
-
                     b.Property<TimeSpan>("BusinessHoursEndLocal")
                         .HasColumnType("time");
 
@@ -771,12 +780,6 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("time");
 
                     b.Property<int>("CancelWindowHours")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ClientCancelPolicy")
-                        .HasColumnType("int");
-
-                    b.Property<int>("DefaultView")
                         .HasColumnType("int");
 
                     b.Property<bool>("EmailEnabled")
@@ -805,12 +808,6 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<int>("MinLeadMinutes")
                         .HasColumnType("int");
 
-                    b.Property<int>("ProviderCancelPolicy")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("ProvidersCanEditOwnAvailability")
-                        .HasColumnType("bit");
-
                     b.Property<int?>("ReminderHoursBefore")
                         .HasColumnType("int");
 
@@ -820,17 +817,8 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<bool>("SendBookingConfirmation")
                         .HasColumnType("bit");
 
-                    b.Property<int>("ShadingMode")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("ShowWeekends")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("SmsEnabled")
                         .HasColumnType("bit");
-
-                    b.Property<int>("StartOfWeek")
-                        .HasColumnType("int");
 
                     b.Property<string>("TimeZoneId")
                         .IsRequired()

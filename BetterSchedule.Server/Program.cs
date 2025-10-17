@@ -98,8 +98,6 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.UseDevDiagnostics();
-
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
 
@@ -109,35 +107,6 @@ if (app.Environment.IsDevelopment())
     var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
     var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
     await DbInitializer.SeedAsync(db, userManager, roleManager);
-
-    app.MapPost("/api/dev/login", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("admin@dev.local");
-        if (user is null) return Results.NotFound("Developer user not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as dev user with all roles");
-    });
-    app.MapPost("/api/dev/login/serviceprovider", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("provider@dev.local");
-        if (user is null) return Results.NotFound("Developer ServiceProvider not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Service Provider");
-    });
-    app.MapPost("/api/dev/login/client", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("client@dev.local");
-        if (user is null) return Results.NotFound("Developer Client not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Client");
-    });
-    app.MapPost("/api/dev/login/hybrid", async (UserManager<ApplicationUser> um, SignInManager<ApplicationUser> sm) =>
-    {
-        var user = await um.FindByEmailAsync("hybrid@dev.local");
-        if (user is null) return Results.NotFound("Developer hybrid user not found.");
-        await sm.SignInAsync(user, isPersistent: false);
-        return Results.Ok("Signed in as Hybrid (ServiceProvider + Client)");
-    });
 
     app.UseSwagger();
     app.UseSwaggerUI();

@@ -5,13 +5,15 @@ using System.Threading.Tasks;
 namespace BetterSchedule.Server.Services.Scheduling
 {
     /// <summary>
-    /// Contract for computing scheduling conflicts across reservations and blocked time,
-    /// and validating that reservations fall within provider availability windows.
+    /// Contract for computing scheduling conflicts across reservations and blocked time.
+    /// Detects overlaps for provider schedules and (optionally) resource schedules,
+    /// and checks provider/resource blocked-time collisions.
     /// </summary>
     public interface ISchedulingConflictService
     {
         /// <summary>
         /// Checks conflicts for a new reservation proposal.
+        /// Detects reservation overlaps (provider and/or resource) and provider/resource blocked-time conflicts.
         /// </summary>
         /// <param name="organizationId">Organization scope.</param>
         /// <param name="serviceProviderId">Target provider.</param>
@@ -19,7 +21,6 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// <param name="end">End of the reservation (UTC).</param>
         /// <param name="resourceId">Optional resource to be reserved.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Conflict flags for the proposed reservation.</returns>
         Task<ReservationConflictResult> CheckReservationCreateAsync(
             string organizationId,
             string serviceProviderId,
@@ -30,6 +31,7 @@ namespace BetterSchedule.Server.Services.Scheduling
 
         /// <summary>
         /// Checks conflicts when updating an existing reservation (excludes that row from overlap checks).
+        /// Detects reservation overlaps (provider and/or resource) and provider/resource blocked-time conflicts.
         /// </summary>
         /// <param name="reservationId">Existing reservation id to ignore for self-overlap.</param>
         /// <param name="organizationId">Organization scope.</param>
@@ -38,7 +40,6 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// <param name="end">Effective end (UTC).</param>
         /// <param name="resourceId">Effective resource after update.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Conflict flags for the proposed change.</returns>
         Task<ReservationConflictResult> CheckReservationUpdateAsync(
             int reservationId,
             string organizationId,
@@ -50,6 +51,7 @@ namespace BetterSchedule.Server.Services.Scheduling
 
         /// <summary>
         /// Checks conflicts for a new blocked-time window.
+        /// Detects coverage of existing reservations and collisions with other blocks for the same provider/resource.
         /// </summary>
         /// <param name="organizationId">Organization scope.</param>
         /// <param name="createdByUserId">The creating user id (provider id when PTO/self-block).</param>
@@ -57,7 +59,6 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// <param name="start">Start of the block (UTC).</param>
         /// <param name="end">End of the block (UTC).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Conflict flags for the proposed block.</returns>
         Task<BlockedTimeConflictResult> CheckBlockedTimeCreateAsync(
             string organizationId,
             string createdByUserId,
@@ -68,6 +69,7 @@ namespace BetterSchedule.Server.Services.Scheduling
 
         /// <summary>
         /// Checks conflicts when updating an existing blocked-time window (excludes that row from overlap checks).
+        /// Detects coverage of existing reservations and collisions with other blocks for the same provider/resource.
         /// </summary>
         /// <param name="blockedTimeId">Existing block id to ignore for self-overlap.</param>
         /// <param name="organizationId">Organization scope.</param>
@@ -76,7 +78,6 @@ namespace BetterSchedule.Server.Services.Scheduling
         /// <param name="start">Effective start (UTC).</param>
         /// <param name="end">Effective end (UTC).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>Conflict flags for the proposed change.</returns>
         Task<BlockedTimeConflictResult> CheckBlockedTimeUpdateAsync(
             int blockedTimeId,
             string organizationId,
@@ -96,12 +97,10 @@ namespace BetterSchedule.Server.Services.Scheduling
     /// </param>
     /// <param name="ProviderBlocked">True when a provider-created block overlaps the window.</param>
     /// <param name="ResourceBlocked">True when a resource-level block overlaps the window.</param>
-    /// <param name="OutsideProviderAvailability">True when the window is not fully covered by provider availability.</param>
     public readonly record struct ReservationConflictResult(
         bool ReservationOverlap,
         bool ProviderBlocked,
-        bool ResourceBlocked,
-        bool OutsideProviderAvailability
+        bool ResourceBlocked
     );
 
     /// <summary>

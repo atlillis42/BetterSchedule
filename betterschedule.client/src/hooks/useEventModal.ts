@@ -7,8 +7,6 @@ import { extractEventFields } from "@/utilities/formFields/extractEventFields";
 import { validateReservation, validateBlockedTime } from "@/utilities/formFields";
 
 import {
-    createReservation,
-    updateReservation,
     deleteReservation,
     type ReservationDto,
 } from "@/api/reservation-api";
@@ -19,11 +17,15 @@ import {
 } from "@/api/blockedtime-api";
 
 import { addParticipant } from "@/api/reservation-participants-api";
-import { preflightAvailability, type AvailabilityMap } from "@/services/availabilityService";
-import { isOutsideAvailabilityError, isCancelWindowError, isOverlapError } from "@/domain/calendar/errors";
+import { isOverlapError } from "@/domain/calendar/errors";
 import type { OrgSettingsDto } from "@/api/org-settings-api";
+import { saveReservationWithConfirm } from "@/services/warnConfirm";
 
-/** Client-side representation of a participant to be attached after create. */
+/**
+ * Participant to be attached after a reservation is created.
+ *
+ * @public
+ */
 export type PendingParticipantAdd = {
     role: "Client" | "ServiceProvider" | "Guest";
     userId?: string;
@@ -31,6 +33,13 @@ export type PendingParticipantAdd = {
     guestPhone?: string;
 };
 
+/**
+ * Attempts to resolve a reservation id from various shapes used in modal state.
+ *
+ * @param values - Arbitrary modal values object
+ * @returns Numeric id if present; otherwise `undefined`
+ * @internal
+ */
 function resolveReservationId(values: any): number | undefined {
     if (typeof values?.reservationId === "number") return values.reservationId;
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
@@ -43,6 +52,27 @@ function resolveReservationId(values: any): number | undefined {
     return undefined;
 }
 
+/**
+ * Event editor state and actions for reservations and blocked times.
+ *
+ * Responsibilities:
+ * - Open/edit/create flows for reservations and blocked time.
+ * - Validation and server persistence.
+ * - Staff warning/override flow via {@link saveReservationWithConfirm}.
+ *
+ * Security:
+ * - Visibility/permissions are enforced by the caller (via flags) and revalidated by the API.
+ *
+ * @param params.canManageReservations - Staff flag for reservation create/update/delete
+ * @param params.canManageBlocks - Staff flag for blocked time create/update/delete
+ * @param params.isProvider - Whether current user is a provider
+ * @param params.isManager - Whether current user is a manager
+ * @param params.userId - Current user id (if authenticated)
+ * @param params.org - Organization settings (lead-time & override behavior consumed)
+ * @param params.refreshEvents - Reloads calendar data on success
+ * @returns Modal editing API used by the calendar shell
+ * @public
+ */
 export function useEventModal(params: {
     canManageReservations: boolean;
     canManageBlocks: boolean;
@@ -50,8 +80,6 @@ export function useEventModal(params: {
     isManager: boolean;
     userId?: string | null;
     org: OrgSettingsDto | null;
-    overlayProviderId?: string;
-    availabilityByProvider: AvailabilityMap;
     refreshEvents: () => Promise<void>;
 }) {
     const {
@@ -61,8 +89,6 @@ export function useEventModal(params: {
         isManager,
         userId,
         org,
-        overlayProviderId,
-        availabilityByProvider,
         refreshEvents,
     } = params;
 
@@ -74,13 +100,24 @@ export function useEventModal(params: {
 
     const readOnly =
         (type === "reservation" && !canManageReservations) ||
-        (type === "blockedTime" && values?.createdByUserId && values.createdByUserId !== userId && !isManager);
+        (type === "blockedTime" &&
+            values?.createdByUserId &&
+            values.createdByUserId !== userId &&
+            !isManager);
 
     const canDelete = !readOnly && mode === "edit";
 
-    function onTimeRangeSelected(args: { start: DayPilot.Date; end: DayPilot.Date; resource?: number | string }) {
-        if (!canManageReservations) return;
-
+    /**
+     * Initializes a new reservation at the selected range.
+     *
+     * @param args - DayPilot selection payload
+     */
+    function onTimeRangeSelected(args: {
+        start: DayPilot.Date;
+        end: DayPilot.Date;
+        resource?: number | string;
+    }) {
+        // Allow clients to select; saving is permission-gated in submit().
         setType("reservation");
         setMode("create");
         setValues({
@@ -89,7 +126,8 @@ export function useEventModal(params: {
             endDate: args.end.toString("yyyy-MM-dd"),
             endTime: args.end.toString("HH:mm"),
             resourceId: args.resource ? Number(args.resource) : undefined,
-            serviceProviderId: isProvider && !isManager ? userId : "",
+            serviceProviderId: isProvider && !isManager ? (userId ?? "") : "",
+            clientId: "", // set during form editing; kept for typing consistency
             type: "reservation",
             participants: [],
             pendingParticipants: [] as PendingParticipantAdd[],
@@ -97,29 +135,48 @@ export function useEventModal(params: {
             reservationId: undefined,
             status: undefined,
             originalServiceProviderId: undefined,
-            originalResourceId: undefined,     
-            originalStartDate: undefined,      
-            originalStartTime: undefined,      
-            originalEndDate: undefined,        
-            originalEndTime: undefined,        
+            originalResourceId: undefined,
+            originalStartDate: undefined,
+            originalStartTime: undefined,
+            originalEndDate: undefined,
+            originalEndTime: undefined,
         });
         setOpen(true);
-        setFormError(null);
+
+        // Friendly banner for clients
+        if (!canManageReservations) {
+            setFormError("Client self-booking will be implemented in the future.");
+        } else {
+            setFormError(null);
+        }
     }
 
+    /**
+     * Opens an existing calendar item for edit (reservation or blocked time).
+     *
+     * @param args - DayPilot event click payload
+     */
     function onEventClick(args: any) {
         const t = args.e?.type || args.e?.data?.type || "reservation";
-        const createdByUserId = args.e?.createdByUserId || args.e?.data?.createdByUserId;
+        const createdByUserId =
+            args.e?.createdByUserId || args.e?.data?.createdByUserId;
 
-        const isOwnBlock = t === "blockedTime" && (!createdByUserId || createdByUserId === userId);
-        const canEdit =
-            (t === "reservation" && canManageReservations) ||
-            (t === "blockedTime" && (isManager || isOwnBlock));
+        const isOwnBlock =
+            t === "blockedTime" &&
+            (!createdByUserId || createdByUserId === userId);
 
         const res = args.e?.data?.reservation;
 
-        if (t === "reservation" && isProvider && !isManager && res?.serviceProviderId && res.serviceProviderId !== userId) {
-            toast.info("You’re viewing another provider’s event. Switch provider or ask a manager to edit.");
+        if (
+            t === "reservation" &&
+            isProvider &&
+            !isManager &&
+            res?.serviceProviderId &&
+            res.serviceProviderId !== userId
+        ) {
+            toast.info(
+                "You’re viewing another provider’s event. Switch provider or ask a manager to edit."
+            );
         }
 
         const parsedId =
@@ -137,7 +194,8 @@ export function useEventModal(params: {
 
         const base = extractEventFields(args.e);
 
-        setMode(canEdit ? "edit" : "create");
+        // Always open in edit; `readOnly` disables controls for clients.
+        setMode("edit");
         setType(t);
         setValues({
             ...base,
@@ -153,19 +211,38 @@ export function useEventModal(params: {
             notes: res?.notes || "",
             resourceId: res?.resourceId ?? undefined,
 
-            originalResourceId: res?.resourceId ?? undefined,     
-            originalStartDate: base.startDate,                     
-            originalStartTime: base.startTime,                    
-            originalEndDate: base.endDate,                         
-            originalEndTime: base.endTime,                         
+            originalResourceId: res?.resourceId ?? undefined,
+            originalStartDate: base.startDate,
+            originalStartTime: base.startTime,
+            originalEndDate: base.endDate,
+            originalEndTime: base.endTime,
 
             participants: res?.participants || [],
-            pendingParticipants: Array.isArray(res?.pendingParticipants) ? res.pendingParticipants : [],
+            pendingParticipants: Array.isArray(res?.pendingParticipants)
+                ? res.pendingParticipants
+                : [],
         });
         setOpen(true);
         setFormError(null);
+
+        // Optional FYI for non-editable cases.
+        if (
+            !(
+                (t === "reservation" && canManageReservations) ||
+                (t === "blockedTime" && (isManager || isOwnBlock))
+            )
+        ) {
+            // toast.info("You can view details, but you don't have permission to edit.");
+        }
     }
 
+    /**
+     * Persists the current modal values.
+     * - For reservations, performs preflight checks and conditional confirmation
+     *   via {@link saveReservationWithConfirm}, then commits.
+     * - For blocked time, calls the standard create/update endpoints (server
+     *   will hard-fail on overlaps; UI surfaces a banner and toast).
+     */
     async function submit() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to save reservations.");
@@ -176,7 +253,8 @@ export function useEventModal(params: {
             return;
         }
 
-        const validate = type === "reservation" ? validateReservation : validateBlockedTime;
+        const validate =
+            type === "reservation" ? validateReservation : validateBlockedTime;
         const validationError = validate(values);
         if (validationError) {
             setFormError(validationError);
@@ -186,49 +264,17 @@ export function useEventModal(params: {
         const start = combineDateTime(values.startDate, values.startTime).iso as string;
         const end = combineDateTime(values.endDate, values.endTime).iso as string;
 
-        const startDp = new DayPilot.Date(start);
-        const endDp = new DayPilot.Date(end);
-
-        const providerForCheck =
-            (isProvider && !isManager ? userId ?? undefined : undefined) ??
-            (values.serviceProviderId || undefined) ??
-            overlayProviderId;
-
-        const resourceOnlyEditForManager =
-            mode === "edit" &&
-            type === "reservation" &&
-            isManager &&
-            values.startDate === values.originalStartDate &&
-            values.startTime === values.originalStartTime &&
-            values.endDate === values.originalEndDate &&
-            values.endTime === values.originalEndTime &&
-            (values.serviceProviderId || "") === (values.originalServiceProviderId || "") &&
-            String(values.resourceId ?? "") !== String(values.originalResourceId ?? "");
-
-        // Skip availability preflight for manager resource-only edits
-        if (
-            !resourceOnlyEditForManager &&
-            org?.shadingMode === "ProviderAvailability" &&
-            providerForCheck &&
-            providerForCheck === overlayProviderId
-        ) {
-            const { allowed } = preflightAvailability(availabilityByProvider, providerForCheck, startDp, endDp);
-            if (!allowed) {
-                const msg = "Selected time is outside provider availability.";
-                if (isProvider && !isManager) {
-                    setFormError(msg);
-                    toast.error(msg);
-                    return;
-                }
-                toast.warning(msg);
-            }
-        }
-
         try {
             if (mode === "edit") {
                 if (type === "reservation") {
+                    // --- Reservation update with preflight + confirm + commit ---
+                    const id = resolveReservationId(values)!;
+
+                    // Include clientId and appointmentTypeId for typing (intersection requires them).
                     const payload = {
-                        notes: values.notes ?? undefined,
+                        clientId: String(values.clientId || ""),
+                        serviceProviderId: String(values.serviceProviderId || ""),
+                        appointmentTypeId: Number(values.appointmentTypeId),
                         startTime: start,
                         endTime: end,
                         resourceId:
@@ -237,43 +283,22 @@ export function useEventModal(params: {
                                 : values.resourceId
                                     ? Number(values.resourceId)
                                     : undefined,
-                        serviceProviderId: values.serviceProviderId || undefined,
-                        appointmentTypeId: values.appointmentTypeId ? Number(values.appointmentTypeId) : undefined,
+                        notes: values.notes ?? undefined,
                     };
 
-                    try {
-                        await updateReservation(resolveReservationId(values)!, payload);
-                    } catch (err: any) {
-                        if (isOutsideAvailabilityError(err)) {
-                            const ok = window.confirm("This is outside provider availability. Proceed anyway?");
-                            if (!ok) throw err;
-                            await updateReservation(resolveReservationId(values)!, payload, { overrideAvailability: true });
-                        } else if (isCancelWindowError(err)) {
-                            // allow manager or assigned provider override
-                            const eventProviderId =
-                                (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
-                                (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
-                                (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
-
-                            const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
-
-                            if (isManager) {
-                                const ok = window.confirm("This update is within the organization’s change window. Override and proceed?");
-                                if (!ok) throw err;
-                                await updateReservation(resolveReservationId(values)!, payload, { managerOverride: true });
-                            } else if (isProvider && isAssignedProvider) {
-                                const ok = window.confirm("This update is within the change window. Proceed as the assigned provider?");
-                                if (!ok) throw err;
-                                await updateReservation(resolveReservationId(values)!, payload, { providerOverride: true });
-                            } else {
-                                throw err;
-                            }
-                        } else {
-                            throw err;
-                        }
-                    }
+                    await saveReservationWithConfirm({
+                        org: {
+                            minLeadMinutes: org?.minLeadMinutes ?? 0,
+                            requireConfirmOnOverrides: org?.requireConfirmOnOverrides ?? false,
+                        },
+                        mode: "update",
+                        id,
+                        payload,
+                        onSuccess: (m) => toast.success(m),
+                        onWarn: (m) => toast.info(m),
+                    });
                 } else {
-
+                    // --- Blocked time update (hard-blocked by server on conflicts) ---
                     const clearedResourceByManager =
                         isManager &&
                         values?.originalResourceId != null &&
@@ -284,7 +309,7 @@ export function useEventModal(params: {
                         startTime: start,
                         endTime: end,
                         ...(isManager
-                            ? (clearedResourceByManager
+                            ? clearedResourceByManager
                                 ? { clearResource: true }
                                 : {
                                     resourceId:
@@ -293,58 +318,44 @@ export function useEventModal(params: {
                                             : values.resourceId
                                                 ? Number(values.resourceId)
                                                 : undefined,
-                                })
+                                }
                             : {}),
                         backColor: values.backColor ?? undefined,
                     });
                 }
             } else {
                 if (type === "reservation") {
-                    let created: ReservationDto | null = null;
+                    // --- Reservation create with preflight + confirm + commit ---
+                    const payload = {
+                        clientId: String(values.clientId || ""),
+                        serviceProviderId: String(values.serviceProviderId || ""),
+                        appointmentTypeId: Number(values.appointmentTypeId),
+                        startTime: start,
+                        endTime: end,
+                        notes: String(values.notes ?? ""),
+                        resourceId:
+                            typeof values.resourceId === "number"
+                                ? values.resourceId
+                                : values.resourceId
+                                    ? Number(values.resourceId)
+                                    : undefined,
+                    };
 
-                    try {
-                        created = await createReservation({
-                            clientId: values.clientId,
-                            serviceProviderId: values.serviceProviderId,
-                            appointmentTypeId: Number(values.appointmentTypeId),
-                            startTime: start,
-                            endTime: end,
-                            notes: values.notes ?? "",
-                            resourceId:
-                                typeof values.resourceId === "number"
-                                    ? values.resourceId
-                                    : values.resourceId
-                                        ? Number(values.resourceId)
-                                        : undefined,
-                        });
-                    } catch (err: any) {
-                        if (isOutsideAvailabilityError(err)) {
-                            const ok = window.confirm("This is outside provider availability. Proceed anyway?");
-                            if (!ok) throw err;
-                            created = await createReservation(
-                                {
-                                    clientId: values.clientId,
-                                    serviceProviderId: values.serviceProviderId,
-                                    appointmentTypeId: Number(values.appointmentTypeId),
-                                    startTime: start,
-                                    endTime: end,
-                                    notes: values.notes ?? "",
-                                    resourceId:
-                                        typeof values.resourceId === "number"
-                                            ? values.resourceId
-                                            : values.resourceId
-                                                ? Number(values.resourceId)
-                                                : undefined,
-                                },
-                                { overrideAvailability: true }
-                            );
-                        } else {
-                            throw err;
-                        }
-                    }
+                    const created = (await saveReservationWithConfirm({
+                        org: {
+                            minLeadMinutes: org?.minLeadMinutes ?? 0,
+                            requireConfirmOnOverrides: org?.requireConfirmOnOverrides ?? false,
+                        },
+                        mode: "create",
+                        payload,
+                        onSuccess: (m) => toast.success(m),
+                        onWarn: (m) => toast.info(m),
+                    })) as ReservationDto | void;
 
-                    // Attach pending participants (if any)
-                    const pending: PendingParticipantAdd[] = Array.isArray(values.pendingParticipants)
+                    // Attach pending participants (best-effort), if any.
+                    const pending: PendingParticipantAdd[] = Array.isArray(
+                        values.pendingParticipants
+                    )
                         ? values.pendingParticipants
                         : [];
 
@@ -353,18 +364,24 @@ export function useEventModal(params: {
                         const primaryProvider = values.serviceProviderId as string | undefined;
 
                         const tasks = pending.map((p) => {
-                            if (p.role === "Client" && p.userId && p.userId === primaryClient) return Promise.resolve();
-                            if (p.role === "ServiceProvider" && p.userId && p.userId === primaryProvider) return Promise.resolve();
+                            if (p.role === "Client" && p.userId && p.userId === primaryClient)
+                                return Promise.resolve();
+                            if (
+                                p.role === "ServiceProvider" &&
+                                p.userId &&
+                                p.userId === primaryProvider
+                            )
+                                return Promise.resolve();
 
                             if (p.role === "Guest") {
-                                return addParticipant(created!.id, {
+                                return addParticipant(created.id, {
                                     role: "Guest",
                                     guestName: (p.guestName || "").trim() || undefined,
                                     guestPhone: (p.guestPhone || "").trim() || undefined,
                                 });
                             }
                             if (p.userId) {
-                                return addParticipant(created!.id, { role: p.role, userId: p.userId });
+                                return addParticipant(created.id, { role: p.role, userId: p.userId });
                             }
                             return Promise.resolve();
                         });
@@ -372,23 +389,24 @@ export function useEventModal(params: {
                         try {
                             await Promise.all(tasks);
                         } catch {
-                            toast.warning("Reservation saved. Some participants could not be added.");
+                            toast.warning(
+                                "Reservation saved. Some participants could not be added."
+                            );
                         }
                     }
                 } else {
+                    // --- Blocked time create (hard-blocked by server on conflicts) ---
                     await createBlockedTime({
                         reason: values.reason ?? "",
                         startTime: start,
                         endTime: end,
-                        // Manager may supply providerId/resourceId according to your modal;
-                        // Providers create self-blocks (server infers createdByUserId).                        
-                        providerId: isManager ? (values.providerId || undefined) : undefined,
+                        providerId: isManager ? values.providerId || undefined : undefined,
                         resourceId: isManager
-                            ? (typeof values.resourceId === "number"
+                            ? typeof values.resourceId === "number"
                                 ? values.resourceId
                                 : values.resourceId
                                     ? Number(values.resourceId)
-                                    : undefined)
+                                    : undefined
                             : undefined,
                         backColor: values.backColor ?? undefined,
                     });
@@ -398,8 +416,10 @@ export function useEventModal(params: {
             setOpen(false);
             await refreshEvents();
         } catch (err: any) {
+            // Server-side overlap/conflict codes: surface as inline error + toast
             if (isOverlapError(err)) {
-                const message = err?.response?.data?.message ?? "Time overlaps with another item.";
+                const message =
+                    err?.response?.data?.message ?? "Time overlaps with another item.";
                 setFormError(message);
                 toast.error(message);
                 return;
@@ -411,13 +431,19 @@ export function useEventModal(params: {
                 const message =
                     (err instanceof Error && err.message) ||
                     (err?.response?.data?.message as string | undefined) ||
-                    (typeof err?.response?.data === "string" ? err.response.data : undefined);
+                    (typeof err?.response?.data === "string"
+                        ? err.response.data
+                        : undefined);
                 if (message) setFormError(message);
                 else toast.error("Something went wrong. Please try again.");
             }
         }
     }
 
+    /**
+     * Deletes the currently edited item (reservation or blocked time).
+     * Permission gates are re-checked server-side.
+     */
     async function remove() {
         if (type === "reservation" && !canManageReservations) {
             toast.info("You don’t have permission to delete reservations.");
@@ -428,88 +454,25 @@ export function useEventModal(params: {
             return;
         }
 
-        const computeInsideWindowFallback = (): boolean => {
-            try {
-                const startIso = combineDateTime(values.startDate, values.startTime).iso as string;
-                const start = new Date(startIso).getTime();
-                const now = Date.now();
-                const hours = org?.cancelWindowHours ?? 24;
-                return start - now < hours * 60 * 60 * 1000;
-            } catch {
-                return false;
-            }
-        };
-
         try {
             if (type === "reservation") {
                 const id = resolveReservationId(values)!;
-                await deleteReservation(id); // first attempt
+                await deleteReservation(id);
             } else {
                 await deleteBlockedTime(values.id);
             }
             setOpen(false);
             await refreshEvents();
         } catch (err: any) {
-            const message = (err instanceof Error && err.message) || "";
-            const status =
-                (err as any)?.status ??
-                (err as any)?.response?.status as number | undefined;
-
-            const looksLikeInsideWindowMsg =
-                /within\s+\d+\s*hours/i.test(message) ||
-                /cannot be (deleted|modified) within/i.test(message);
-
-            const insideWindow = looksLikeInsideWindowMsg || computeInsideWindowFallback();
-
-            if (type === "reservation" && insideWindow && status === 400) {
-                const windowHours = org?.cancelWindowHours ?? 24;
-
-                const eventProviderId =
-                    (values?.serviceProviderId ? String(values.serviceProviderId) : undefined) ??
-                    (values?.originalServiceProviderId ? String(values.originalServiceProviderId) : undefined) ??
-                    (values?.reservation?.serviceProviderId ? String(values.reservation.serviceProviderId) : undefined);
-
-                const isAssignedProvider = !!userId && !!eventProviderId && String(userId) === eventProviderId;
-
-                const canManagerOverride = !!isManager;
-                const canProviderOverride = !!isProvider && isAssignedProvider;
-
-                if (canManagerOverride || canProviderOverride) {
-                    const ok = window.confirm(
-                        `This reservation is within the ${windowHours}h change window. ` +
-                        (canManagerOverride
-                            ? "Proceed with a manager override to delete?"
-                            : "Proceed as the assigned provider to delete?")
-                    );
-                    if (!ok) return;
-
-                    try {
-                        const id = resolveReservationId(values)!;
-                        await deleteReservation(id, {
-                            managerOverride: canManagerOverride,
-                            providerOverride: !canManagerOverride && canProviderOverride,
-                        });
-                        setOpen(false);
-                        await refreshEvents();
-                        return;
-                    } catch (err2: any) {
-                        const msg2 =
-                            (err2 instanceof Error && err2.message) ||
-                            (err2?.response?.data?.message as string | undefined) ||
-                            "We couldn't delete this reservation.";
-                        toast.error(msg2);
-                        setFormError(msg2);
-                        return;
-                    }
-                }
-            }
-
-            const fallback =
-                message ||
-                (typeof (err as any)?.response?.data === "string" ? (err as any).response.data : undefined) ||
-                "Failed to delete reservation.";
-            toast.error(fallback);
-            setFormError(fallback);
+            const message =
+                (err instanceof Error && err.message) ||
+                (typeof err?.response?.data === "string"
+                    ? err.response.data
+                    : undefined) ||
+                (err?.response?.data?.message as string | undefined) ||
+                "Failed to delete.";
+            toast.error(message);
+            setFormError(message);
         }
     }
 

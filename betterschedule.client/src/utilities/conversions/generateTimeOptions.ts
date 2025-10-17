@@ -1,10 +1,21 @@
-export function generateTimeOptions() {
-    const times = [];
-    for (let h = 0; h < 24; h++) {
-        for (let m = 0; m < 60; m += 15) {
-            const hour = h.toString().padStart(2, "0");
-            const min = m.toString().padStart(2, "0");
-            times.push(`${hour}:${min}`);
+/**
+ * Generates 24-hour time strings at fixed minute steps, e.g. "09:00", "09:15", ...
+ * @param stepMinutes - Step size in minutes (default 15). Must evenly divide 60.
+ * @returns Array of "HH:MM" strings sorted from "00:00" to "23:45".
+ */
+export function generateTimeOptions(stepMinutes: number = 15): string[] {
+    const times: string[] = [];
+    const minutesPerHour = 60;
+
+    if (minutesPerHour % stepMinutes !== 0) {
+        throw new Error(`stepMinutes must evenly divide 60; received ${stepMinutes}`);
+    }
+
+    for (let hour = 0; hour < 24; hour++) {
+        for (let minute = 0; minute < minutesPerHour; minute += stepMinutes) {
+            const hh = hour.toString().padStart(2, "0");
+            const mm = minute.toString().padStart(2, "0");
+            times.push(`${hh}:${mm}`);
         }
     }
     return times;

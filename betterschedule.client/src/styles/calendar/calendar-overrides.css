@@ -10,12 +10,12 @@
 }
 
 .res-status-noshow {
-    --bs-status: #f59e0b;
+    --bs-status: #ef4444;
     --bs-status-rgb: 245,158,11;
 }
 /* Canceled → red */
 .res-status-canceled {
-    --bs-status: #ef4444;
+    --bs-status: #f59e0b;
     --bs-status-rgb: 239,68,68;
 }
 

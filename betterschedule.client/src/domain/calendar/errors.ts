@@ -31,55 +31,44 @@ export function throwNormalized(err: unknown, fallback = "Unexpected error"): ne
 }
 
 /**
- * Outside provider availability violations.
- * Uses message heuristics since the server does not emit a dedicated code yet.
- */
-export function isOutsideAvailabilityError(errOrMsg: unknown): boolean {
-    const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
-    if (code === "OUTSIDE_AVAILABILITY" || code === "OUTSIDE_PROVIDER_AVAILABILITY") return true;
-    const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
-    if (!msg) return false;
-    const lower = msg.toLowerCase();
-    return lower.includes("outside provider availability") || lower.includes("outside availability");
-}
-
-/**
  * Inside cancel/change window enforcement.
- * Uses message heuristics since the server does not emit a dedicated code yet.
+ * Matches server code and common text.
  */
 export function isCancelWindowError(errOrMsg: unknown): boolean {
     const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
-    if (code === "INSIDE_CANCEL_WINDOW" || code === "CHANGE_WINDOW") return true;
+    if (code === "INSIDE_CANCEL_WINDOW") return true;
     const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
     if (!msg) return false;
     const lower = msg.toLowerCase();
-    return lower.includes("cannot be modified within") || lower.includes("change window") || lower.includes("cancel window");
+    return (
+        lower.includes("cannot cancel after the reservation start time") ||
+        lower.includes("inside the organization’s change window") ||
+        lower.includes("inside the organization's change window") ||
+        lower.includes("change window") ||
+        lower.includes("cancel window")
+    );
 }
 
 /**
  * Overlap/conflict detection for reservations/blocks.
- * Matches your server codes and common text.
+ * Matches current server codes and common text.
  */
 export function isOverlapError(errOrMsg: unknown): boolean {
     const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
-    if (code === "RESERVATION_CONFLICT" || code === "BLOCK_OVERLAP" || code === "RESERVATION_OVERLAP") return true;
+    if (code === "RESERVATION_CONFLICT" || code === "BLOCK_OVERLAP") return true;
     const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
     if (!msg) return false;
     const lower = msg.toLowerCase();
-    return lower.includes("overlap") || lower.includes("conflict");
+    return lower.includes("overlap") || lower.includes("conflict") || lower.includes("blocked");
 }
 
 /**
- * Generic "unavailable" slots/resources.
+ * Generic “unavailable” slots/resources.
+ * Back-compat: treat reservation conflicts as unavailable for UI purposes.
  */
 export function isUnavailable(errOrMsg: unknown): boolean {
     const code = typeof errOrMsg === "string" ? undefined : getApiCode(errOrMsg);
-    if (code === "UNAVAILABLE") return true;
+    if (code === "RESERVATION_CONFLICT" || code === "UNAVAILABLE") return true;
     const msg = typeof errOrMsg === "string" ? errOrMsg : getApiMessage(errOrMsg);
     return !!msg?.toLowerCase().includes("unavailable");
 }
-
-/* Back-compat aliases if older imports exist */
-export const isAvailabilityViolation = isOutsideAvailabilityError;
-export const isInsideCancelWindow = isCancelWindowError;
-export const isConflict = isOverlapError;

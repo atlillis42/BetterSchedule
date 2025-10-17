@@ -35,8 +35,9 @@ namespace BetterSchedule.Server.Models.Scheduling
         public int AppointmentTypeId { get; set; }    // FK to AppointmentType
 
         /// <summary>Navigation to the booked <see cref="AppointmentType"/>.</summary>
-        public AppointmentType AppointmentType { get; set; } = default!;
+        public AppointmentType AppointmentType { get; set; } = default!
 
+;
         /// <summary>Absolute start timestamp (UTC-capable) of the reservation.</summary>
         [Required]
         public DateTimeOffset StartTime { get; set; }
@@ -76,6 +77,25 @@ namespace BetterSchedule.Server.Models.Scheduling
         /// <summary>All participants for the booking (e.g., client + guests, additional providers).</summary>
         public List<ReservationParticipant> Participants { get; set; } = new();
 
+        // --------------------------
+        // Cancellation metadata
+        // --------------------------
+
+        /// <summary>UTC timestamp when the reservation was canceled (if canceled).</summary>
+        public DateTimeOffset? CancelledAt { get; set; }
+
+        /// <summary>User ID who performed the cancellation, if applicable.</summary>
+        public string? CancelledByUserId { get; set; }
+
+        /// <summary>Free-form reason for cancelation (e.g., "ClientRequest", "StaffAction", "Weather").</summary>
+        public string? CancelReason { get; set; }
+
+        /// <summary>True if the cancelation occurred within the org's late-cancel window (with optional grace applied).</summary>
+        public bool IsLateCancel { get; set; } = false;
+
+        /// <summary>Source of the cancel event (client portal, staff, or system).</summary>
+        public CancellationSource CancelSource { get; set; } = CancellationSource.Unknown;
+
         // TODO: public Guid? RecurrenceId { get; set; } // Uncomment for future recurring booking support
     }
 
@@ -88,10 +108,19 @@ namespace BetterSchedule.Server.Models.Scheduling
         /// <summary>Completed as planned.</summary>
         Completed,
 
-        /// <summary>Canceled before start.</summary>
+        /// <summary>Canceled (may be late or on-time; see IsLateCancel and metadata).</summary>
         Canceled,
 
         /// <summary>Client did not attend.</summary>
         NoShow
+    }
+
+    /// <summary>Where a cancellation originated.</summary>
+    public enum CancellationSource
+    {
+        Unknown = 0,
+        ClientPortal = 1,
+        Staff = 2,
+        System = 3
     }
 }

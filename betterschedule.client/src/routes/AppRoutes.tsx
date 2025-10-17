@@ -17,8 +17,8 @@ import Calendar from "@calendar/Calendar";
 import CalendarResourcesPage from "@/pages/CalendarResources";
 
 // Admin pages (Manager-only)
-import AppointmentTypeManager from "@/components/admin/AppointmentTypeManager";
-import ProviderAvailabilityManager from "@/components/admin/ProviderAvailabilityManager";
+import AppointmentTypeManager from "@/components/manager/AppointmentType/AppointmentTypeManager";
+import ProviderAvailabilityManager from "@/components/manager/Users/ProviderAvailabilityManager";
 import OrgSettingsPage from "@/pages/OrgSettings";
 import UserRolesPage from "@/pages/UserRoles";
 
@@ -84,7 +84,7 @@ export default function AppRoutes() {
 
             {/* Org-scoped: Admin (Manager-only) */}
             <Route
-                path="/admin/provider-availability"
+                path="/manager/provider-availability"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -98,7 +98,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/appointment-types"
+                path="/manager/appointment-types"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -112,7 +112,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/resources"
+                path="/manager/resources"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -126,7 +126,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/settings"
+                path="/manager/settings"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
@@ -140,7 +140,7 @@ export default function AppRoutes() {
                 }
             />
             <Route
-                path="/admin/users"
+                path="/manager/users"
                 element={
                     <RequireAuth>
                         <RequireOrganization>
