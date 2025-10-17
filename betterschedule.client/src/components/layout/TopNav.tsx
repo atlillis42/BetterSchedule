@@ -39,8 +39,8 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
         organizationId: "demo-org-1",
         organizationLabel: "First Demo Holistic Wellness",
         role: "Manager",
-        name: "Austin Lillis",
-        email: "austin.manager@fdb.local",
+        name: "Demo User",
+        email: "demo.user@local.com",
         password: "Password123!",
     },
     {
@@ -87,7 +87,7 @@ const DEMO_ACCOUNTS: DemoAccount[] = [
     },
 ];
 
-/** Title-case a single token like "austin" -> "Austin" */
+/** Title-case a single token like "demo" -> "Demo" */
 const toTitle = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : "");
 
 /** Resolve a friendly full name when possible (demo mapping), otherwise return the raw string. */

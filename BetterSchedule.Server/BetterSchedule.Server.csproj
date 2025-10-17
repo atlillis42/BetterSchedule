@@ -10,6 +10,7 @@
     <SpaRoot>..\betterschedule.client</SpaRoot>
     <SpaProxyLaunchCommand>npm run dev</SpaProxyLaunchCommand>
     <SpaProxyServerUrl>https://localhost:57890</SpaProxyServerUrl>
+    <UserSecretsId>b9b4eeca-6bef-4898-828b-2eefff7b2ec1</UserSecretsId>
   </PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)' == 'Debug'">

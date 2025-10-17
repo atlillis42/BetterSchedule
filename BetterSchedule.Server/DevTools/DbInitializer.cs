@@ -105,10 +105,10 @@ namespace BetterSchedule.Server.DevTools
             var bob = await EnsureDemoUserAsync("bob", "bob@example.com", "Bob Brown", "ServiceProvider", org1.Id);
             var carla = await EnsureDemoUserAsync("carla", "carla@example.com", "Carla Chen", "Client", org1.Id);
 
-            // Org1 new provider/manager: Austin Lillis (Manager + ServiceProvider)
-            var austin = await EnsureDemoUserAsync("austin", "austin.manager@fdb.local", "Austin Lillis", "Manager", org1.Id);
-            if (!await userManager.IsInRoleAsync(austin, "ServiceProvider"))
-                await userManager.AddToRoleAsync(austin, "ServiceProvider");
+            // Org1 new provider/manager: Demo User (Manager + ServiceProvider)
+            var demo = await EnsureDemoUserAsync("demo", "demo.user@local.com", "Demo User", "Manager", org1.Id);
+            if (!await userManager.IsInRoleAsync(demo, "ServiceProvider"))
+                await userManager.AddToRoleAsync(demo, "ServiceProvider");
 
             // Org1 two additional clients
             var mike = await EnsureDemoUserAsync("mike", "mike@example.com", "Mike Miller", "Client", org1.Id);
@@ -135,7 +135,7 @@ namespace BetterSchedule.Server.DevTools
             // New org1 type
             var acupunctureType = await EnsureAppointmentTypeAsync(
                 db, org1.Id, "Acupuncture Session", TimeSpan.FromMinutes(60), 55.00m,
-                "Traditional acupuncture session.", austin.Id, studio2.Id, true, false);
+                "Traditional acupuncture session.", demo.Id, studio2.Id, true, false);
 
             // -----------------------------
             // Reservations (org1)
@@ -164,17 +164,17 @@ namespace BetterSchedule.Server.DevTools
                     L1(i, 11), L1(i, 11).AddMinutes(60), studio2.Id, ReservationStatus.Booked, "Daily massage demo slot.", now, allowDuplicate: false);
             }
 
-            // Austin-led wellness set
-            await EnsureReservationCheckedAsync(db, userManager, org1.Id, mike.Id, austin.Id, acupunctureType.Id,
+            // DemoUser-led wellness set
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, mike.Id, demo.Id, acupunctureType.Id,
                 L1(1, 9), L1(1, 10), studio2.Id, ReservationStatus.Booked, "Initial consult + acupuncture.", now);
 
-            await EnsureReservationCheckedAsync(db, userManager, org1.Id, nina.Id, austin.Id, acupunctureType.Id,
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, nina.Id, demo.Id, acupunctureType.Id,
                 L1(2, 13), L1(2, 14), studio2.Id, ReservationStatus.Booked, "Stress relief session.", now);
 
-            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, austin.Id, privateType.Id,
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, demo.Id, privateType.Id,
                 L1(3, 16), L1(3, 17), arena.Id, ReservationStatus.Booked, "Core strength training.", now);
 
-            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, austin.Id, acupunctureType.Id,
+            await EnsureReservationCheckedAsync(db, userManager, org1.Id, carla.Id, demo.Id, acupunctureType.Id,
                 L1(-1, 15), L1(-1, 16), studio2.Id, ReservationStatus.Completed, "Follow-up acupuncture session.", now);
 
             // -----------------------------

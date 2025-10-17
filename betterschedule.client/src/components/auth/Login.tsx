@@ -1,22 +1,22 @@
 /**
  * @file Login page for BetterSchedule.
- * @summary Demo-focused login with pre-filled Austin Lillis credentials.
+ * @summary Demo-focused login with pre-filled Demo User credentials.
  */
 
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@auth/auth-context";
 
-/** Default demo email used to quickly sign in as Austin (Manager + ServiceProvider in org1). */
-const DEFAULT_DEMO_EMAIL = "austin.manager@fdb.local";
-/** Default demo password aligned with seed data for the Austin account. */
+/** Default demo email used to quickly sign in as Demo User (Manager + ServiceProvider in org1). */
+const DEFAULT_DEMO_EMAIL = "demo.user@local.com";
+/** Default demo password aligned with seed data for the Demo User account. */
 const DEFAULT_DEMO_PASSWORD = "Password123!";
 
 /**
  * Login component for BetterSchedule.
  *
  * @remarks
- * - Credentials pre-filled for the demo "Austin Lillis" user.
+ * - Credentials pre-filled for demo user.
  * - Redirects to /calendar upon successful authentication.
  * - Includes a Google SSO button that navigates to the backend SSO endpoint.
  *

@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace BetterSchedule.Server.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251015025224_Demo_CreateV2")]
-    partial class Demo_CreateV2
+    [Migration("20251017230604_Demo_CreateV3")]
+    partial class Demo_CreateV3
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
