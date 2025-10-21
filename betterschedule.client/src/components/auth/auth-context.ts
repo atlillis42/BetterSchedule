@@ -15,6 +15,9 @@ export interface AuthStatusResponse {
     roles: string[];
     /** Active organization identifier, when scoped; otherwise null. */
     organizationId: string | null;
+
+    /** Server flag to allow the static demo user switcher. Absent = false. */
+    demoSwitcherEnabled?: boolean;
 }
 
 /**
@@ -34,6 +37,8 @@ export type AuthContextType = {
     organizationId: string | null;
     /** True while initial or in-flight refresh is resolving. */
     loading: boolean;
+    /** Server-approved flag to render the demo user switcher. */
+    demoSwitcherEnabled: boolean;
 
     // Convenience flags + helpers
     /** User has Manager role. */

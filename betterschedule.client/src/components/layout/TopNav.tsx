@@ -128,7 +128,7 @@ const useResolveFirstNameLabel = () =>
  */
 const TopNav: React.FC<TopNavProps> = ({ NavLinks, onLogout }) => {
     const navigate = useNavigate();
-    const { user, isManager, isProvider, login, logout: authLogout } = useAuth();
+    const { user, isManager, isProvider, login, logout: authLogout, demoSwitcherEnabled } = useAuth();
 
     const handleLogout = async () => {
         if (onLogout) {
@@ -163,36 +163,33 @@ const TopNav: React.FC<TopNavProps> = ({ NavLinks, onLogout }) => {
 
             {/* Right: Demo role switcher + Signed-in as + Logout */}
             <div className="flex items-center gap-4">
-                <DemoRoleSwitcher
-                    currentUserEmail={user ?? ""}
-                    isManager={isManager}
-                    isProvider={isProvider}
-                    onSwitch={async (target) => {
-                        const previousName = resolveDisplayName(user);
-                        try {
-                            await authLogout();
-                            const result = await login(target.email, target.password);
-                            if ((result as any)?.success === false) {
-                                toast.error(`Login failed for ${target.name}.`);
-                                return;
+                {demoSwitcherEnabled && (
+                    <DemoRoleSwitcher
+                        currentUserEmail={user ?? ""}
+                        isManager={isManager}
+                        isProvider={isProvider}
+                        onSwitch={async (target) => {
+                            const previousName = resolveDisplayName(user);
+                            try {
+                                await authLogout();
+                                const result = await login(target.email, target.password);
+                                if ((result as any)?.success === false) {
+                                    toast.error(`Login failed for ${target.name}.`);
+                                    return;
+                                }
+                                toast.success(`You've been logged out of ${previousName} and logged in as ${target.name}.`);
+                            } catch {
+                                toast.error("Switch failed due to an unexpected error.");
                             }
-                            toast.success(`You've been logged out of ${previousName} and logged in as ${target.name}.`);
-                        } catch {
-                            toast.error("Switch failed due to an unexpected error.");
-                        }
-                    }}
-                />
-
+                        }}
+                    />
+                )}
                 {user && (
                     <span className="hidden sm:block text-sm text-slate-700 max-w-[28ch] truncate" title={user}>
                         Signed in as <span className="font-semibold">{resolveFirstNameLabel(user)}</span>
                     </span>
                 )}
-
-                <button
-                    onClick={handleLogout}
-                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
-                >
+                <button onClick={handleLogout} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
                     Logout
                 </button>
             </div>
