@@ -7,6 +7,7 @@ import RequireOrganization from "@/routes/RequireOrganization";
 
 // Public pages
 import Login from "@auth/Login";
+import DemoLogin from "@auth/DemoLogin";
 import RegisterPage from "@/pages/Register";
 
 // Auth-but-no-org page
@@ -30,14 +31,15 @@ import ProviderAvailabilitySelf from "@/components/provider/ProviderAvailability
  * on all routes that require an active organization scope.
  *
  * @remarks
- * - "/join" is only RequireAuth (reachable when authenticated but org-less).
- * - All operational pages (calendar, admin, provider) are RequireAuth + RequireOrganization.
+ * - "/demo-login" is a public, demo-only entry point for portfolio visitors.
+ * - Logout redirects to "/" home path, Login or DemoLogin should be there depending on intended flow.
  */
 export default function AppRoutes() {
     return (
         <Routes>
-            {/* Public */}
-            <Route path="/" element={<Login />} />
+            {/* Public (Option A: demo as home) */}
+            <Route path="/" element={<DemoLogin />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/register" element={<RegisterPage />} />
 
             {/* Authenticated, but may be org-less */}

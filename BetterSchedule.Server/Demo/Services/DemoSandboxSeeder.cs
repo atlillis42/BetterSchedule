@@ -196,6 +196,21 @@ namespace BetterSchedule.Server.Services.Demo
 
             await AddBlockedTimeAsync(organizationId, arena.Id, "Private booking",
                 L(5, 18), L(5, 21), "#fcba03", bob.Id, ct);
+
+            // Completed — Today 8:00–9:00 local, Yoga in Arena (Nina with Demo user)
+            await AddReservationAsync(organizationId, nina.Id, demoUser.Id, yogaType.Id,
+                L(0, 8), L(0, 9), arena.Id, ReservationStatus.Completed,
+                "Morning yoga — completed (demo).", now, ct);
+
+            // Canceled — Tomorrow 15:00–15:45 local, Private Training in Arena (Mike with Demo user)
+            await AddReservationAsync(organizationId, mike.Id, demoUser.Id, privateType.Id,
+                L(1, 15), L(1, 15).AddMinutes(45), arena.Id, ReservationStatus.Canceled,
+                "Client canceled (demo).", now, ct);
+
+            // NoShow — Day Before 9:00–10:00 local, Massage in Studio 2 (Carla with Bob)
+            await AddReservationAsync(organizationId, carla.Id, bob.Id, massageType.Id,
+                L(-1, 9), L(-1, 10), studio2.Id, ReservationStatus.NoShow,
+                "Client did not attend (demo).", now, ct);
         }
 
         private async Task EnsureRoleAsync(string roleName, CancellationToken ct)

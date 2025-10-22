@@ -78,6 +78,7 @@ export type UpdateReservationDto = {
     packageAssignmentId?: number | null;
     serviceProviderId?: string | null;
     appointmentTypeId?: number | null;
+    cancelReason?: string | null;
 };
 
 /**
@@ -338,16 +339,17 @@ export async function cancelReservationAsClient(
 export async function setReservationStatus(
     id: number,
     status: "Completed" | "Canceled" | "NoShow",
-    opts: {
-        currentNotes?: string | null;
-        reason?: string;
-        toastSuccess?: boolean;
-    } = {}
+    opts: { currentNotes?: string | null; reason?: string; toastSuccess?: boolean } = {}
 ): Promise<void> {
     const base = opts.currentNotes ?? "";
     const trimmed = (opts.reason ?? "").trim();
     const tag = trimmed ? `\n[status=${status}] ${trimmed}` : "";
-    const notes = tag ? `${base ?? ""}${tag}` : undefined;
+    const notes = tag ? `${base}${tag}` : undefined;
 
-    return updateReservation(id, { status, notes }, { toastSuccess: opts.toastSuccess });
+    const payload: UpdateReservationDto = { status, notes };
+    if (status === "Canceled" && trimmed) {
+        payload.cancelReason = trimmed; 
+    }
+
+    return updateReservation(id, payload, { toastSuccess: opts.toastSuccess });
 }
