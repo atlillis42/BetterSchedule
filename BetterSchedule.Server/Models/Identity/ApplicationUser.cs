@@ -10,11 +10,9 @@ namespace BetterSchedule.Server.Models.Identity
     /// Clients may also belong to additional organizations via <see cref="ClientOrganization"/>.
     /// For service providers, <see cref="AvailabilityPublic"/> controls whether clients may view this provider’s availability.
     /// </summary>
-    public class ApplicationUser : IdentityUser
+    public partial class ApplicationUser : IdentityUser
     {
-        /// <summary>
-        /// Full name for display in the UI.
-        /// </summary>
+        /// <summary>Full name for display in the UI.</summary>
         public string? FullName { get; set; }
 
         /// <summary>Given/first name.</summary>
@@ -25,19 +23,13 @@ namespace BetterSchedule.Server.Models.Identity
         [MaxLength(100)]
         public string? LastName { get; set; }
 
-        /// <summary>
-        /// Soft delete flag; hidden from normal queries and sign-in when <c>true</c>.
-        /// </summary>
+        /// <summary>Soft delete flag; hidden from normal queries and sign-in when <c>true</c>.</summary>
         public bool IsDeleted { get; set; } = false;
 
-        /// <summary>
-        /// Identifier of the user’s primary organization, if set.
-        /// </summary>
+        /// <summary>Identifier of the user’s primary organization, if set.</summary>
         public string? OrganizationId { get; set; }
 
-        /// <summary>
-        /// Navigation to the user’s primary organization, if set.
-        /// </summary>
+        /// <summary>Navigation to the user’s primary organization, if set.</summary>
         public Organization? Organization { get; set; }
 
         /// <summary>

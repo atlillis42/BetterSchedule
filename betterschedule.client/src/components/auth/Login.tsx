@@ -1,34 +1,30 @@
 /**
  * @file Login page for BetterSchedule.
- * @summary Demo-focused login with pre-filled Demo User credentials.
+ * @summary Demo-focused login with pre-filled Demo User credentials + one-click sandbox start.
  */
 
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useAuth } from "@auth/auth-context";
+import { api } from "@auth/axios";
+import { useAuth, type AuthStatusResponse } from "@auth/auth-context";
 
-/** Default demo email used to quickly sign in as Demo User (Manager + ServiceProvider in org1). */
+/** Response payload from POST /api/demo/start. */
+type StartDemoResponse = {
+    organizationId: string;
+    ephemeralUserId: string;
+};
+
 const DEFAULT_DEMO_EMAIL = "demo.user@local.com";
-/** Default demo password aligned with seed data for the Demo User account. */
 const DEFAULT_DEMO_PASSWORD = "Password123!";
 
-/**
- * Login component for BetterSchedule.
- *
- * @remarks
- * - Credentials pre-filled for demo user.
- * - Redirects to /calendar upon successful authentication.
- * - Includes a Google SSO button that navigates to the backend SSO endpoint.
- *
- * @returns Login page JSX element.
- */
 const Login: React.FC = () => {
     const [email, setEmail] = useState<string>(DEFAULT_DEMO_EMAIL);
     const [password, setPassword] = useState<string>(DEFAULT_DEMO_PASSWORD);
     const [status, setStatus] = useState<string>("");
+    const [startingDemo, setStartingDemo] = useState<boolean>(false);
     const navigate = useNavigate();
 
-    const { login, isAuthenticated, loading } = useAuth();
+    const { login, isAuthenticated, loading, refreshAuth } = useAuth();
 
     useEffect(() => {
         if (!loading && isAuthenticated) {
@@ -36,6 +32,10 @@ const Login: React.FC = () => {
         }
     }, [loading, isAuthenticated, navigate]);
 
+    /**
+     * Attempts a standard login (dev identity API or production /login).
+     * On success navigates to /calendar.
+     */
     const handleLogin = async () => {
         const result = await login(email, password);
         if (result.success) {
@@ -43,6 +43,59 @@ const Login: React.FC = () => {
             navigate("/calendar");
         } else {
             setStatus(`❌ ${result.message}`);
+        }
+    };
+
+    /**
+     * Starts a demo sandbox:
+     * 1) POST /api/demo/start (sets auth cookie server-side)
+     * 2) refreshAuth() to rehydrate context
+     * 3) GET /api/auth/status for deterministic routing (avoids race on context propagation)
+     * 4) Route to /calendar when organizationId is present; otherwise /join
+     */
+    const startDemo = async () => {
+        if (startingDemo) return;
+
+        setStartingDemo(true);
+        setStatus("Starting demo…");
+
+        try {
+            // 1) Create sandbox + sign-in ephemeral user (cookie auth)
+            await api.post<StartDemoResponse>("/demo/start", {});
+
+            // 2) Update app-wide auth context
+            await refreshAuth();
+
+            // 3) Read fresh status payload deterministically for routing
+            const { data: s } = await api.get<AuthStatusResponse>("/auth/status");
+
+            if (s?.authenticated) {
+                if (s.organizationId) {
+                    setStatus("✅ Demo started. Redirecting…");
+                    navigate("/calendar");
+                } else {
+                    setStatus("✅ Signed in. No organization yet — redirecting…");
+                    navigate("/join");
+                }
+            } else {
+                setStatus("❌ Demo started, but no session detected. Check cookies/CORS settings.");
+            }
+        } catch (err: any) {
+            const statusCode = err?.response?.status;
+            if (statusCode === 429) {
+                const raHeader = err?.response?.headers?.["retry-after"];
+                const raBody = err?.response?.data?.retryAfterSeconds;
+                const retryAfter = raHeader ?? (typeof raBody === "number" ? `${raBody}` : null);
+                setStatus(`❌ Rate limited. Try again in ${retryAfter ? `${retryAfter}s` : "a bit"}.`);
+            } else {
+                const msg =
+                    err?.response?.data?.message ??
+                    err?.response?.data?.error ??
+                    "Demo start failed.";
+                setStatus(`❌ ${msg}`);
+            }
+        } finally {
+            setStartingDemo(false);
         }
     };
 
@@ -56,6 +109,23 @@ const Login: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-1">Sign in to your account</p>
                 </div>
 
+                {/* One-click demo start */}
+                <button
+                    onClick={startDemo}
+                    disabled={startingDemo}
+                    className="w-full py-3 mb-4 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-60 transition shadow-sm"
+                    title="Start a live demo (creates a temporary sandbox)"
+                >
+                    {startingDemo ? "Starting demo…" : "Start live demo"}
+                </button>
+
+                <div className="flex items-center my-4">
+                    <div className="flex-1 h-px bg-gray-200" />
+                    <span className="px-3 text-xs text-gray-400">or</span>
+                    <div className="flex-1 h-px bg-gray-200" />
+                </div>
+
+                {/* Username/password login (useful in dev or for non-demo users) */}
                 <input
                     type="email"
                     value={email}
@@ -74,7 +144,7 @@ const Login: React.FC = () => {
                     autoComplete="current-password"
                     aria-label="Password"
                     onKeyDown={(e) => {
-                        if (e.key === "Enter") handleLogin();
+                        if (e.key === "Enter") void handleLogin();
                     }}
                 />
 

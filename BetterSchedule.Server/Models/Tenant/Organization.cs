@@ -1,4 +1,5 @@
-﻿using BetterSchedule.Server.Models.Identity;
+﻿using System;
+using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Models.Scheduling;
 using System.ComponentModel.DataAnnotations;
 
@@ -8,7 +9,7 @@ namespace BetterSchedule.Server.Models.Tenant
     /// Tenant/organization entity used for multi-tenant scoping and ownership of users and catalog data.
     /// Stores basic contact info and legacy booking policy durations (see <see cref="OrganizationSettings"/> for current policy).
     /// </summary>
-    public class Organization
+    public partial class Organization
     {
         /// <summary>Unique identifier for the organization.</summary>
         [Key] public string Id { get; set; } = Guid.NewGuid().ToString();

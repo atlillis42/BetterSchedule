@@ -321,6 +321,9 @@ namespace BetterSchedule.Server.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("DemoExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -336,6 +339,9 @@ namespace BetterSchedule.Server.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDemoEphemeral")
                         .HasColumnType("bit");
 
                     b.Property<string>("LastName")
@@ -746,8 +752,20 @@ namespace BetterSchedule.Server.Migrations
                     b.Property<string>("Address")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("DemoCreatedAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("DemoExpiresAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DemoTemplateSourceOrganizationId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Email")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDemo")
+                        .HasColumnType("bit");
 
                     b.Property<string>("Name")
                         .IsRequired()
