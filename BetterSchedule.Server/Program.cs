@@ -10,7 +10,7 @@ using BetterSchedule.Server.Options;
 using BetterSchedule.Server.Services.Demo;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
-using BetterSchedule.Server.Startup; // role bootstrapper
+using BetterSchedule.Server.Startup;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -76,8 +76,27 @@ builder.Services.AddHsts(o =>
 });
 builder.Services.AddHttpsRedirection(o =>
 {
+    // Azure will terminate TLS at the front end; forwarded headers ensure we see HTTPS here.
     o.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
     o.HttpsPort = 443;
+});
+
+// -----------------------------
+// Forwarded Headers (IMPORTANT on Azure App Service)
+// -----------------------------
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost |
+        ForwardedHeaders.XForwardedFor;
+
+    // Accept headers from Azure's front-end proxies.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+
+    // Don’t artificially limit the number of forwarders.
+    options.ForwardLimit = null;
 });
 
 // -----------------------------
@@ -266,6 +285,7 @@ if (app.Environment.IsDevelopment())
 // -----------------------------
 // Pipeline (ORDER MATTERS)
 // -----------------------------
+// Must run FIRST so the rest of the middleware sees the real scheme/host.
 app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
@@ -292,5 +312,8 @@ app.Run();
 
 namespace BetterSchedule.Server
 {
+    /// <summary>
+    /// Program entry point type for test hosting and integration frameworks.
+    /// </summary>
     public partial class Program { }
 }
