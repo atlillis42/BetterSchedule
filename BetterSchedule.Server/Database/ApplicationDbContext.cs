@@ -1,5 +1,5 @@
 ﻿using BetterSchedule.Server.Models.Identity;
-using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants, ProviderAvailability
+using BetterSchedule.Server.Models.Scheduling;      // AppointmentTypes, Reservations, ReservationParticipants
 using BetterSchedule.Server.Models.Tenant;          // Organization, ClientOrganization, OrganizationSettings
 using BetterSchedule.Server.Models.Access;
 using BetterSchedule.Server.Models.Business;        // Packages, PackageAssignments, PackageRedemptions
@@ -421,7 +421,7 @@ namespace BetterSchedule.Server.Database
                     .WithMany()
                     .HasForeignKey(x => x.PackageId)
                     .OnDelete(DeleteBehavior.Restrict);
-   
+
                 e.HasIndex(x => new { x.OrganizationId, x.ClientId });
                 e.HasIndex(x => new { x.OrganizationId, x.ClientId, x.PackageId, x.IsDeleted });
                 e.HasIndex(x => x.ExpiresAtUtc);

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace BetterSchedule.Server.Migrations
 {
     /// <inheritdoc />
-    public partial class Demo_CreateV3 : Migration
+    public partial class Live_DemoV13 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -34,6 +34,10 @@ namespace BetterSchedule.Server.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    IsDemo = table.Column<bool>(type: "bit", nullable: false),
+                    DemoCreatedAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DemoExpiresAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    DemoTemplateSourceOrganizationId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Name = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: false),
                     OwnerUserId = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Email = table.Column<string>(type: "nvarchar(max)", nullable: true),
@@ -74,6 +78,8 @@ namespace BetterSchedule.Server.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    IsDemoEphemeral = table.Column<bool>(type: "bit", nullable: false),
+                    DemoExpiresAtUtc = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
                     FullName = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     FirstName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
                     LastName = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),

@@ -1,13 +1,15 @@
 ﻿using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Models.DTOs.Auth;
 using BetterSchedule.Server.Models.Identity;
+using BetterSchedule.Server.Options;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using System.Linq;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
-using System.Linq;
 
 namespace BetterSchedule.Server.Controllers.Auth
 {
@@ -22,15 +24,18 @@ namespace BetterSchedule.Server.Controllers.Auth
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly IWebHostEnvironment _env;
+        private readonly IOptions<FeatureFlagsOptions> _features;
 
         public AuthController(
             SignInManager<ApplicationUser> signInManager,
             UserManager<ApplicationUser> userManager,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            IOptions<FeatureFlagsOptions> features)
         {
             _signInManager = signInManager;
             _userManager = userManager;
             _env = env;
+            _features = features;
         }
 
         /// <summary>
@@ -46,26 +51,17 @@ namespace BetterSchedule.Server.Controllers.Auth
             return Ok(new
             {
                 authenticated = isAuthenticated,
-                user = isAuthenticated ? User.Identity?.Name : null,
+                user = isAuthenticated ? User.FindFirstValue(ClaimTypes.Name) : null,
                 userId = isAuthenticated ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null,
                 roles = isAuthenticated ? User.FindAll(ClaimTypes.Role).Select(r => r.Value) : Array.Empty<string>(),
-                organizationId = isAuthenticated ? User.FindFirst("org_id")?.Value : null
+                organizationId = isAuthenticated ? User.FindFirst("org_id")?.Value : null,
+                demoSwitcherEnabled = _env.IsDevelopment() || _features.Value.EnableDemoSwitcher
             });
         }
 
         /// <summary>
         /// Registers a new user and signs them in (cookie auth).
-        /// Accepts either first/last name or (for legacy clients) a single fullName.
         /// </summary>
-        /// <remarks>
-        /// JSON payload (preferred):
-        /// { "email": "...", "password": "...", "firstName": "...", "lastName": "..." }
-        ///
-        /// Legacy payload (still accepted):
-        /// { "email": "...", "password": "...", "fullName": "..." }
-        ///
-        /// On success returns 200 and sets the app cookie; the SPA should call /api/auth/status next.
-        /// </remarks>
         [HttpPost("register")]
         [AllowAnonymous]
         [Consumes("application/json")]
@@ -86,7 +82,6 @@ namespace BetterSchedule.Server.Controllers.Auth
 
             var email = req.Email.Trim();
 
-            // Prefer first/last; if absent, try to split legacy fullName
             var first = Norm(req.FirstName);
             var last = Norm(req.LastName);
 
@@ -113,7 +108,6 @@ namespace BetterSchedule.Server.Controllers.Auth
                 LastName = string.IsNullOrWhiteSpace(last) ? null : last
             };
 
-            // Derive FullName server-side; fallback to email local-part if both names missing
             var full = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(x => !string.IsNullOrWhiteSpace(x))).Trim();
             user.FullName = string.IsNullOrWhiteSpace(full) ? email.Split('@')[0] : full;
 
@@ -124,20 +118,18 @@ namespace BetterSchedule.Server.Controllers.Auth
                 return BadRequest(new { message = firstError });
             }
 
-            // Sign in immediately so SPA sees authenticated status
             await _signInManager.SignInAsync(user, isPersistent: false);
-
             return Ok(new { userId = user.Id });
         }
 
         /// <summary>Signs the current user out of the application.</summary>
         [HttpPost("logout")]
         [Authorize]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
-            Response.Cookies.Delete(".AspNetCore.Identity.Application");
+            Response.Cookies.Delete(".BetterSchedule.Identity");            
+            Response.Cookies.Delete(".AspNetCore.Identity.Application");    
             return Ok(new { message = "Logged out successfully" });
         }
 
@@ -148,7 +140,6 @@ namespace BetterSchedule.Server.Controllers.Auth
         public IActionResult Refresh()
         {
             var orgId = User.GetOrgIdOrThrow();
-
             return Ok(new
             {
                 userId = User.FindFirstValue(ClaimTypes.NameIdentifier),
@@ -157,13 +148,8 @@ namespace BetterSchedule.Server.Controllers.Auth
             });
         }
 
-        // ---------------------------
-        // DEV ONLY: flexible login
-        // ---------------------------
-
         /// <summary>
-        /// DEV-ONLY: login using username OR email in <c>Identifier</c>.
-        /// Not available outside development environments.
+        /// DEV-ONLY: login using username OR email in Identifier.
         /// </summary>
         [HttpPost("dev-login")]
         [AllowAnonymous]
@@ -172,7 +158,8 @@ namespace BetterSchedule.Server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DevLogin([FromBody] DevLoginRequest req)
         {
-            if (!_env.IsDevelopment()) return NotFound();
+            if (!HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())
+                return NotFound();
 
             var user = await _userManager.FindByEmailAsync(req.Identifier)
                        ?? await _userManager.FindByNameAsync(req.Identifier);

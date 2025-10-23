@@ -3,6 +3,8 @@ using BetterSchedule.Server.Database;
 using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
 using BetterSchedule.Server.Models.Identity;
+using BetterSchedule.Server.Options;
+using BetterSchedule.Server.Services.Demo;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -13,6 +15,9 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// -----------------------------
+// MVC / JSON
+// -----------------------------
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
     o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -29,8 +34,25 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
+// -----------------------------
+// Core services
+// -----------------------------
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+builder.Services.Configure<FeatureFlagsOptions>(builder.Configuration.GetSection("Features"));
 
+// Demo options + services
+builder.Services.Configure<DemoOptions>(builder.Configuration.GetSection("Demo"));
+builder.Services.AddScoped<ISandboxService, SandboxService>();
+builder.Services.AddHostedService<DemoCleanupWorker>();
+builder.Services.AddScoped<IDemoSandboxSeeder, DemoSandboxSeeder>();
+builder.Services.AddScoped<DemoSandboxSeeder>();
+builder.Services.AddMemoryCache();
+builder.Services.Configure<DemoRateLimitOptions>(builder.Configuration.GetSection("Demo").GetSection("RateLimit"));
+builder.Services.AddSingleton<IDemoRateLimiter, DemoRateLimiter>();
+
+// -----------------------------
+// AuthN / AuthZ
+// -----------------------------
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(options =>
 {
@@ -84,6 +106,9 @@ builder.Services
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
+// -----------------------------
+// CORS
+// -----------------------------
 builder.Services.AddCors(options =>
 {
     var clientUrl = builder.Configuration["App:ClientUrl"] ?? "http://localhost:5173";
@@ -91,11 +116,17 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(clientUrl).AllowAnyHeader().AllowAnyMethod().AllowCredentials());
 });
 
+// -----------------------------
+// EF Core
+// -----------------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
+// -----------------------------
+// Dev-only: migrations + dev seed + Swagger
+// -----------------------------
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
@@ -112,6 +143,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// -----------------------------
+// Pipeline
+// -----------------------------
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
@@ -120,7 +154,10 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Identity API endpoints (login, etc.)
 app.MapGroup("/api").MapIdentityApi<ApplicationUser>();
+
+// Controllers + SPA fallback
 app.MapControllers();
 app.MapFallbackToFile("/index.html");
 

@@ -34,7 +34,7 @@ namespace BetterSchedule.Server.Auth
             => user.FindFirstValue(ClaimTypes.NameIdentifier);
 
         /// <summary>
-        /// Returns the identity <see cref="ClaimTypes.NameIdentifier"/>
+        /// Returns the identity <see cref="ClaimTypes.NameIdentifier"/> or throws when missing.
         /// </summary>
         public static string GetUserIdOrThrow(this ClaimsPrincipal user)
         {
