@@ -1,23 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/auth/auth-context";
 import { listOrgs, type OrganizationLite } from "@/api/organizations-api";
 import type { ViewMode } from "@/types/calendarView";
 
+/** Cross-component event names shared with TopNav */
+const VIEW_CHANGED_EVT = "bs:viewChanged";
+const REQUEST_VIEW_CHANGE_EVT = "bs:requestViewChange";
+
 /**
  * CalendarToolbar
- *
- * Renders:
- * - Left: View tabs (Day, Resources, Week, Month).
- * - Center: Organization display name and "Viewing as {role}" (role priority: Manager > Provider > Client).
- * - Right: Timezone-aware 12-hour clock with a short zone badge.
- * @public
+ * - Desktop (>= lg): View buttons (Day / Resources / Week / Month)
+ * - Mobile/Tablet (< lg): view menu lives in TopNav
+ * - Center: Organization + "Viewing as"
+ * - Right: Clock with zone badge
  */
 export default function CalendarToolbar(props: {
-    /** Current calendar view mode. */
     view: ViewMode;
-    /** Handler to set the active calendar view. */
     onSetView: (view: ViewMode) => void;
-    /** IANA timezone label (e.g., "America/New_York"). */
     tzLabel: string;
 }) {
     const { view, onSetView, tzLabel } = props;
@@ -25,7 +24,6 @@ export default function CalendarToolbar(props: {
     // Role + organization context
     const { isManager, isProvider, isClient, organizationId } = useAuth();
 
-    /** Highest-access role label (Manager > Provider > Client). */
     const viewingAs = useMemo(() => {
         if (isManager) return "Manager";
         if (isProvider) return "Provider";
@@ -33,62 +31,34 @@ export default function CalendarToolbar(props: {
         return undefined;
     }, [isManager, isProvider, isClient]);
 
-    // Resolve org display name by id (local cache + listOrgs fallback).
+    // Resolve org name
     const organizationName = useOrganizationDisplayName(organizationId ?? undefined);
 
-    // Week and WorkWeek share the "Week" tab highlight
-    const weekTabActive = view === "Week" || view === "WorkWeek";
+    type SwitcherView = "Day" | "Resources" | "Week" | "Month";
+    const activeForSwitcher: SwitcherView = (view === "WorkWeek" ? "Week" : view) as SwitcherView;
 
-    // 12-hour clock in the toolbar (timezone-aware)
-    const { timeText, tzAbbrev } = useZonedClock(tzLabel);
+    // Notify TopNav about the active view
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent(VIEW_CHANGED_EVT, { detail: activeForSwitcher }));
+    }, [activeForSwitcher]);
 
-    // Pill-style tab buttons; keep legacy "selected" class too.
-    const tabClass = (active: boolean) =>
-        [
-            "px-3 py-1.5 rounded-xl text-xs font-medium transition border",
-            active
-                ? "bg-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-blue-500"
-                : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400",
-        ].join(" ");
+    // Handle "Change View" requests from TopNav
+    useEffect(() => {
+        const handler = (e: Event) => {
+            const target = (e as CustomEvent).detail as SwitcherView | undefined;
+            if (!target) return;
+            onSetView(target);
+        };
+        window.addEventListener(REQUEST_VIEW_CHANGE_EVT, handler as EventListener);
+        return () => window.removeEventListener(REQUEST_VIEW_CHANGE_EVT, handler as EventListener);
+    }, [onSetView]);
 
     return (
         <div className="calendar-toolbar relative flex items-center gap-3 px-2 border-b bg-gray-100 h-16">
-            {/* VIEW TABS (left) */}
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={() => onSetView("Day")}
-                    className={[tabClass(view === "Day"), view === "Day" ? "selected" : ""].join(" ")}
-                    aria-current={view === "Day" ? "page" : undefined}
-                >
-                    Day
-                </button>
+            {/* Desktop view switcher */}
+            <DesktopViewSwitcher value={activeForSwitcher} onChange={(v) => onSetView(v)} />
 
-                <button
-                    onClick={() => onSetView("Resources")}
-                    className={[tabClass(view === "Resources"), view === "Resources" ? "selected" : ""].join(" ")}
-                    aria-current={view === "Resources" ? "page" : undefined}
-                >
-                    Resources
-                </button>
-
-                <button
-                    onClick={() => onSetView("Week")}
-                    className={[tabClass(weekTabActive), weekTabActive ? "selected" : ""].join(" ")}
-                    aria-current={weekTabActive ? "page" : undefined}
-                >
-                    Week
-                </button>
-
-                <button
-                    onClick={() => onSetView("Month")}
-                    className={[tabClass(view === "Month"), view === "Month" ? "selected" : ""].join(" ")}
-                    aria-current={view === "Month" ? "page" : undefined}
-                >
-                    Month
-                </button>
-            </div>
-
-            {/* CENTER: Organization + Viewing as (absolutely centered) */}
+            {/* Center: org + role */}
             <div className="absolute left-1/2 -translate-x-1/2 text-center leading-tight">
                 {organizationName && (
                     <div
@@ -106,33 +76,52 @@ export default function CalendarToolbar(props: {
                 )}
             </div>
 
-            {/* RIGHT: 12-hour digital clock with zone badge */}
+            {/* Right: Clock */}
             <div className="ml-auto flex items-center gap-2">
-                <span className="font-mono text-sm tracking-widest tabular-nums">{timeText}</span>
-                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-gray-800 text-white">
-                    {tzAbbrev}
-                </span>
+                <ZonedClock tzLabel={tzLabel} />
             </div>
         </div>
     );
 }
 
-/**
- * Module-local cache of orgId -> display name.
- * Keeps the toolbar from re-querying for the same id.
- */
+const DesktopViewSwitcher: React.FC<{
+    value: "Day" | "Resources" | "Week" | "Month";
+    onChange: (v: "Day" | "Resources" | "Week" | "Month") => void;
+}> = ({ value, onChange }) => {
+    const items: Array<["Day" | "Resources" | "Week" | "Month", string]> = [
+        ["Day", "Day"],
+        ["Resources", "Resources"],
+        ["Week", "Week"],
+        ["Month", "Month"],
+    ];
+
+    const btnClass = (active: boolean) =>
+        [
+            "px-3 py-1.5 rounded-xl text-xs font-medium transition border",
+            active
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-blue-500"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400",
+        ].join(" ");
+
+    return (
+        <div className="hidden lg:flex items-center gap-2">
+            {items.map(([k, l]) => (
+                <button
+                    key={k}
+                    onClick={() => onChange(k)}
+                    className={btnClass(value === k)}
+                    aria-current={value === k ? "page" : undefined}
+                >
+                    {l}
+                </button>
+            ))}
+        </div>
+    );
+};
+
+/* ---------- org name cache + resolver ---------- */
 const orgNameCache = new Map<string, string>();
 
-/**
- * Resolves an organization display name using the organizations API.
- * Directly uses the `name` field from `OrganizationLite`.
- *
- * @param organizationId Organization identifier to resolve.
- * @returns The display name, or `undefined` if unknown/not scoped.
- * @remarks
- * Uses `listOrgs(undefined, 200)` and filters client-side to locate the matching id.
- * Suitable for demo-size data. Consider a `GET /orgs/{id}` endpoint later for O(1).
- */
 function useOrganizationDisplayName(organizationId?: string): string | undefined {
     const [name, setName] = useState<string | undefined>(() =>
         organizationId ? orgNameCache.get(organizationId) : undefined
@@ -141,19 +130,16 @@ function useOrganizationDisplayName(organizationId?: string): string | undefined
     useEffect(() => {
         let cancelled = false;
 
-        async function run(): Promise<void> {
+        async function run() {
             if (!organizationId) {
                 setName(undefined);
                 return;
             }
-
-            // Cache hit
             const cached = orgNameCache.get(organizationId);
             if (cached) {
                 setName(cached);
                 return;
             }
-
             try {
                 const orgs: OrganizationLite[] = await listOrgs(undefined, 200);
                 const match = orgs?.find((o) => o.id === organizationId);
@@ -179,14 +165,8 @@ function useOrganizationDisplayName(organizationId?: string): string | undefined
     return name;
 }
 
-/**
- * Hook: timezone-aware 12-hour clock with short zone badge (e.g., "EDT").
- * Updates every second.
- *
- * @param timeZone IANA timezone identifier.
- * @returns Formatted time text and a short zone label.
- */
-function useZonedClock(timeZone: string): { timeText: string; tzAbbrev: string } {
+/* ---------- clock ---------- */
+function ZonedClock({ tzLabel }: { tzLabel: string }) {
     const [now, setNow] = useState<Date>(() => new Date());
 
     useEffect(() => {
@@ -201,28 +181,34 @@ function useZonedClock(timeZone: string): { timeText: string; tzAbbrev: string }
                 minute: "2-digit",
                 second: "2-digit",
                 hour12: true,
-                timeZone,
+                timeZone: tzLabel,
             }),
-        [timeZone]
+        [tzLabel]
     );
 
     const zoneFormatter = useMemo(
         () =>
             new Intl.DateTimeFormat(undefined, {
-                timeZone,
+                timeZone: tzLabel,
                 timeZoneName: "short",
             }),
-        [timeZone]
+        [tzLabel]
     );
 
     const timeText = useMemo(() => formatter.format(now), [formatter, now]);
 
-    // Example formatted string might be "10/03/2025, 5:23:05 PM EDT"
     const tzAbbrev = useMemo(() => {
         const str = zoneFormatter.format(now);
         const match = str.match(/\b([A-Z]{2,4})\b/);
         return match?.[1] ?? "ET";
     }, [zoneFormatter, now]);
 
-    return { timeText, tzAbbrev };
+    return (
+        <>
+            <span className="font-mono text-sm tracking-widest tabular-nums">{timeText}</span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-gray-800 text-white">
+                {tzAbbrev}
+            </span>
+        </>
+    );
 }

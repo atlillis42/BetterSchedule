@@ -2,7 +2,7 @@
  * Summary: Primary app navigation links for BetterSchedule (demo-ready).
  * - Hides unfinished areas in the demo (e.g., Packages).
  * - Shows admin sections based on `canManage`.
- * - Pure presentational; no side effects.
+ * - Supports "inline" (default) and "menu" variants.
  */
 
 import React from "react";
@@ -12,13 +12,25 @@ import { NavLink } from "react-router-dom";
 export type AppNavLinksProps = {
     /** Whether the user has admin/manager permissions. */
     canManage: boolean;
+    /** Render style: horizontal inline (default) or vertical menu items for dropdowns. */
+    variant?: "inline" | "menu";
 };
 
 /** Renders top-level navigation links. */
-const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage }) => {
+const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage, variant = "inline" }) => {
+    const wrapClass =
+        variant === "inline"
+            ? "flex items-center gap-4 text-sm"
+            : "flex flex-col py-2 text-sm";
+
+    const linkClass = (isActive: boolean) =>
+        variant === "inline"
+            ? isActive ? "font-semibold" : ""
+            : `block px-3 py-2 rounded ${isActive ? "bg-blue-50 font-semibold" : "hover:bg-slate-50"}`;
+
     return (
-        <nav className="flex items-center gap-4 text-sm">
-            <NavLink to="/calendar" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+        <nav className={wrapClass}>
+            <NavLink to="/calendar" className={({ isActive }) => linkClass(isActive)}>
                 Calendar
             </NavLink>
 
@@ -26,22 +38,22 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage }) => {
                 <>
                     <NavLink
                         to="/manager/appointment-types"
-                        className={({ isActive }) => (isActive ? "font-semibold" : "")}
+                        className={({ isActive }) => linkClass(isActive)}
                     >
                         Appointment Types
                     </NavLink>
 
                     {/* Packages: intentionally hidden for demo */}
 
-                    <NavLink to="/manager/resources" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/resources" className={({ isActive }) => linkClass(isActive)}>
                         Resources
                     </NavLink>
 
-                    <NavLink to="/manager/users" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/users" className={({ isActive }) => linkClass(isActive)}>
                         Users
                     </NavLink>
 
-                    <NavLink to="/manager/settings" className={({ isActive }) => (isActive ? "font-semibold" : "")}>
+                    <NavLink to="/manager/settings" className={({ isActive }) => linkClass(isActive)}>
                         Settings
                     </NavLink>
                 </>
