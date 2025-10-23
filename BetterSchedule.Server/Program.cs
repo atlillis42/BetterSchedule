@@ -239,8 +239,6 @@ if (app.Environment.IsDevelopment())
 
     app.ApplyMigrations();
 
-    // NOTE: removed DbInitializer.SeedAsync(...) — Demo Sandbox handles test data now.
-
     app.UseSwagger();
     app.UseSwaggerUI();
 }
