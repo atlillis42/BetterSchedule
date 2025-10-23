@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "@auth/axios";
 import { useAuth, type AuthStatusResponse } from "@auth/auth-context";
+import { formatRetryAfterFromError } from "@/utilities/retryAfter";
 
 /** Response payload from POST /api/demo/start. */
 type StartDemoResponse = {
@@ -98,19 +99,20 @@ const LoginBase: React.FC<LoginBaseProps> = ({ variant }) => {
             } else {
                 setStatus("❌ Demo started, but no session detected. Check cookies/CORS settings.");
             }
-        } catch (err: any) {
-            const statusCode = err?.response?.status;
+        } catch (error: unknown) {
+            // Prefer explicit, readable names
+            // and a small helper for formatting.
+            const statusCode = (error as any)?.response?.status;
             if (statusCode === 429) {
-                const raHeader = err?.response?.headers?.["retry-after"];
-                const raBody = err?.response?.data?.retryAfterSeconds;
-                const retryAfter = raHeader ?? (typeof raBody === "number" ? `${raBody}` : null);
-                setStatus(`❌ Rate limited. Try again in ${retryAfter ? `${retryAfter}s` : "a bit"}.`);
+                // NEW: user-friendly minutes/seconds
+                const friendly = formatRetryAfterFromError(error);
+                setStatus(`❌ Rate limited. Try again in ${friendly}.`);
             } else {
-                const msg =
-                    err?.response?.data?.message ??
-                    err?.response?.data?.error ??
+                const message =
+                    (error as any)?.response?.data?.message ??
+                    (error as any)?.response?.data?.error ??
                     "Demo start failed.";
-                setStatus(`❌ ${msg}`);
+                setStatus(`❌ ${message}`);
             }
         } finally {
             setStartingDemo(false);

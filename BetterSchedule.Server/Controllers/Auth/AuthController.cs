@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using System.Linq;
 using System.Security.Claims;
@@ -19,6 +20,7 @@ namespace BetterSchedule.Server.Controllers.Auth
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
+    [Produces("application/json")]
     public class AuthController : ControllerBase
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
@@ -67,6 +69,8 @@ namespace BetterSchedule.Server.Controllers.Auth
         [Consumes("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [EnableRateLimiting("AuthPolicy")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
         {
             if (req is null)
@@ -125,11 +129,14 @@ namespace BetterSchedule.Server.Controllers.Auth
         /// <summary>Signs the current user out of the application.</summary>
         [HttpPost("logout")]
         [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [EnableRateLimiting("AuthPolicy")]
         public async Task<IActionResult> Logout()
         {
             await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
-            Response.Cookies.Delete(".BetterSchedule.Identity");            
-            Response.Cookies.Delete(".AspNetCore.Identity.Application");    
+            Response.Cookies.Delete(".BetterSchedule.Identity");
+            Response.Cookies.Delete(".AspNetCore.Identity.Application");
             return Ok(new { message = "Logged out successfully" });
         }
 
@@ -156,6 +163,8 @@ namespace BetterSchedule.Server.Controllers.Auth
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [EnableRateLimiting("AuthPolicy")]
         public async Task<IActionResult> DevLogin([FromBody] DevLoginRequest req)
         {
             if (!HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())

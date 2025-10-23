@@ -7,6 +7,7 @@ using BetterSchedule.Server.Services.Demo;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace BetterSchedule.Server.Controllers.Demo
 {
@@ -21,7 +22,8 @@ namespace BetterSchedule.Server.Controllers.Demo
         private readonly ISandboxService _sandboxService;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly UserManager<ApplicationUser> _userManager;
-        private readonly IDemoRateLimiter _rateLimiter;
+        private readonly IWebHostEnvironment _env;
+        private readonly string _clientOrigin;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DemoController"/>.
@@ -30,36 +32,43 @@ namespace BetterSchedule.Server.Controllers.Demo
             ISandboxService sandboxService,
             SignInManager<ApplicationUser> signInManager,
             UserManager<ApplicationUser> userManager,
-            IDemoRateLimiter rateLimiter)
+            IConfiguration config,
+            IWebHostEnvironment env)
         {
             _sandboxService = sandboxService;
             _signInManager = signInManager;
             _userManager = userManager;
-            _rateLimiter = rateLimiter;
+            _env = env;
+            _clientOrigin = (config["App:ClientUrl"] ?? string.Empty).TrimEnd('/');
         }
 
         /// <summary>
         /// Creates a new demo sandbox organization, seeds demo data, and signs in an ephemeral user (cookie auth).
         /// Returns the created organization id and the ephemeral user id.
-        /// Rate limited globally on the server.
         /// </summary>
         /// <remarks>
-        /// On success: 200 OK { organizationId, ephemeralUserId } and a session cookie is set.<br/>
-        /// On throttle: 429 Too Many Requests with Retry-After header and body { error, retryAfterSeconds }.
+        /// <b>Rate limiting:</b> Policy <c>DemoStartPolicy</c> applies — partitioned by client IP
+        /// to prevent one abusive client from starving others.<br/>
+        /// On success: 200 OK { organizationId, ephemeralUserId } with a session cookie set.<br/>
+        /// On throttle (handled by middleware): 429 Too Many Requests with <c>Retry-After</c> header and body
+        /// { error, retryAfterSeconds }.
         /// </remarks>
         /// <response code="200">Sandbox created and user signed in.</response>
+        /// <response code="403">Cross-site request blocked.</response>
         /// <response code="429">Too many demo start requests during the current window.</response>
         [HttpPost("start")]
         [AllowAnonymous]
         [Consumes("application/json")]
         [ProducesResponseType(typeof(StartDemoResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [EnableRateLimiting("DemoStartPolicy")]
         public async Task<IActionResult> StartAsync(CancellationToken cancellationToken)
         {
-            // Global limiter for demo start; no IP or user tracking.
-            if (!_rateLimiter.TryConsume("demo-start:global", out var retryAfter))
+            // CSRF-lite origin guard: only allow posts from your SPA origin (skip in Development).
+            if (!_env.IsDevelopment() && !IsTrustedSpaRequest())
             {
-                return TooManyRequests(retryAfter);
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "forbidden", message = "Cross-site request not allowed." });
             }
 
             var result = await _sandboxService.StartAnonymousSandboxAsync(cancellationToken);
@@ -84,16 +93,18 @@ namespace BetterSchedule.Server.Controllers.Demo
         /// Resets the caller's demo sandbox by deleting its data and re-seeding.
         /// Scope is restricted to the caller's current organization (org_id claim).
         /// Returns the organization id and the reset timestamp.
-        /// Rate limited globally on the server.
         /// </summary>
         /// <remarks>
-        /// On success: 200 OK { organizationId, resetAtUtc }. <br/>
-        /// On forbidden cross-org attempt: 403 Forbidden. <br/>
-        /// On throttle: 429 Too Many Requests with Retry-After header and body { error, retryAfterSeconds }.
+        /// <b>Rate limiting:</b> Policy <c>DemoResetPolicy</c> applies — partitioned by
+        /// <c>org_id</c> + <c>user_id</c> to isolate callers.<br/>
+        /// On success: 200 OK { organizationId, resetAtUtc }.<br/>
+        /// On forbidden cross-org attempt: 403 Forbidden.<br/>
+        /// On throttle (handled by middleware): 429 Too Many Requests with <c>Retry-After</c> header and body
+        /// { error, retryAfterSeconds }.
         /// </remarks>
         /// <param name="organizationId">Optional explicit organization id; defaults to the caller's <c>org_id</c> claim.</param>
         /// <response code="200">Sandbox reset completed.</response>
-        /// <response code="403">Caller attempted to reset a different organization.</response>
+        /// <response code="403">Caller attempted to reset a different organization or cross-site request blocked.</response>
         /// <response code="429">Too many demo reset requests during the current window.</response>
         [HttpPost("reset")]
         [Authorize]
@@ -101,20 +112,21 @@ namespace BetterSchedule.Server.Controllers.Demo
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+        [EnableRateLimiting("DemoResetPolicy")]
         public async Task<IActionResult> ResetAsync([FromQuery] string? organizationId, CancellationToken cancellationToken)
         {
+            // CSRF-lite origin guard for state-changing POSTs (skip in Development).
+            if (!_env.IsDevelopment() && !IsTrustedSpaRequest())
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { error = "forbidden", message = "Cross-site request not allowed." });
+            }
+
             var callerOrgId = User.GetOrgIdOrThrow();
             var targetOrgId = string.IsNullOrWhiteSpace(organizationId) ? callerOrgId : organizationId;
 
             if (!string.Equals(callerOrgId, targetOrgId, StringComparison.Ordinal))
             {
                 return Forbid();
-            }
-
-            // Global limiter for resets as well (heavier path).
-            if (!_rateLimiter.TryConsume("demo-reset:global", out var retryAfter))
-            {
-                return TooManyRequests(retryAfter);
             }
 
             var callerUserId = User.GetUserIdOrThrow();
@@ -133,20 +145,6 @@ namespace BetterSchedule.Server.Controllers.Demo
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult Status() => Ok(new { serverUtc = DateTimeOffset.UtcNow });
 
-        /// <summary>
-        /// Produces a 429 Too Many Requests response with a Retry-After header and JSON body.
-        /// </summary>
-        private IActionResult TooManyRequests(TimeSpan retryAfter)
-        {
-            var seconds = (int)Math.Ceiling(Math.Max(0, retryAfter.TotalSeconds));
-            Response.Headers["Retry-After"] = seconds.ToString();
-            return StatusCode(StatusCodes.Status429TooManyRequests, new
-            {
-                error = "rate_limited",
-                retryAfterSeconds = seconds
-            });
-        }
-
         /// <summary>Response model for a successful demo start.</summary>
         public sealed class StartDemoResponse
         {
@@ -154,6 +152,36 @@ namespace BetterSchedule.Server.Controllers.Demo
             public required string OrganizationId { get; init; }
             /// <summary>Identifier of the signed-in ephemeral user.</summary>
             public required string EphemeralUserId { get; init; }
+        }
+
+        // ---------------------------
+        // Helpers
+        // ---------------------------
+
+        /// <summary>
+        /// Very lightweight CSRF guard that only allows requests originating from the configured SPA origin.
+        /// Uses Origin first, then falls back to Referer (both are required by modern browsers on CORS/Credentialed fetches).
+        /// </summary>
+        private bool IsTrustedSpaRequest()
+        {
+            if (string.IsNullOrWhiteSpace(_clientOrigin))
+                return false;
+
+            var origin = Request.Headers["Origin"].ToString().TrimEnd('/');
+            if (!string.IsNullOrEmpty(origin))
+            {
+                return string.Equals(origin, _clientOrigin, StringComparison.OrdinalIgnoreCase);
+            }
+
+            var referer = Request.Headers["Referer"].ToString();
+            if (!string.IsNullOrEmpty(referer))
+            {
+                // Accept if Referer starts with the SPA origin.
+                return referer.StartsWith(_clientOrigin, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // No headers → treat as untrusted for POSTs
+            return false;
         }
     }
 }

@@ -3,6 +3,7 @@ using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
 using BetterSchedule.Server.Models.DTOs.BlockedTime;
 using BetterSchedule.Server.Models.Identity;
+using BetterSchedule.Server.Services.Demo; 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -12,29 +13,27 @@ namespace BetterSchedule.Server.DevTools;
 
 [ApiController]
 [Route("api/devtools")]
-[ApiExplorerSettings(IgnoreApi = true)] // hide from Swagger
-[Authorize] // require auth by default
+[ApiExplorerSettings(IgnoreApi = true)]
+[Authorize]
 public class DevToolsController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly RoleManager<IdentityRole> _roleManager;
     private readonly IWebHostEnvironment _env;
+    private readonly ISandboxService _sandbox; 
 
     public DevToolsController(
         ApplicationDbContext db,
         UserManager<ApplicationUser> userManager,
-        RoleManager<IdentityRole> roleManager,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        ISandboxService sandbox) 
     {
         _db = db;
         _userManager = userManager;
-        _roleManager = roleManager;
         _env = env;
+        _sandbox = sandbox; 
     }
 
-    // GET /api/devtools/whoami
-    // Quick claims check
     [HttpGet("whoami")]
     public IActionResult WhoAmI()
     {
@@ -49,21 +48,21 @@ public class DevToolsController : ControllerBase
         });
     }
 
-    // POST /api/devtools/reset-db
-    // Reset + reseed domain data. DEBUG builds + Development env only.
+    // Replaces old "reset + reseed" with Sandbox reset of the caller's org
     [HttpPost("reset-db")]
     [Authorize(Roles = "Manager")]
-    public async Task<IActionResult> ResetDevDatabaseAsync()
+    public async Task<IActionResult> ResetDevDatabaseAsync(CancellationToken ct)
     {
         if (!_env.IsDevelopment())
             return Forbid("reset-db is only allowed in Development.");
 
-        await DbInitializer.SeedAsync(_db, _userManager, _roleManager, reset: true);
-        return Ok(new { status = "reset complete" });
+        var orgId = User.GetOrgIdOrThrow();
+        var userId = User.GetUserIdOrThrow();
+
+        var org = await _sandbox.ResetSandboxAsync(orgId, userId, ct);
+        return Ok(new { status = "reset complete", organizationId = org.Id });
     }
 
-    // GET /api/devtools/blockedtimes/all
-    // Returns *org-scoped* blocked times for the signed-in user
     [HttpGet("blockedtimes/all")]
     public async Task<IActionResult> GetAllBlockedTimesAsync(CancellationToken ct)
     {
@@ -79,7 +78,7 @@ public class DevToolsController : ControllerBase
             .Select(b => new BlockedTimeDto
             {
                 Id = b.Id,
-                OrganizationId = b.OrganizationId, 
+                OrganizationId = b.OrganizationId,
                 Reason = b.Reason!,
                 StartTime = b.StartTime,
                 EndTime = b.EndTime,

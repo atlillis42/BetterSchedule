@@ -1,17 +1,21 @@
+using System.Globalization;
+using System.Reflection;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using BetterSchedule.Server.Auth;
 using BetterSchedule.Server.Database;
-using BetterSchedule.Server.DevTools;
 using BetterSchedule.Server.Extensions;
 using BetterSchedule.Server.Models.Identity;
 using BetterSchedule.Server.Options;
 using BetterSchedule.Server.Services.Demo;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
+using BetterSchedule.Server.Startup; // NEW: role bootstrapper
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using System.Reflection;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,8 +51,102 @@ builder.Services.AddHostedService<DemoCleanupWorker>();
 builder.Services.AddScoped<IDemoSandboxSeeder, DemoSandboxSeeder>();
 builder.Services.AddScoped<DemoSandboxSeeder>();
 builder.Services.AddMemoryCache();
-builder.Services.Configure<DemoRateLimitOptions>(builder.Configuration.GetSection("Demo").GetSection("RateLimit"));
-builder.Services.AddSingleton<IDemoRateLimiter, DemoRateLimiter>();
+
+// Rate-limit options (bound from config)
+builder.Services.Configure<DemoRateLimitOptions>(builder.Configuration.GetSection("Demo:RateLimit"));
+builder.Services.Configure<AuthRateLimitOptions>(builder.Configuration.GetSection("Auth:RateLimit"));
+
+var demoRate = builder.Configuration.GetSection("Demo:RateLimit").Get<DemoRateLimitOptions>() ?? new DemoRateLimitOptions();
+var authRate = builder.Configuration.GetSection("Auth:RateLimit").Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
+
+var demoWindow = TimeSpan.FromSeconds(Math.Max(1, demoRate.WindowSeconds));
+var demoStartLimit = Math.Max(1, demoRate.MaxStartsPerIp);
+
+var authWindow = TimeSpan.FromSeconds(Math.Max(1, authRate.WindowSeconds));
+var authLimit = Math.Max(1, authRate.MaxRequestsPerIp);
+
+// -----------------------------
+// HTTPS + HSTS
+// -----------------------------
+builder.Services.AddHsts(o =>
+{
+    o.Preload = false;
+    o.IncludeSubDomains = false;
+    o.MaxAge = TimeSpan.FromDays(180);
+});
+builder.Services.AddHttpsRedirection(o =>
+{
+    o.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
+    o.HttpsPort = 443;
+});
+
+// -----------------------------
+// Built-in Rate Limiting
+// -----------------------------
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.OnRejected = async (context, token) =>
+    {
+        int retryAfterSeconds = 0;
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
+        {
+            retryAfterSeconds = (int)Math.Ceiling(Math.Max(0, retryAfter.TotalSeconds));
+            context.HttpContext.Response.Headers["Retry-After"] =
+                retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+        }
+
+        var payload = new { error = "rate_limited", retryAfterSeconds };
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsJsonAsync(payload, cancellationToken: token);
+    };
+
+    options.AddPolicy("DemoStartPolicy", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"demo-start:ip:{ip}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = demoStartLimit,
+                Window = demoWindow,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            });
+    });
+
+    options.AddPolicy("DemoResetPolicy", httpContext =>
+    {
+        var orgId = httpContext.User.FindFirst("org_id")?.Value ?? "anon";
+        var userId = httpContext.User.Identity?.IsAuthenticated == true
+            ? (httpContext.User.FindFirst("sub")?.Value ?? "anon")
+            : "anon";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"demo-reset:org:{orgId}:user:{userId}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = demoStartLimit, // split later if desired
+                Window = demoWindow,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            });
+    });
+
+    options.AddPolicy("AuthPolicy", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"auth:ip:{ip}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = authLimit,
+                Window = authWindow,
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            });
+    });
+});
 
 // -----------------------------
 // AuthN / AuthZ
@@ -100,11 +198,13 @@ builder.Services
     .AddRoles<IdentityRole>()
     .AddSignInManager()
     .AddEntityFrameworkStores<ApplicationDbContext>()
-    .AddDefaultTokenProviders()
-    .AddApiEndpoints();
+    .AddDefaultTokenProviders();
 
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
+
+// Ensure core roles exist even without the old dev seeder
+builder.Services.AddHostedService<EnsureCoreRolesHostedService>();
 
 // -----------------------------
 // CORS
@@ -124,8 +224,13 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 var app = builder.Build();
 
+// Log rate limits
+app.Logger.LogInformation(
+    "RateLimits → Demo: window={DemoWindow}s, startLimit={DemoLimit}; Auth: window={AuthWindow}s, authLimit={AuthLimit}",
+    demoRate.WindowSeconds, demoStartLimit, authRate.WindowSeconds, authLimit);
+
 // -----------------------------
-// Dev-only: migrations + dev seed + Swagger
+// Dev-only
 // -----------------------------
 if (app.Environment.IsDevelopment())
 {
@@ -134,30 +239,34 @@ if (app.Environment.IsDevelopment())
 
     app.ApplyMigrations();
 
-    var db = services.GetRequiredService<ApplicationDbContext>();
-    var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
-    var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
-    await DbInitializer.SeedAsync(db, userManager, roleManager);
+    // NOTE: removed DbInitializer.SeedAsync(...) — Demo Sandbox handles test data now.
 
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 // -----------------------------
-// Pipeline
+// Pipeline (ORDER MATTERS)
 // -----------------------------
+app.UseForwardedHeaders();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.UseHttpsRedirection();
 app.UseCors();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Identity API endpoints (login, etc.)
-app.MapGroup("/api").MapIdentityApi<ApplicationUser>();
+app.UseRateLimiter();
 
-// Controllers + SPA fallback
 app.MapControllers();
 app.MapFallbackToFile("/index.html");
 
