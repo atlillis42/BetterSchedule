@@ -10,7 +10,7 @@ using BetterSchedule.Server.Options;
 using BetterSchedule.Server.Services.Demo;
 using BetterSchedule.Server.Services.Scheduling;
 using BetterSchedule.Server.Services.Time;
-using BetterSchedule.Server.Startup; // NEW: role bootstrapper
+using BetterSchedule.Server.Startup; // role bootstrapper
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
@@ -126,7 +126,7 @@ builder.Services.AddRateLimiter(options =>
             $"demo-reset:org:{orgId}:user:{userId}",
             _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = demoStartLimit, // split later if desired
+                PermitLimit = demoStartLimit,
                 Window = demoWindow,
                 QueueLimit = 0,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst
@@ -217,12 +217,32 @@ builder.Services.AddCors(options =>
 });
 
 // -----------------------------
-// EF Core
+// EF Core (with Azure SQL transient retries)
 // -----------------------------
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"),
+        sql =>
+        {
+            sql.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(30),
+                errorNumbersToAdd: null);
+        });
+});
 
 var app = builder.Build();
+
+// Apply migrations automatically in Production when toggled on
+if (!app.Environment.IsDevelopment() &&
+    app.Configuration.GetValue<bool>("Data:RunMigrationsOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    db.Database.Migrate();
+    app.Logger.LogInformation("Applied EF Core migrations at startup (Production).");
+}
 
 // Log rate limits
 app.Logger.LogInformation(
