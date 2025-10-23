@@ -22,7 +22,13 @@ export default function CalendarToolbar(props: {
     const { view, onSetView, tzLabel } = props;
 
     // Role + organization context
-    const { isManager, isProvider, isClient, organizationId } = useAuth();
+    const { isManager, isProvider, isClient, organizationId, isDemo } = useAuth() as {
+        isManager: boolean;
+        isProvider: boolean;
+        isClient: boolean;
+        organizationId?: string | null;
+        isDemo?: boolean;
+    };
 
     const viewingAs = useMemo(() => {
         if (isManager) return "Manager";
@@ -31,8 +37,9 @@ export default function CalendarToolbar(props: {
         return undefined;
     }, [isManager, isProvider, isClient]);
 
-    // Resolve org name
-    const organizationName = useOrganizationDisplayName(organizationId ?? undefined);
+    // Resolve org name (short-circuit to "Demo Sandbox" for demo sessions)
+    const baseOrgName = useOrganizationDisplayName(organizationId ?? undefined);
+    const organizationName = isDemo ? "Demo Sandbox" : baseOrgName;
 
     type SwitcherView = "Day" | "Resources" | "Week" | "Month";
     const activeForSwitcher: SwitcherView = (view === "WorkWeek" ? "Week" : view) as SwitcherView;

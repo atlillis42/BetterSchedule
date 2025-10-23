@@ -16,6 +16,9 @@ export interface AuthStatusResponse {
     /** Active organization identifier, when scoped; otherwise null. */
     organizationId: string | null;
 
+    /** True when the current identity is an ephemeral demo user. Absent/false for normal users. */
+    isDemo?: boolean;
+
     /** Server flag to allow the static demo user switcher. Absent = false. */
     demoSwitcherEnabled?: boolean;
 }
@@ -39,6 +42,9 @@ export type AuthContextType = {
     loading: boolean;
     /** Server-approved flag to render the demo user switcher. */
     demoSwitcherEnabled: boolean;
+
+    /** True when the current identity is a demo/ephemeral user. */
+    isDemo: boolean;
 
     // Convenience flags + helpers
     /** User has Manager role. */

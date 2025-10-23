@@ -57,6 +57,7 @@ namespace BetterSchedule.Server.Controllers.Auth
                 userId = isAuthenticated ? User.FindFirstValue(ClaimTypes.NameIdentifier) : null,
                 roles = isAuthenticated ? User.FindAll(ClaimTypes.Role).Select(r => r.Value) : Array.Empty<string>(),
                 organizationId = isAuthenticated ? User.FindFirst("org_id")?.Value : null,
+                isDemo = isAuthenticated && (User.FindFirst("is_demo")?.Value == "true"),
                 demoSwitcherEnabled = _env.IsDevelopment() || _features.Value.EnableDemoSwitcher
             });
         }

@@ -25,6 +25,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [demoSwitcherEnabled, setDemoSwitcherEnabled] = useState<boolean>(false);
+    const [isDemo, setIsDemo] = useState<boolean>(false); // ← NEW
 
     /**
      * Rehydrates auth/claims from the server and updates local flags.
@@ -39,6 +40,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setRoles(res.data?.roles ?? []);
             setOrganizationId(res.data?.organizationId ?? null);
             setDemoSwitcherEnabled(Boolean(res.data?.demoSwitcherEnabled));
+            setIsDemo(Boolean(res.data?.isDemo)); // ← NEW
         } catch {
             setIsAuthenticated(false);
             setUser(null);
@@ -46,6 +48,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setRoles([]);
             setOrganizationId(null);
             setDemoSwitcherEnabled(false);
+            setIsDemo(false); // ← NEW
         } finally {
             setLoading(false);
         }
@@ -156,14 +159,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         roles,
         organizationId,
         loading,
+        demoSwitcherEnabled,
+        isDemo,           
         isManager,
         isProvider,
         isClient,
         hasRole,
         login,
         logout,
-        refreshAuth,
-        demoSwitcherEnabled
+        refreshAuth
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
