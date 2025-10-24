@@ -82,7 +82,7 @@ jobs:
           slot-name: Production
           package: ./publish
 
-      - name: Enable migrations at startup
+      - name: Enable migrations at startup (Data__RunMigrationsOnStartup=true)
         uses: azure/cli@v2
         with:
           inlineScript: |
@@ -90,7 +90,10 @@ jobs:
             az webapp config appsettings set \
               --name "${{ env.AZURE_WEBAPP_NAME }}" \
               --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
-              --settings "Data:RunMigrationsOnStartup=true"
+              --settings "Data__RunMigrationsOnStartup=true"
+            az webapp config appsettings list \
+              --name "${{ env.AZURE_WEBAPP_NAME }}" \
+              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" -o table
 
       - name: Restart Web App to run migrations
         uses: azure/cli@v2
@@ -113,7 +116,7 @@ jobs:
           done
           exit 1
 
-      - name: Disable migrations at startup
+      - name: Disable migrations at startup (Data__RunMigrationsOnStartup=false)
         if: always()
         uses: azure/cli@v2
         with:
@@ -122,7 +125,10 @@ jobs:
             az webapp config appsettings set \
               --name "${{ env.AZURE_WEBAPP_NAME }}" \
               --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
-              --settings "Data:RunMigrationsOnStartup=false"
+              --settings "Data__RunMigrationsOnStartup=false"
+            az webapp config appsettings list \
+              --name "${{ env.AZURE_WEBAPP_NAME }}" \
+              --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" -o table
 
       - name: Restart Web App (final)
         if: always()
