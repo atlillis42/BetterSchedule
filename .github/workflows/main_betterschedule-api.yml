@@ -19,7 +19,7 @@ jobs:
     permissions:
       contents: read
     env:
-      PUBLISH_DIR: ${{ runner.temp }}/publish
+      PUBLISH_DIR: ./publish
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
       - name: Build
         run: dotnet build "${{ env.PROJECT_PATH }}" --no-restore -c Release
       - name: Publish
-        run: dotnet publish "${{ env.PROJECT_PATH }}" --no-build -c Release -o "${{ env.PUBLISH_DIR }}"
+        run: dotnet publish "${{ env.PROJECT_PATH }}" --no-build -c Release -o "$PUBLISH_DIR"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
