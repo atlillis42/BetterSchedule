@@ -51,34 +51,58 @@ jobs:
         with:
           name: api-publish
           path: ./publish
+
       - name: Azure login (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_367C3C85595346EFA1E1614F813E2D8A }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7D96F055F3F24FF2BEFE48830FA10460 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_1143AE45A0B740009C5C1F4AD6538934 }}
+
+      - name: Show Azure CLI version & account
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -euxo pipefail
+            az --version
+            az account show -o table
+
+      - name: Verify resource group and web app
+        uses: azure/cli@v2
+        with:
+          inlineScript: |
+            set -euxo pipefail
+            az group show -n "${{ env.AZURE_RESOURCE_GROUP }}" -o table
+            az webapp show -g "${{ env.AZURE_RESOURCE_GROUP }}" -n "${{ env.AZURE_WEBAPP_NAME }}" -o table
+
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           slot-name: Production
           package: ./publish
+
       - name: Enable migrations at startup
         uses: azure/cli@v2
         with:
           inlineScript: |
+            set -euxo pipefail
             az webapp config appsettings set \
               --name "${{ env.AZURE_WEBAPP_NAME }}" \
               --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
-              --settings "Data:RunMigrationsOnStartup=true"
+              --settings "Data:RunMigrationsOnStartup=true" --debug
+
       - name: Restart Web App to run migrations
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp restart --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}"
+            set -euxo pipefail
+            az webapp restart --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --debug
+
       - name: Wait for health
         shell: bash
         run: |
+          set -euxo pipefail
           end=$((SECONDS + $HEALTH_TIMEOUT_SECONDS))
           while [ $SECONDS -lt $end ]; do
             code=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_ENDPOINT")
@@ -88,18 +112,22 @@ jobs:
             sleep 5
           done
           exit 1
+
       - name: Disable migrations at startup
         if: always()
         uses: azure/cli@v2
         with:
           inlineScript: |
+            set -euxo pipefail
             az webapp config appsettings set \
               --name "${{ env.AZURE_WEBAPP_NAME }}" \
               --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" \
-              --settings "Data:RunMigrationsOnStartup=false"
+              --settings "Data:RunMigrationsOnStartup=false" --debug
+
       - name: Restart Web App (final)
         if: always()
         uses: azure/cli@v2
         with:
           inlineScript: |
-            az webapp restart --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}"
+            set -euxo pipefail
+            az webapp restart --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --debug
