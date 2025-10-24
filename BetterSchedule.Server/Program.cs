@@ -76,13 +76,12 @@ builder.Services.AddHsts(o =>
 });
 builder.Services.AddHttpsRedirection(o =>
 {
-    // Azure will terminate TLS at the front end; forwarded headers ensure we see HTTPS here.
     o.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
     o.HttpsPort = 443;
 });
 
 // -----------------------------
-// Forwarded Headers (IMPORTANT on Azure App Service)
+// Forwarded Headers 
 // -----------------------------
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -95,7 +94,6 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
 
-    // Don’t artificially limit the number of forwarders.
     options.ForwardLimit = null;
 });
 
@@ -222,7 +220,6 @@ builder.Services
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
-// Ensure core roles exist even without the old dev seeder
 builder.Services.AddHostedService<EnsureCoreRolesHostedService>();
 
 // -----------------------------
@@ -305,6 +302,14 @@ app.UseAuthorization();
 
 app.UseRateLimiter();
 
+// --- HEALTH: return 200 only if DB is reachable ---
+app.MapGet("/healthz", async (ApplicationDbContext db) =>
+{
+    var ok = await db.Database.CanConnectAsync();
+    return ok ? Results.Ok(new { status = "Healthy" }) : Results.StatusCode(503);
+});
+
+// Controllers and SPA fallback (if any static UI is hosted here)
 app.MapControllers();
 app.MapFallbackToFile("/index.html");
 
