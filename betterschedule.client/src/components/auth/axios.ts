@@ -1,8 +1,6 @@
 import axios from "axios";
 
 const baseURL = import.meta.env.VITE_API_URL || "/api";
-// dev (proxy): leave VITE_API_URL undefined, requests go to https://localhost:<VITE_PORT>/api/*
-// direct mode: set VITE_API_URL=https://localhost:7248/api to bypass proxy
 
 export const api = axios.create({
     baseURL,
@@ -12,7 +10,6 @@ export const api = axios.create({
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        // Keep a concise dev log to aid debugging without noisy production logs.
         if (import.meta.env.DEV) {
             // eslint-disable-next-line no-console
             console.debug("[api] error", {
