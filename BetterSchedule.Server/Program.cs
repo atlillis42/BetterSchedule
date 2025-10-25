@@ -1,3 +1,5 @@
+// Production-leaning setup with Azure App Service + Azure SQL (Managed Identity).
+
 using System.Globalization;
 using System.Reflection;
 using System.Text.Json.Serialization;
@@ -16,11 +18,12 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // -----------------------------
-// MVC / JSON
+// Controllers / JSON
 // -----------------------------
 builder.Services.AddControllers().AddJsonOptions(o =>
 {
@@ -30,58 +33,53 @@ builder.Services.AddControllers().AddJsonOptions(o =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
+    // Include XML docs if available (kept in prod; low-cost, useful for ops).
     var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
-    {
         c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
-    }
 });
 
 // -----------------------------
-// Core services
+// Core service registrations
 // -----------------------------
 builder.Services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
 builder.Services.Configure<FeatureFlagsOptions>(builder.Configuration.GetSection("Features"));
 
-// Demo options + services
 builder.Services.Configure<DemoOptions>(builder.Configuration.GetSection("Demo"));
 builder.Services.AddScoped<ISandboxService, SandboxService>();
-builder.Services.AddHostedService<DemoCleanupWorker>();
 builder.Services.AddScoped<IDemoSandboxSeeder, DemoSandboxSeeder>();
 builder.Services.AddScoped<DemoSandboxSeeder>();
 builder.Services.AddMemoryCache();
 
-// Rate-limit options (bound from config)
+// Rate-limit options (bound from config, with sane defaults)
 builder.Services.Configure<DemoRateLimitOptions>(builder.Configuration.GetSection("Demo:RateLimit"));
 builder.Services.Configure<AuthRateLimitOptions>(builder.Configuration.GetSection("Auth:RateLimit"));
-
 var demoRate = builder.Configuration.GetSection("Demo:RateLimit").Get<DemoRateLimitOptions>() ?? new DemoRateLimitOptions();
 var authRate = builder.Configuration.GetSection("Auth:RateLimit").Get<AuthRateLimitOptions>() ?? new AuthRateLimitOptions();
-
 var demoWindow = TimeSpan.FromSeconds(Math.Max(1, demoRate.WindowSeconds));
 var demoStartLimit = Math.Max(1, demoRate.MaxStartsPerIp);
-
 var authWindow = TimeSpan.FromSeconds(Math.Max(1, authRate.WindowSeconds));
 var authLimit = Math.Max(1, authRate.MaxRequestsPerIp);
 
 // -----------------------------
-// HTTPS + HSTS
+// HTTPS / HSTS
 // -----------------------------
 builder.Services.AddHsts(o =>
 {
-    o.Preload = false;
-    o.IncludeSubDomains = false;
+    o.Preload = false;            // avoid surprising subdomain behavior
+    o.IncludeSubDomains = false;  // keep scope tight; add if/when needed
     o.MaxAge = TimeSpan.FromDays(180);
 });
 builder.Services.AddHttpsRedirection(o =>
 {
+    // TLS is terminated by Azure FrontEnd; we still enforce redirect semantics.
     o.RedirectStatusCode = StatusCodes.Status308PermanentRedirect;
     o.HttpsPort = 443;
 });
 
 // -----------------------------
-// Forwarded Headers 
+// Forwarded headers (required behind Azure’s proxy)
 // -----------------------------
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -90,15 +88,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
         ForwardedHeaders.XForwardedHost |
         ForwardedHeaders.XForwardedFor;
 
-    // Accept headers from Azure's front-end proxies.
+    // Trust App Service front-ends (dynamic); don’t pin to specific IPs.
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
-
     options.ForwardLimit = null;
 });
 
 // -----------------------------
-// Built-in Rate Limiting
+// Built-in Rate Limiting (small per-IP guards; adjust per traffic)
 // -----------------------------
 builder.Services.AddRateLimiter(options =>
 {
@@ -110,13 +107,11 @@ builder.Services.AddRateLimiter(options =>
         if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out TimeSpan retryAfter))
         {
             retryAfterSeconds = (int)Math.Ceiling(Math.Max(0, retryAfter.TotalSeconds));
-            context.HttpContext.Response.Headers["Retry-After"] =
-                retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            context.HttpContext.Response.Headers["Retry-After"] = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
         }
 
-        var payload = new { error = "rate_limited", retryAfterSeconds };
         context.HttpContext.Response.ContentType = "application/json";
-        await context.HttpContext.Response.WriteAsJsonAsync(payload, cancellationToken: token);
+        await context.HttpContext.Response.WriteAsJsonAsync(new { error = "rate_limited", retryAfterSeconds }, cancellationToken: token);
     };
 
     options.AddPolicy("DemoStartPolicy", httpContext =>
@@ -139,6 +134,7 @@ builder.Services.AddRateLimiter(options =>
         var userId = httpContext.User.Identity?.IsAuthenticated == true
             ? (httpContext.User.FindFirst("sub")?.Value ?? "anon")
             : "anon";
+
         return RateLimitPartition.GetFixedWindowLimiter(
             $"demo-reset:org:{orgId}:user:{userId}",
             _ => new FixedWindowRateLimiterOptions
@@ -166,7 +162,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 // -----------------------------
-// AuthN / AuthZ
+// Authentication / Authorization
 // -----------------------------
 builder.Services.AddAuthorization();
 builder.Services.AddAuthentication(options =>
@@ -178,6 +174,7 @@ builder.Services.AddAuthentication(options =>
 })
 .AddCookie(IdentityConstants.ApplicationScheme, options =>
 {
+    // Cookies are used for browser flows; keep Secure + HttpOnly in prod.
     options.SlidingExpiration = true;
     options.LoginPath = "/api/login";
     options.Cookie.Name = ".BetterSchedule.Identity";
@@ -185,6 +182,7 @@ builder.Services.AddAuthentication(options =>
     options.Cookie.SameSite = SameSiteMode.None;
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 
+    // API endpoints should return 401/403, not HTML redirects.
     options.Events = new CookieAuthenticationEvents
     {
         OnRedirectToLogin = ctx =>
@@ -220,10 +218,23 @@ builder.Services
 builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, CustomClaimsPrincipalFactory>();
 builder.Services.AddScoped<ISchedulingConflictService, SchedulingConflictService>();
 
-builder.Services.AddHostedService<EnsureCoreRolesHostedService>();
+// -----------------------------
+// Feature flags for DB-dependent background work
+// (Default to ON in dev, OFF in prod unless explicitly enabled.)
+// -----------------------------
+var enableDemoCleanup = builder.Configuration.GetValue<bool>("Features:EnableDemoCleanup", builder.Environment.IsDevelopment());
+var ensureCoreRolesOnStartup = builder.Configuration.GetValue<bool>("Features:EnsureCoreRolesOnStartup", builder.Environment.IsDevelopment());
+
+if (enableDemoCleanup)
+    builder.Services.AddHostedService<DemoCleanupWorker>();
+
+if (ensureCoreRolesOnStartup)
+    builder.Services.AddHostedService<EnsureCoreRolesHostedService>();
 
 // -----------------------------
 // CORS
+// For a single-origin deploy (SPA + API in the same App Service), CORS is a no-op.
+// If you split front/back later, set App:ClientUrl to the SPA origin.
 // -----------------------------
 builder.Services.AddCors(options =>
 {
@@ -233,24 +244,40 @@ builder.Services.AddCors(options =>
 });
 
 // -----------------------------
-// EF Core (with Azure SQL transient retries)
+// EF Core + Azure SQL (Managed Identity) hardening
+// - Pooling reduces per-request overhead
+// - Longer timeouts tolerate serverless warm-up
+// - Retries smooth over transient faults
+// - MARS reduces contention on pooled connections
 // -----------------------------
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContextPool<ApplicationDbContext>(options =>
 {
+    var raw = builder.Configuration.GetConnectionString("DefaultConnection") ?? string.Empty;
+    var csb = new SqlConnectionStringBuilder(raw);
+
+    if (csb.ConnectTimeout < 60) csb.ConnectTimeout = 60; // post-login can exceed 15s on cold DB
+    csb.MultipleActiveResultSets = true;
+    if (string.IsNullOrWhiteSpace(csb.ApplicationName)) csb.ApplicationName = "BetterSchedule.Server";
+
     options.UseSqlServer(
-        builder.Configuration.GetConnectionString("DefaultConnection"),
+        csb.ConnectionString,
         sql =>
         {
             sql.EnableRetryOnFailure(
                 maxRetryCount: 5,
                 maxRetryDelay: TimeSpan.FromSeconds(30),
                 errorNumbersToAdd: null);
+            sql.CommandTimeout(60); // first heavy query after cold start
         });
 });
 
 var app = builder.Build();
 
-// Apply migrations automatically in Production when toggled on
+// -----------------------------
+// One-time prod migrations gate
+// Toggle via app setting: Data__RunMigrationsOnStartup = true
+// Keep OFF normally to avoid startup latency.
+// -----------------------------
 if (!app.Environment.IsDevelopment() &&
     app.Configuration.GetValue<bool>("Data:RunMigrationsOnStartup"))
 {
@@ -260,35 +287,32 @@ if (!app.Environment.IsDevelopment() &&
     app.Logger.LogInformation("Applied EF Core migrations at startup (Production).");
 }
 
-// Log rate limits
+// Useful operational visibility
 app.Logger.LogInformation(
     "RateLimits → Demo: window={DemoWindow}s, startLimit={DemoLimit}; Auth: window={AuthWindow}s, authLimit={AuthLimit}",
     demoRate.WindowSeconds, demoStartLimit, authRate.WindowSeconds, authLimit);
 
 // -----------------------------
-// Dev-only
+// Dev-only helpers
 // -----------------------------
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var services = scope.ServiceProvider;
 
-    app.ApplyMigrations();
+    app.ApplyMigrations(); // optional dev helper
 
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
 // -----------------------------
-// Pipeline (ORDER MATTERS)
+// HTTP pipeline (order matters)
 // -----------------------------
-// Must run FIRST so the rest of the middleware sees the real scheme/host.
 app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
-{
     app.UseHsts();
-}
 
 app.UseHttpsRedirection();
 
@@ -302,15 +326,31 @@ app.UseAuthorization();
 
 app.UseRateLimiter();
 
-// --- HEALTH: return 200 only if DB is reachable ---
+// -----------------------------
+// Health check
+// - Uses EF execution strategy to absorb transient SQL faults
+// - Returns 503 only when DB is not reachable after retry
+// Keep the body terse in prod; verbose errors invite information leaks.
+// -----------------------------
 app.MapGet("/healthz", async (ApplicationDbContext db) =>
 {
-    var ok = await db.Database.CanConnectAsync();
-    return ok ? Results.Ok(new { status = "Healthy" }) : Results.StatusCode(503);
-});
+    try
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        var ok = await strategy.ExecuteAsync(async () => await db.Database.CanConnectAsync());
+        return ok
+            ? Results.Ok(new { status = "Healthy" })
+            : Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+    catch
+    {
+        return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+    }
+}).AllowAnonymous();
 
-// Controllers and SPA fallback (if any static UI is hosted here)
 app.MapControllers();
+
+// SPA fallback (only relevant when you deploy the Vite build into wwwroot)
 app.MapFallbackToFile("/index.html");
 
 app.Run();
