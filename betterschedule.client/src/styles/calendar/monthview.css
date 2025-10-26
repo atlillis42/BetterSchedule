@@ -1,18 +1,18 @@
 /* 
-DayPilot Month Theme 
-https://themes.daypilot.org/month/theme/ejigt2
-Theme Designer Version: 2025.09.27.82882
+DayPilot Month Theme — BetterSchedule aligned
+Light + Dark modes matched to WeekView palette.
 */
+
 .monthview_main:not(.default) {
 	--dp-month-border-color: #c0c0c0;
 	--dp-month-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
-	--dp-month-font-size: 13px; /* match week */
+	--dp-month-font-size: 13px;
 	--dp-month-cell-border-color: #eeeeee;
 	--dp-month-cell-bg-color: #f9f9f9;
 	--dp-month-cell-business-bg-color: #ffffff;
-	--dp-month-header-bg-color: #f3f3f3; /* match week */
-	--dp-month-header-color: #333; /* match week */
-	--dp-month-header-padding: 0px; /* fixed height via .monthview_header_inner */
+	--dp-month-header-bg-color: #f3f3f3;
+	--dp-month-header-color: #333;
+	--dp-month-header-padding: 0px;
 	--dp-month-header-horizontal-align: center;
 	--dp-month-header-vertical-align: center;
 	--dp-month-message-bg-color: #ffa216;
@@ -22,8 +22,8 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-event-border-color: #999999;
 	--dp-month-event-horizontal-align: flex-start;
 	--dp-month-event-vertical-align: center;
-	--dp-month-event-padding: 4px; /* breathing room */
-	--dp-month-event-padding-left: 12px; /* room for status bar */
+	--dp-month-event-padding: 4px;
+	--dp-month-event-padding-left: 12px;
 	--dp-month-event-padding-rtl: 4px 12px 4px 4px;
 	--dp-month-event-bar-width: 6px;
 	--dp-month-event-bar-color: #1066a8;
@@ -34,58 +34,81 @@ Theme Designer Version: 2025.09.27.82882
 	--dp-month-event-border-radius: 0px;
 	--dp-month-event-bg-top-color: #ffffff;
 	--dp-month-event-bg-bottom-color: #fafafa;
-	/* Design token for chip height; keep in sync with CalendarBody.tsx */
 	--bs-month-event-height: 26px;
 }
 
+/* ===== Light (align with WeekView) ===== */
 .monthview_main {
-	--dp-month-border-color: #c0c0c0;
+	--dp-month-border-color: #d8dee6;
 	--dp-month-font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 	--dp-month-font-size: 13px;
-	--dp-month-cell-border-color: #ddd;
-	--dp-month-cell-bg-color: #f9f9f9;
-	--dp-month-cell-business-bg-color: #ffffff;
-	--dp-month-event-color: #333;
-	--dp-month-event-border-color: #999;
+	--dp-month-cell-border-color: #e6ebf2;
+	--dp-month-cell-bg-color: #e5e7eb; /* OFF-hours/base */
+	--dp-month-cell-business-bg-color: #ffffff; /* if used later */
+
+	--dp-month-header-bg-color: #f6f8fc; /* subtle blue wash */
+	--dp-month-header-color: #0f172a;
+	/* Event chip */
+	--dp-month-event-color: #0f172a;
+	--dp-month-event-border-color: #c9d3df;
 	--dp-month-event-border: 1px solid var(--dp-month-event-border-color);
 	--dp-month-event-bg-top-color: #ffffff;
-	--dp-month-event-bg-bottom-color: #eeeeee;
+	--dp-month-event-bg-bottom-color: #f1f5fb;
 	--dp-month-event-background: linear-gradient(to bottom, var(--dp-month-event-bg-top-color) 0%, var(--dp-month-event-bg-bottom-color) 100%);
 	--dp-month-event-horizontal-align: flex-start;
 	--dp-month-event-vertical-align: center;
 	--dp-month-event-padding: 4px;
 	--dp-month-event-padding-left: 12px;
 	--dp-month-event-padding-rtl: 4px 12px 4px 4px;
-	--dp-month-event-border-radius: 0px;
+	--dp-month-event-border-radius: 4px;
 	--dp-month-event-box-shadow: none;
 	--dp-month-event-bar-top: 1px;
 	--dp-month-event-bar-left: 2px;
 	--dp-month-event-bar-bottom: 1px;
 	--dp-month-event-bar-width: 6px;
-	--dp-month-event-bar-color: #1066a8;
+	--dp-month-event-bar-color: #1d4ed8; /* blue-700 */
 	--dp-month-event-bar-display: block;
-	--dp-month-header-bg-color: #f3f3f3;
-	--dp-month-header-color: #333;
-	--dp-month-header-horizontal-align: center;
-	--dp-month-header-vertical-align: center;
-	--dp-month-header-padding: 0px;
 	--dp-month-message-bg-color: #ffa216;
 	--dp-month-message-color: #ffffff;
 	--dp-month-message-padding: 10px;
-	--dp-month-selected-event-bg-color: #ddd;
-	--dp-month-shadow-color: #bbbbbb;
-	--dp-month-shadow-border-color: #888888;
+	--dp-month-selected-event-bg-color: #e9eef7;
+	--dp-month-shadow-color: #cfd7e3;
+	--dp-month-shadow-border-color: #aab6c6;
 }
 
-	.monthview_main *, .monthview_main *:before, .monthview_main *:after {
-		box-sizing: content-box;
-	}
+/* ===== Dark (match WeekView dark) ===== */
+.dark .monthview_main {
+	--dp-month-border-color: #2b313a;
+	--dp-month-cell-border-color: #2f3742;
+	--dp-month-cell-bg-color: #171b20; /* OFF-hours/base */
+	--dp-month-cell-business-bg-color: #1f2630; /* Business tint */
+
+	--dp-month-header-bg-color: #111827;
+	--dp-month-header-color: #e5e7eb;
+	/* Event chip (same design language as week) */
+	--dp-month-event-color: #e5e7eb;
+	--dp-month-event-border-color: #56606c;
+	--dp-month-event-border: 1px solid var(--dp-month-event-border-color);
+	--dp-month-event-bg-top-color: #212835;
+	--dp-month-event-bg-bottom-color: #1a202a;
+	--dp-month-event-background: linear-gradient(to bottom, var(--dp-month-event-bg-top-color) 0%, var(--dp-month-event-bg-bottom-color) 100%);
+	--dp-month-event-border-radius: 4px;
+	--dp-month-event-box-shadow: none;
+	--dp-month-event-bar-color: #60a5fa; /* blue-400 */
+	--dp-month-selected-event-bg-color: #2a313a;
+	--dp-month-shadow-color: #30363d;
+	--dp-month-shadow-border-color: #3b434c;
+}
+
+.monthview_main *, .monthview_main *:before, .monthview_main *:after {
+	box-sizing: content-box;
+}
 
 .monthview_main {
 	border: 1px solid var(--dp-month-border-color);
 	font-family: var(--dp-month-font-family);
 	font-size: var(--dp-month-font-size);
-	color: #333;
+	color: var(--dp-month-event-color);
 }
 
 /* Grid + business cells */
@@ -95,12 +118,18 @@ Theme Designer Version: 2025.09.27.82882
 	position: absolute;
 	inset: 0;
 	background-color: var(--dp-month-cell-bg-color);
-	/* Allow per-day scrolling when cellMode=true */
 	overflow-y: auto;
 }
 
 .monthview_cell_business .monthview_cell_inner {
 	background-color: var(--dp-month-cell-business-bg-color);
+}
+
+/* Weekends behave like OFF-hours/base (no "business" look) */
+.monthview_cell_weekend .monthview_cell_inner,
+.monthview_weekend .monthview_cell_inner,
+.month_weekend .monthview_cell_inner {
+	background-color: var(--dp-month-cell-bg-color);
 }
 
 /* Day number (top-right) */
@@ -110,7 +139,7 @@ Theme Designer Version: 2025.09.27.82882
 	box-sizing: border-box;
 }
 
-/* Month header (Sun..Sat) to match Week header height) */
+/* Month header row (Sun..Sat) */
 .monthview_header_inner {
 	position: absolute;
 	inset: 0;
@@ -132,7 +161,6 @@ Theme Designer Version: 2025.09.27.82882
 	box-shadow: var(--dp-month-event-box-shadow);
 }
 
-/* Fixed event height (official theme hook) */
 .monthview_event_height {
 	height: var(--bs-month-event-height);
 }
@@ -154,7 +182,6 @@ Theme Designer Version: 2025.09.27.82882
 	justify-content: var(--dp-month-event-horizontal-align);
 	font-size: 12px;
 	line-height: 1.2;
-	/* NOTE: remove min-height; chip height is controlled by .monthview_event_height and eventHeight prop */
 }
 
 .monthview_direction_rtl .monthview_event_inner {
@@ -226,7 +253,7 @@ Theme Designer Version: 2025.09.27.82882
 
 /* Time labels */
 .monthview_event_timeleft, .monthview_event_timeright {
-	color: #ccc;
+	color: #94a3b8;
 	font-size: 11px;
 	display: flex;
 	align-items: center;

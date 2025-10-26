@@ -13,64 +13,52 @@
     --bs-status: #ef4444;
     --bs-status-rgb: 245,158,11;
 }
-/* Canceled → red */
+/* Canceled → amber; text keeps strike-through */
 .res-status-canceled {
     --bs-status: #f59e0b;
     --bs-status-rgb: 239,68,68;
 }
 
 /* =========================================================================
-   Event Chip (Bar and shading):
-   Works for Week/Day, Month, and Resource views.
+   Event Chip (bar + tint)
    ========================================================================= */
-
-/* ---- WEEK (Day/Week) ---- */
 .ev-reservation.weekview_event {
     position: relative;
-    /* Fallback tint */
-    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08) !important;
-    border: 1px solid rgba(var(--bs-status-rgb, 0,0,0), 0.35) !important;
-    /* Modern tint (overrides fallback) */
-    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff) !important;
-    border-color: color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db) !important;
-    border-radius: 2px;
-    box-shadow: 0 1px 1px rgba(0,0,0,0.06);
+    background: color-mix(in srgb,var(--bs-status,#3b82f6) 10%, #fff) !important;
+    border: 1px solid color-mix(in srgb,var(--bs-status,#3b82f6) 32%, #d1dbe5) !important;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.06);
     overflow: hidden;
 }
 
-    /* Full-height status bar */
     .ev-reservation.weekview_event::before {
         content: "";
         position: absolute;
         inset: 0 auto 0 0;
         width: 6px;
-        background: var(--bs-status, #3b82f6);
-        border-radius: 2px 0 0 2px;
-        opacity: 0.95;
+        background: var(--bs-status,#3b82f6);
+        opacity: .95;
     }
 
-/* Inner: transparent so outer tint shows; keep padding for text offset */
 .ev-reservation .weekview_event_inner {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    padding-left: 12px !important; /* room for status bar */
+    padding-left: 12px !important;
 }
 
-/* Selected state: keep tint; add outline ring for affordance */
 .ev-reservation.weekview_selected.weekview_event {
-    outline: 2px solid color-mix(in srgb, var(--bs-status, #3b82f6) 55%, #ffffff);
+    outline: 2px solid color-mix(in srgb,var(--bs-status,#3b82f6) 50%, #ffffff);
     outline-offset: 0;
 }
 
-/* ---- MONTH ---- */
+/* Month */
 .ev-reservation.monthview_event {
     position: relative;
-    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.06) !important;
-    background: color-mix(in srgb, var(--bs-status, #3b82f6) 7%, #fff) !important;
-    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 30%, #d1d5db) !important;
-    border-radius: 2px;
-    box-shadow: 0 1px 1px rgba(0,0,0,0.05);
+    background: color-mix(in srgb,var(--bs-status,#3b82f6) 7%, #fff) !important;
+    border: 1px solid color-mix(in srgb,var(--bs-status,#3b82f6) 28%, #d1dbe5) !important;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.05);
     overflow: hidden;
 }
 
@@ -78,9 +66,9 @@
         content: "";
         position: absolute;
         inset: 0 auto 0 0;
-        width: 4px; /* slimmer for month rows */
-        background: var(--bs-status, #3b82f6);
-        opacity: 0.95;
+        width: 4px;
+        background: var(--bs-status,#3b82f6);
+        opacity: .95;
     }
 
 .ev-reservation .monthview_event_inner {
@@ -89,13 +77,12 @@
     padding-left: 10px !important;
 }
 
-/* ---- RESOURCES ---- */
+/* Resources */
 .ev-reservation.resourceview_event {
     position: relative;
-    background-color: rgba(var(--bs-status-rgb, 0,0,0), 0.08) !important;
-    background: color-mix(in srgb, var(--bs-status, #3b82f6) 10%, #fff) !important;
-    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 35%, #d1d5db) !important;
-    border-radius: 2px;
+    background: color-mix(in srgb,var(--bs-status,#3b82f6) 10%, #fff) !important;
+    border: 1px solid color-mix(in srgb,var(--bs-status,#3b82f6) 32%, #d1dbe5) !important;
+    border-radius: 4px;
     overflow: hidden;
 }
 
@@ -104,8 +91,8 @@
         position: absolute;
         inset: 0 auto 0 0;
         width: 6px;
-        background: var(--bs-status, #3b82f6);
-        opacity: 0.95;
+        background: var(--bs-status,#3b82f6);
+        opacity: .95;
     }
 
 .ev-reservation .resourceview_event_inner {
@@ -114,29 +101,29 @@
     padding-left: 12px !important;
 }
 
-/* Hover focus polish */
+/* Hover polish */
 .ev-reservation.weekview_event:hover,
 .ev-reservation.monthview_event:hover,
 .ev-reservation.resourceview_event:hover {
-    filter: saturate(1.05) brightness(1.02);
+    filter: saturate(1.04) brightness(1.02);
 }
 
-/* Keep status-specific decorations */
+/* Status-specific decorations */
 .res-status-canceled.weekview_event,
 .res-status-canceled.monthview_event,
 .res-status-canceled.resourceview_event {
     text-decoration: line-through;
-    opacity: 0.85;
+    opacity: .85;
 }
 
-/* ---- Blocked time: remain visually distinct (no status color) ---- */
+/* ---- Blocked time -------------------------------------------------------- */
 .ev-blocked.weekview_event,
 .ev-blocked.monthview_event,
 .ev-blocked.resourceview_event {
     position: relative;
     color: #374151;
     border: 1px dashed #9ca3af !important;
-    background: repeating-linear-gradient(45deg, rgba(156,163,175,0.18) 0 8px, rgba(156,163,175,0.10) 8px 16px), linear-gradient(#fafafa, #f5f5f5) !important;
+    background: repeating-linear-gradient(45deg, rgba(0,0,0,0.06) 0 8px, rgba(0,0,0,0.03) 8px 16px), linear-gradient(#fafafa,#f5f5f5) !important;
 }
 
 .ev-blocked .weekview_event_inner,
@@ -146,7 +133,7 @@
     border: none !important;
 }
 
-/* ---- Typography for your 3-line body ---- */
+/* ---- Typography ---------------------------------------------------------- */
 .bs-event {
     display: flex;
     flex-direction: column;
@@ -157,89 +144,345 @@
 .bs-line1 {
     font-size: 12px;
     font-weight: 600;
-    color: #0f172a; /* slate-900 */
+    color: #0f172a;
 }
 
 .bs-line2 {
     font-size: 11px;
     opacity: .9;
-    color: #334155; /* slate-700 */
+    color: #334155;
 }
 
 .bs-line3 {
     font-size: 11px;
     opacity: .9;
-    color: #475569; /* slate-600 */
+    color: #475569;
+}
+/* Dark mode readability */
+.dark .bs-line1 {
+    color: #e5e7eb;
 }
 
-/* === Week view: subtle "Today" column highlight ============================ */
-/* Accent variables (override in theme if desired) */
+.dark .bs-line2 {
+    color: #cbd5e1;
+    opacity: .95;
+}
+
+.dark .bs-line3 {
+    color: #94a3b8;
+    opacity: .95;
+}
+
+/* === "Today" header (header-only highlight) =============================== */
 .weekview_main {
-    --bs-today-accent: #3c78d8;
-    --bs-today-tint-business: color-mix(in srgb, var(--bs-today-accent) 6%, var(--dp-calendar-cell-business-bg-color, #ffffff));
-    --bs-today-tint-off: color-mix(in srgb, var(--bs-today-accent) 5%, var(--dp-calendar-cell-bg-color, #f9f9f9));
-    --bs-today-tint-header: color-mix(in srgb, var(--bs-today-accent) 10%, var(--dp-calendar-header-bg-color, #f3f3f3));
-    --bs-today-border: color-mix(in srgb, var(--bs-today-accent) 35%, var(--dp-calendar-border-color, #c0c0c0));
+    --bs-today-accent: #60a5fa;
+    --bs-today-tint-header: color-mix(in srgb, var(--bs-today-accent) 18%, var(--dp-calendar-header-bg-color,#f6f8fc));
+    --bs-today-border: color-mix(in srgb, var(--bs-today-accent) 45%, var(--dp-calendar-border-color,#d8dee6));
 }
 
-/* Header tint for today's column */
 .weekview_colheader_today .weekview_colheader_inner {
     background: var(--bs-today-tint-header) !important;
     border-bottom-color: var(--bs-today-border) !important;
+    box-shadow: inset 0 0 0 .5px var(--bs-today-border);
 }
 
-/* Body cells: business vs. off-hours keep their own bases, lightly tinted */
-.weekview_cell_today.weekview_cell_business .weekview_cell_inner {
-    background: var(--bs-today-tint-business) !important;
+/* === Alternating hour shading (BUSINESS ONLY) ============================= */
+.bs-calendar {
+    --bs-hour-odd-tint-business: color-mix(in srgb, black 4%, var(--dp-calendar-cell-business-bg-color,#ffffff));
 }
 
-.weekview_cell_today:not(.weekview_cell_business) .weekview_cell_inner {
-    background: var(--bs-today-tint-off) !important;
+.dark .bs-calendar {
+    --bs-hour-odd-tint-business: color-mix(in srgb, white 10%, var(--dp-calendar-cell-business-bg-color,#1f2630));
 }
 
-/* Keep gridlines crisp on "today" column */
-.weekview_cell_today .weekview_cell_inner {
-    border-right: 1px solid var(--dp-calendar-cell-border-color);
-    border-bottom: 1px solid var(--dp-calendar-cell-border-color);
-}
-
-/* Selection still obvious when today is selected (adds a faint ring) */
-.weekview_colheader_today,
-.weekview_cell_today .weekview_cell_inner {
-    box-shadow: inset 0 0 0 0.5px var(--bs-today-border);
-}
-
-/* === Week view: alternating hour shading (subtle) ========================= */
-.weekview_main {
-    /* Light mode mixes a tiny bit of slate into the base cell colors */
-    --bs-hour-odd-tint-business: color-mix(in srgb, #0f172a 6%, var(--dp-calendar-cell-business-bg-color, #ffffff));
-    --bs-hour-odd-tint-off: color-mix(in srgb, #0f172a 5%, var(--dp-calendar-cell-bg-color, #f9f9f9));
-}
-
-/* Apply to the inner cell background so gridlines remain crisp */
 .weekview_cell_hour_odd.weekview_cell_business .weekview_cell_inner {
     background: var(--bs-hour-odd-tint-business) !important;
 }
 
-.weekview_cell_hour_odd:not(.weekview_cell_business) .weekview_cell_inner {
-    background: var(--bs-hour-odd-tint-off) !important;
+/* === Weekends behave like OFF-hours (no alternation) ====================== */
+/* Kill odd-hour alternation on OFF-hours + weekends (authoritative) */
+.offhours-cell.weekview_cell_hour_odd .weekview_cell_inner,
+.weekview_cell_weekend.weekview_cell_hour_odd .weekview_cell_inner {
+    background: var(--dp-calendar-cell-bg-color) !important;
 }
 
-/* Keep borders consistent on shaded rows */
-.weekview_cell_hour_odd .weekview_cell_inner {
-    border-right: 1px solid var(--dp-calendar-cell-border-color);
-    border-bottom: 1px solid var(--dp-calendar-cell-border-color);
+.weekview_cell_weekend.weekview_cell_hour_odd .weekview_cell_inner,
+.weekview_cell_weekend.weekview_cell_business .weekview_cell_inner {
+    background: var(--dp-calendar-cell-bg-color) !important;
 }
 
-/* Bold the text of resource column headers (DayPilot Calendar, resources mode) */
+/* Resource column headers */
 .bs-resource-colheader .weekview_colheader_inner {
     font-weight: 600 !important;
 }
 
-/* Dark mode tune: add a hint of white into the darker bases */
-@media (prefers-color-scheme: dark) {
-    .weekview_main {
-        --bs-hour-odd-tint-business: color-mix(in srgb, #ffffff 7%, var(--dp-calendar-cell-business-bg-color, #111827));
-        --bs-hour-odd-tint-off: color-mix(in srgb, #ffffff 6%, var(--dp-calendar-cell-bg-color, #0f172a));
+/* ==== Dark mode: Tinted chips with higher contrast ======================= */
+.dark .ev-reservation.weekview_event,
+.dark .ev-reservation.monthview_event,
+.dark .ev-reservation.resourceview_event {
+    /* mix brand into the calendar surface to avoid chalky white */
+    background: color-mix(in srgb, var(--bs-status, #3b82f6) 18%, var(--dp-calendar-cell-business-bg-color, #1f2630)) !important;
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 38%, #2b313a) !important;
+    border-radius: 6px;
+}
+
+    .dark .ev-reservation.weekview_event::before,
+    .dark .ev-reservation.monthview_event::before,
+    .dark .ev-reservation.resourceview_event::before {
+        opacity: 0.95;
     }
+
+/* Ensure text is crisp on darker tints */
+.dark .ev-reservation .bs-line1 {
+    color: #f3f4f6;
+}
+/* slate-100 */
+.dark .ev-reservation .bs-line2 {
+    color: #e5e7eb;
+    opacity: .95;
+}
+
+.dark .ev-reservation .bs-line3 {
+    color: #cbd5e1;
+    opacity: .95;
+}
+
+
+/* ==== Optional: Bar-only style in dark mode (activate by adding .ev-style--bar to .bs-calendar) */
+.dark .ev-style--bar .ev-reservation.weekview_event,
+.dark .ev-style--bar .ev-reservation.monthview_event,
+.dark .ev-style--bar .ev-reservation.resourceview_event {
+    background: var(--dp-calendar-cell-business-bg-color, #1f2630) !important;
+    border: 1px solid #2b313a !important;
+    border-radius: 6px;
+}
+
+    .dark .ev-style--bar .ev-reservation.weekview_event:hover,
+    .dark .ev-style--bar .ev-reservation.monthview_event:hover,
+    .dark .ev-style--bar .ev-reservation.resourceview_event:hover {
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--bs-status, #3b82f6) 60%, #000) inset;
+        filter: none; /* avoid over-saturating */
+    }
+
+    /* Keep the status bar vivid */
+    .dark .ev-style--bar .ev-reservation.weekview_event::before,
+    .dark .ev-style--bar .ev-reservation.monthview_event::before,
+    .dark .ev-style--bar .ev-reservation.resourceview_event::before {
+        background: var(--bs-status, #3b82f6);
+        opacity: 1;
+    }
+
+/* Text stays high contrast */
+.dark .ev-style--bar .ev-reservation .bs-line1 {
+    color: #f3f4f6;
+}
+
+.dark .ev-style--bar .ev-reservation .bs-line2 {
+    color: #e5e7eb;
+    opacity: .95;
+}
+
+.dark .ev-style--bar .ev-reservation .bs-line3 {
+    color: #cbd5e1;
+    opacity: .95;
+}
+
+/* =========================================================================
+   BAR-only event style (both modes)
+   - Light: neutral surface + tinted border + solid status bar
+   - Dark:  match cell surface + slightly tinted border + solid status bar
+   ========================================================================= */
+
+/* LIGHT MODE ------------------------------------------------------------- */
+.ev-style--bar .ev-reservation.weekview_event,
+.ev-style--bar .ev-reservation.resourceview_event {
+    background: #ffffff !important; /* keep the surface clean */
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 26%, #cbd5e1) !important; /* slate-300 mix */
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.ev-style--bar .ev-reservation.monthview_event {
+    background: #ffffff !important;
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 22%, #cbd5e1) !important;
+    border-radius: 4px;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+/* keep the solid status bar */
+.ev-style--bar .ev-reservation.weekview_event::before,
+.ev-style--bar .ev-reservation.resourceview_event::before {
+    width: 6px;
+    opacity: .95;
+}
+
+.ev-style--bar .ev-reservation.monthview_event::before {
+    width: 4px;
+    opacity: .95;
+}
+
+/* inner stays transparent so the bar + border define the chip */
+.ev-style--bar .ev-reservation .weekview_event_inner,
+.ev-style--bar .ev-reservation .resourceview_event_inner,
+.ev-style--bar .ev-reservation .monthview_event_inner {
+    background: transparent !important;
+    border: none !important;
+    color: #0f172a; /* slate-900 for contrast on white */
+}
+
+/* canceled keeps strike-through; borders stay a hair lighter */
+.ev-style--bar .res-status-canceled.weekview_event,
+.ev-style--bar .res-status-canceled.monthview_event,
+.ev-style--bar .res-status-canceled.resourceview_event {
+    opacity: .9;
+}
+
+/* DARK MODE -------------------------------------------------------------- */
+.dark .ev-style--bar .ev-reservation.weekview_event,
+.dark .ev-style--bar .ev-reservation.resourceview_event {
+    background: var(--dp-calendar-cell-business-bg-color, #1f2630) !important; /* blend with surface */
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 28%, #4b5563) !important; /* mix with slate-600 */
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+.dark .ev-style--bar .ev-reservation.monthview_event {
+    background: var(--dp-calendar-cell-business-bg-color, #1f2630) !important;
+    border: 1px solid color-mix(in srgb, var(--bs-status, #3b82f6) 24%, #4b5563) !important;
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+.dark .ev-style--bar .ev-reservation .weekview_event_inner,
+.dark .ev-style--bar .ev-reservation .resourceview_event_inner,
+.dark .ev-style--bar .ev-reservation .monthview_event_inner {
+    background: transparent !important;
+    color: #e5e7eb; /* slate-200 */
+}
+
+/* =========================================================================
+   BLOCKED TIME (matches reservation polish; neutral, no red)
+   - Works in light/dark and respects the .ev-style--bar toggle.
+   ========================================================================= */
+
+/* ---- LIGHT: tinted (default) ------------------------------------------ */
+.ev-blocked.weekview_event,
+.ev-blocked.monthview_event,
+.ev-blocked.resourceview_event {
+    position: relative;
+    /* neutral chip with soft crosshatch + gentle depth */
+    background: linear-gradient(#ffffff, #f8fafc) padding-box, repeating-linear-gradient(135deg, rgba(2,6,23,0.06) 0 6px, rgba(2,6,23,0.03) 6px 12px) border-box !important;
+    border: 1px dashed #94a3b8 !important; /* slate-400 */
+    border-radius: 4px;
+    color: #334155; /* slate-700 */
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    overflow: hidden;
+}
+
+    /* neutral left rail (muted slate) */
+    .ev-blocked.weekview_event::before,
+    .ev-blocked.resourceview_event::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6px;
+        background: #64748b; /* slate-500 */
+        opacity: .9;
+    }
+
+    .ev-blocked.monthview_event::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 4px;
+        background: #64748b;
+        opacity: .9;
+    }
+
+/* inner stays transparent so hatch + rail show through */
+.ev-blocked .weekview_event_inner,
+.ev-blocked .monthview_event_inner,
+.ev-blocked .resourceview_event_inner {
+    background: transparent !important;
+    border: none !important;
+    color: inherit;
+}
+
+/* Hover polish */
+.ev-blocked.weekview_event:hover,
+.ev-blocked.monthview_event:hover,
+.ev-blocked.resourceview_event:hover {
+    filter: brightness(1.02);
+}
+
+/* ---- DARK: tinted ------------------------------------------------------ */
+.dark .ev-blocked.weekview_event,
+.dark .ev-blocked.monthview_event,
+.dark .ev-blocked.resourceview_event {
+    background: linear-gradient(#1f2630, #1b212b) padding-box, repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 6px, rgba(255,255,255,0.03) 6px 12px) border-box !important;
+    border: 1px dashed #64748b !important; /* slate-500 */
+    color: #e5e7eb; /* slate-200 */
+    box-shadow: none;
+}
+
+    .dark .ev-blocked.weekview_event::before,
+    .dark .ev-blocked.resourceview_event::before,
+    .dark .ev-blocked.monthview_event::before {
+        background: #94a3b8; /* slate-400 a bit brighter on dark */
+        opacity: .9;
+    }
+
+/* ---- BAR style variant ------------------------------------------------- */
+.ev-style--bar .ev-blocked.weekview_event,
+.ev-style--bar .ev-blocked.resourceview_event {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important; /* slate-300 */
+}
+
+.ev-style--bar .ev-blocked.monthview_event {
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+}
+/* keep a strong neutral rail */
+.ev-style--bar .ev-blocked.weekview_event::before,
+.ev-style--bar .ev-blocked.resourceview_event::before {
+    width: 6px;
+    opacity: .95;
+}
+
+.ev-style--bar .ev-blocked.monthview_event::before {
+    width: 4px;
+    opacity: .95;
+}
+/* text color on white */
+.ev-style--bar .ev-blocked .weekview_event_inner,
+.ev-style--bar .ev-blocked .resourceview_event_inner,
+.ev-style--bar .ev-blocked .monthview_event_inner {
+    color: #0f172a;
+}
+
+.dark .ev-style--bar .ev-blocked.weekview_event,
+.dark .ev-style--bar .ev-blocked.resourceview_event,
+.dark .ev-style--bar .ev-blocked.monthview_event {
+    background: var(--dp-calendar-cell-business-bg-color, #1f2630) !important;
+    border: 1px solid #4b5563 !important; /* slate-600 */
+}
+
+.dark .ev-style--bar .ev-blocked .weekview_event_inner,
+.dark .ev-style--bar .ev-blocked .resourceview_event_inner,
+.dark .ev-style--bar .ev-blocked .monthview_event_inner {
+    color: #e5e7eb;
+}
+
+/* Selected state keeps a soft neutral wash, not blue */
+.weekview_selected.ev-blocked .weekview_event_inner,
+.resourceview_selected.ev-blocked .resourceview_event_inner,
+.monthview_selected.ev-blocked .monthview_event_inner {
+    background: rgba(148,163,184,0.18) !important; /* slate-400 @ ~18% */
+}
+
+.dark .weekview_selected.ev-blocked .weekview_event_inner,
+.dark .resourceview_selected.ev-blocked .resourceview_event_inner,
+.dark .monthview_selected.ev-blocked .monthview_event_inner {
+    background: rgba(148,163,184,0.22) !important;
 }

@@ -1,0 +1,18 @@
+
+/* event-modal.dark-fallback.css */
+.dark .bs-modal input[type="text"],
+.dark .bs-modal input[type="email"],
+.dark .bs-modal input[type="tel"],
+.dark .bs-modal input[type="search"],
+.dark .bs-modal input[type="date"],
+.dark .bs-modal input[type="time"],
+.dark .bs-modal textarea {
+    background-color: #0f172a; /* slate-900 */
+    color: #e5e7eb; /* slate-200 */
+    border-color: #475569; /* slate-600 */
+}
+
+    .dark .bs-modal input::placeholder,
+    .dark .bs-modal textarea::placeholder {
+        color: #94a3b8; /* slate-400 */
+    }

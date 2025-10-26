@@ -7,13 +7,8 @@ import type { ViewMode } from "@/types/calendarView";
 const VIEW_CHANGED_EVT = "bs:viewChanged";
 const REQUEST_VIEW_CHANGE_EVT = "bs:requestViewChange";
 
-/**
- * CalendarToolbar
- * - Desktop (>= lg): View buttons (Day / Resources / Week / Month)
- * - Mobile/Tablet (< lg): view menu lives in TopNav
- * - Center: Organization + "Viewing as"
- * - Right: Clock with zone badge
- */
+type SwitcherView = "Day" | "Resources" | "Week" | "Month";
+
 export default function CalendarToolbar(props: {
     view: ViewMode;
     onSetView: (view: ViewMode) => void;
@@ -37,39 +32,42 @@ export default function CalendarToolbar(props: {
         return undefined;
     }, [isManager, isProvider, isClient]);
 
-    // Resolve org name (short-circuit to "Demo Sandbox" for demo sessions)
     const baseOrgName = useOrganizationDisplayName(organizationId ?? undefined);
     const organizationName = isDemo ? "Demo Sandbox" : baseOrgName;
 
-    type SwitcherView = "Day" | "Resources" | "Week" | "Month";
     const activeForSwitcher: SwitcherView = (view === "WorkWeek" ? "Week" : view) as SwitcherView;
 
-    // Notify TopNav about the active view
     useEffect(() => {
         window.dispatchEvent(new CustomEvent(VIEW_CHANGED_EVT, { detail: activeForSwitcher }));
     }, [activeForSwitcher]);
 
-    // Handle "Change View" requests from TopNav
     useEffect(() => {
         const handler = (e: Event) => {
             const target = (e as CustomEvent).detail as SwitcherView | undefined;
             if (!target) return;
-            onSetView(target);
+            onSetView(target as unknown as ViewMode);
         };
         window.addEventListener(REQUEST_VIEW_CHANGE_EVT, handler as EventListener);
         return () => window.removeEventListener(REQUEST_VIEW_CHANGE_EVT, handler as EventListener);
     }, [onSetView]);
 
     return (
-        <div className="calendar-toolbar relative flex items-center gap-3 px-2 border-b bg-gray-100 h-16">
+        <div
+            className="
+                calendar-toolbar relative flex items-center gap-3 px-2 border-b h-16
+                bg-gray-100 border-slate-200
+                dark:bg-slate-800 dark:border-slate-700
+            "
+            data-toolbar="modern"
+        >
             {/* Desktop view switcher */}
-            <DesktopViewSwitcher value={activeForSwitcher} onChange={(v) => onSetView(v)} />
+            <DesktopViewSwitcher value={activeForSwitcher} onChange={(v) => onSetView(v as unknown as ViewMode)} />
 
             {/* Center: org + role */}
             <div className="absolute left-1/2 -translate-x-1/2 text-center leading-tight">
                 {organizationName && (
                     <div
-                        className="text-sm font-semibold text-slate-800 max-w-[36ch] truncate"
+                        className="text-sm font-semibold text-slate-800 dark:text-slate-100 max-w-[36ch] truncate"
                         title={organizationName}
                         aria-label={`Organization: ${organizationName}`}
                     >
@@ -77,13 +75,13 @@ export default function CalendarToolbar(props: {
                     </div>
                 )}
                 {viewingAs && (
-                    <div className="text-[11px] text-slate-600">
+                    <div className="text-[11px] text-slate-600 dark:text-slate-300">
                         Viewing as <span className="font-medium">{viewingAs}</span>
                     </div>
                 )}
             </div>
 
-            {/* Right: Clock */}
+            {/* Right: Theme & Clock */}
             <div className="ml-auto flex items-center gap-2">
                 <ZonedClock tzLabel={tzLabel} />
             </div>
@@ -102,26 +100,43 @@ const DesktopViewSwitcher: React.FC<{
         ["Month", "Month"],
     ];
 
-    const btnClass = (active: boolean) =>
-        [
-            "px-3 py-1.5 rounded-xl text-xs font-medium transition border",
-            active
-                ? "bg-blue-600 text-white border-blue-600 shadow-sm ring-1 ring-blue-500"
-                : "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400",
-        ].join(" ");
+    const base =
+        "relative px-3 py-1.5 rounded-xl text-xs font-medium border transition-all " +
+        "outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 " +
+        "hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 " +
+        "dark:focus-visible:ring-offset-slate-800";
+
+    const activeCls =
+        "bg-blue-600 text-white border-blue-600 ring-1 ring-blue-500 pointer-events-none " +
+        "dark:bg-blue-600 dark:border-blue-600 dark:ring-blue-400";
+
+    const inactiveCls =
+        // Light: white baseline; Dark: softened slate surfaces
+        "bg-white text-gray-700 border-gray-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-400 " +
+        "dark:bg-slate-700 dark:text-slate-100 dark:border-slate-600 " +
+        "dark:hover:bg-slate-600 dark:hover:text-white dark:hover:border-slate-500";
 
     return (
-        <div className="hidden lg:flex items-center gap-2">
-            {items.map(([k, l]) => (
-                <button
-                    key={k}
-                    onClick={() => onChange(k)}
-                    className={btnClass(value === k)}
-                    aria-current={value === k ? "page" : undefined}
-                >
-                    {l}
-                </button>
-            ))}
+        <div className="hidden lg:flex items-center gap-2" role="tablist" aria-label="Calendar view">
+            {items.map(([k, label]) => {
+                const isActive = value === k;
+                return (
+                    <button
+                        key={k}
+                        type="button"
+                        onClick={() => onChange(k)}
+                        className={`${base} ${isActive ? activeCls : inactiveCls}`}
+                        role="tab"
+                        aria-selected={isActive}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-pressed={isActive}
+                        data-active={isActive || undefined}
+                        title={`Switch to ${label} view`}
+                    >
+                        {label}
+                    </button>
+                );
+            })}
         </div>
     );
 };
@@ -212,7 +227,9 @@ function ZonedClock({ tzLabel }: { tzLabel: string }) {
 
     return (
         <>
-            <span className="font-mono text-sm tracking-widest tabular-nums">{timeText}</span>
+            <span className="font-mono text-sm tracking-widest tabular-nums text-slate-900 dark:text-slate-100">
+                {timeText}
+            </span>
             <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-gray-800 text-white">
                 {tzAbbrev}
             </span>

@@ -1,7 +1,8 @@
 /**
  * DayPilot cell render helpers (provider-availability removed).
- * - Adds an "off-hours" class when a cell falls outside org business hours (if provided).
- * - Adds a subtle odd-hour hint for readability.
+ * - Treats weekends as OFF-hours by default (no business-hour alternation).
+ * - Adds an "off-hours" class when a cell falls outside org business hours.
+ * - Adds a subtle odd-hour hint for readability (BUSINESS hours only).
  */
 
 import type { BusinessHours } from "@/services/businessHoursService";
@@ -10,7 +11,9 @@ import type { BusinessHours } from "@/services/businessHoursService";
 const appendClass = (existing: string | undefined, add: string) =>
     [existing, add].filter(Boolean).join(" ");
 const cellProps = (args: any) => args?.cell?.properties ?? args?.cell;
-const oddHourFallback = "rgba(17,24,39,0.035)"; // ~3.5% subtle
+
+// ~3.5% subtle; used only for BUSINESS odd-hour stripe
+const oddHourFallback = "rgba(17,24,39,0.035)";
 
 function toHHmm(v: string | undefined): string {
     return v ? v.slice(0, 5) : "";
@@ -35,34 +38,58 @@ function isWithinBusinessHoursLocal(
     }
 }
 
+function isWeekend(start: any): boolean {
+    try {
+        // Prefer native getDay if present (0=Sun..6=Sat)
+        const d =
+            start?.getDay?.() ??
+            start?.dayOfWeek?.() ??
+            start?.dayOfWeek ??
+            (() => {
+                // best-effort fallback if DayPilot exposes a JS Date
+                const js: any = start?.toDate?.() ?? start?.toDateLocal?.() ?? null;
+                if (js instanceof Date) return js.getDay();
+                return NaN;
+            })();
+        return d === 0 || d === 6;
+    } catch {
+        return false;
+    }
+}
+
 export function createBeforeCellRender(opts: {
     /** Optional org business hours in "HH:mm". If omitted, no off-hours shading. */
     businessHours?: BusinessHours | null;
+    /** When true, weekends follow business hours. Default: false (treat as off-hours). */
+    weekendsAreBusiness?: boolean;
 }) {
-    const { businessHours } = opts;
+    const { businessHours, weekendsAreBusiness = false } = opts;
 
     return (args: any) => {
         try {
             const p = cellProps(args);
 
-            // Off-hours shading
-            const within = isWithinBusinessHoursLocal(
-                args?.cell?.start,
-                args?.cell?.end,
-                businessHours
-            );
-            if (within === false) {
+            // Weekend handling (default: OFF-hours look & behavior)
+            const weekend = isWeekend(args?.cell?.start);
+            if (weekend && !weekendsAreBusiness) {
+                p.cssClass = appendClass(p.cssClass, "weekview_cell_weekend");
                 p.cssClass = appendClass(p.cssClass, "offhours-cell");
-                // Intentionally not disabling cells; off-hours remain scrollable/selectable.
             }
 
-            // Readability: alternating odd-hour hint
+            // Off-hours shading from org business hours (if provided)
+            const within = isWithinBusinessHoursLocal(args?.cell?.start, args?.cell?.end, businessHours);
+            if (within === false) {
+                p.cssClass = appendClass(p.cssClass, "offhours-cell");
+            }
+
+            // BUSINESS odd-hour readability (skip for OFF-hours & weekends)
+            const isOff = weekend && !weekendsAreBusiness ? true : within === false;
             const start = args?.cell?.start;
-            if (start && typeof start.toString === "function") {
+            if (!isOff && start && typeof start.toString === "function") {
                 const hour = Number(start.toString("H")); // 0..23
                 if (hour % 2 === 1) {
                     p.cssClass = appendClass(p.cssClass, "weekview_cell_hour_odd");
-                    if (within !== false && !p.backColor) {
+                    if (!p.backColor) {
                         p.backColor = oddHourFallback;
                     }
                 }
@@ -76,18 +103,24 @@ export function createBeforeCellRender(opts: {
 export function createBeforeSchedulerCellRender(opts: {
     /** Optional org business hours in "HH:mm". If omitted, no off-hours shading. */
     businessHours?: BusinessHours | null;
+    /** When true, weekends follow business hours. Default: false (treat as off-hours). */
+    weekendsAreBusiness?: boolean;
 }) {
-    const { businessHours } = opts;
+    const { businessHours, weekendsAreBusiness = false } = opts;
 
     return (args: any) => {
         try {
             const p = cellProps(args);
 
-            const within = isWithinBusinessHoursLocal(
-                args?.cell?.start,
-                args?.cell?.end,
-                businessHours
-            );
+            // Weekend handling (default: OFF-hours)
+            const weekend = isWeekend(args?.cell?.start);
+            if (weekend && !weekendsAreBusiness) {
+                p.cssClass = appendClass(p.cssClass, "weekview_cell_weekend");
+                p.cssClass = appendClass(p.cssClass, "offhours-cell");
+            }
+
+            // Off-hours from org hours
+            const within = isWithinBusinessHoursLocal(args?.cell?.start, args?.cell?.end, businessHours);
             if (within === false) {
                 p.cssClass = appendClass(p.cssClass, "offhours-cell");
             }

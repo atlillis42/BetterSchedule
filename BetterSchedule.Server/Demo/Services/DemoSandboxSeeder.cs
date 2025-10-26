@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,10 +14,14 @@ using Microsoft.EntityFrameworkCore;
 namespace BetterSchedule.Server.Services.Demo
 {
     /// <summary>
-    /// Demo-only seeder used by the SandboxService to populate a new Organization with the
-    /// same "org_1" dataset you use in DbInitializer — minus any secondary organization.
+    /// Demo-only seeder used by the SandboxService to populate a new Organization with sample data.
     /// The provided seed user is wired in as a Manager + ServiceProvider and appears
     /// clearly on the seeded calendar events.
+    /// <para>
+    /// <b>Week anchoring:</b> Seeding is aligned to a <b>Sunday-anchored WorkWeek</b> model so that when
+    /// the local "today" is Sunday, the "current week" being seeded corresponds to the <b>upcoming</b>
+    /// Monday–Friday window (matching the UI).
+    /// </para>
     /// </summary>
     public sealed class DemoSandboxSeeder : IDemoSandboxSeeder
     {
@@ -24,7 +29,9 @@ namespace BetterSchedule.Server.Services.Demo
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
 
-        /// <summary>Constructs a new <see cref="DemoSandboxSeeder"/>.</summary>
+        /// <summary>
+        /// Constructs a new <see cref="DemoSandboxSeeder"/>.
+        /// </summary>
         public DemoSandboxSeeder(
             ApplicationDbContext db,
             UserManager<ApplicationUser> userManager,
@@ -143,76 +150,166 @@ namespace BetterSchedule.Server.Services.Demo
 
             await _db.SaveChangesAsync(ct);
 
-            // Reservations & Blocked Times
+            // ----------------------------------------------------------------
+            // Reservations & Blocked Times — Sunday-anchored WorkWeek
+            // "Current week" = Monday inside the Sunday-anchored week containing local 'today'.
+            // Thus, if today is Sunday, current week is the *upcoming* Mon–Fri.
+            // ----------------------------------------------------------------
             DateOnly todayLocal = LocalToday(now, tzId);
-            DateTimeOffset L(int daysFromToday, int hour, int minute = 0) =>
-                AtLocal(now, tzId, todayLocal, daysFromToday, hour, minute);
 
+            // Sunday anchor -> Monday for the visible "current week"
+            var sundayAnchorLocal = StartOfWeek(todayLocal, DayOfWeek.Sunday);
+            var mondayStartLocal = sundayAnchorLocal.AddDays(1);
+            var prevMondayStartLocal = mondayStartLocal.AddDays(-7);
+            var nextMondayStartLocal = mondayStartLocal.AddDays(7);
+
+            // Helpers to place items at local times based on a Monday-anchored base
+            DateTimeOffset WD(int dayOffsetMon0, int h, int m = 0) =>
+                AtLocalWeek(now, tzId, mondayStartLocal, dayOffsetMon0, h, m);
+            DateTimeOffset PWD(int dayOffsetMon0, int h, int m = 0) =>
+                AtLocalWeek(now, tzId, prevMondayStartLocal, dayOffsetMon0, h, m);
+            DateTimeOffset NWD(int dayOffsetMon0, int h, int m = 0) =>
+                AtLocalWeek(now, tzId, nextMondayStartLocal, dayOffsetMon0, h, m);
+
+            const int MON = 0, TUE = 1, WED = 2, THU = 3, FRI = 4, SAT = 5, SUN = 6;
+
+            // --- LAST WEEK context (Month/Reports look-back) ---
             await AddReservationAsync(organizationId, carla.Id, demoUser.Id, yogaType.Id,
-                L(-7, 9), L(-7, 10), arena.Id, ReservationStatus.Completed,
+                PWD(MON, 9), PWD(MON, 10), arena.Id, ReservationStatus.Completed,
                 "Completed past yoga session.", now, ct);
 
             await AddReservationAsync(organizationId, carla.Id, bob.Id, massageType.Id,
-                L(-3, 14), L(-3, 15).AddMinutes(30), studio2.Id, ReservationStatus.NoShow,
+                PWD(THU, 14), PWD(THU, 15).AddMinutes(30), studio2.Id, ReservationStatus.NoShow,
                 "Missed massage, client did not show.", now, ct);
 
+            // --- CURRENT WEEK: a compact mix across Mon–Fri (varied clients/slots/statuses) ---
+            var variedSlots = new[]
+            {
+                // Mon 10:00–11:00 — Mike + Bob (Massage @ Studio 2)
+                // Past => Completed, Future => Booked
+                new {
+                    Day = MON, H1 = 10, M1 = 0, H2 = 11, M2 = 0,
+                    Client = mike.Id, Provider = bob.Id, Type = massageType.Id, Res = studio2.Id,
+                    PastStatus = ReservationStatus.Completed, FutureStatus = ReservationStatus.Booked,
+                    Notes = "Massage — varied demo slot."
+                },
+
+                // Wed 14:00–15:00 — Carla + Demo user (Private @ Arena)
+                // Past => NoShow, Future => Booked
+                new {
+                    Day = WED, H1 = 14, M1 = 0, H2 = 15, M2 = 0,
+                    Client = carla.Id, Provider = demoUser.Id, Type = privateType.Id, Res = arena.Id,
+                    PastStatus = ReservationStatus.NoShow, FutureStatus = ReservationStatus.Booked,
+                    Notes = "Private training — varied demo slot."
+                },
+
+                // Thu 10:00–11:00 — Nina + Demo user (Acupuncture @ Studio 2)
+                // Keep Booked regardless (fits before the Arena 12–15 block)
+                new {
+                    Day = THU, H1 = 10, M1 = 0, H2 = 11, M2 = 0,
+                    Client = nina.Id, Provider = demoUser.Id, Type = acupunctureType.Id, Res = studio2.Id,
+                    PastStatus = ReservationStatus.Booked, FutureStatus = ReservationStatus.Booked,
+                    Notes = "Pre-lunch acupuncture (demo)."
+                },
+
+                // Fri 13:00–14:00 — Mike + Bob (Massage @ Studio 2)
+                new {
+                    Day = FRI, H1 = 13, M1 = 0, H2 = 14, M2 = 0,
+                    Client = mike.Id, Provider = bob.Id, Type = massageType.Id, Res = studio2.Id,
+                    PastStatus = ReservationStatus.Booked, FutureStatus = ReservationStatus.Booked,
+                    Notes = "Quick massage before weekend (demo)."
+                },
+            };
+
+            foreach (var s in variedSlots)
+            {
+                var start = WD(s.Day, s.H1, s.M1);
+                var end = WD(s.Day, s.H2, s.M2);
+
+                // Time-aware status so demos feel realistic
+                var status = start <= now ? s.PastStatus : s.FutureStatus;
+
+                await AddReservationAsync(
+                    organizationId,
+                    s.Client,
+                    s.Provider,
+                    s.Type,
+                    start,
+                    end,
+                    s.Res,
+                    status,
+                    s.Notes,
+                    now,
+                    ct,
+                    allowDuplicate: false
+                );
+            }
+
+            // Status representation across weekdays:
+            // Completed — Wednesday 08:00–09:00 (shows "completed" in current week)
+            await AddReservationAsync(organizationId, nina.Id, demoUser.Id, yogaType.Id,
+                WD(WED, 8), WD(WED, 9), arena.Id, ReservationStatus.Completed,
+                "Morning yoga — completed (demo).", now, ct);
+
+            // NoShow — Tuesday 09:00–10:00
+            await AddReservationAsync(organizationId, carla.Id, bob.Id, massageType.Id,
+                WD(TUE, 9), WD(TUE, 10), studio2.Id, ReservationStatus.NoShow,
+                "Client did not attend (demo).", now, ct);
+
+            // Canceled — Thursday 15:00–15:45
+            await AddReservationAsync(organizationId, mike.Id, demoUser.Id, privateType.Id,
+                WD(THU, 15), WD(THU, 15).AddMinutes(45), arena.Id, ReservationStatus.Canceled,
+                "Client canceled (demo).", now, ct);
+
+            // Booked variety — Soccer & Acupuncture (distinct hours)
             await AddReservationAsync(organizationId, carla.Id, demoUser.Id, soccerType.Id,
-                L(0, 17), L(0, 19), outdoor.Id, ReservationStatus.Booked,
+                WD(WED, 17), WD(WED, 19), outdoor.Id, ReservationStatus.Booked,
                 "Kids' soccer clinic.", now, ct);
 
             await AddReservationAsync(organizationId, carla.Id, demoUser.Id, soccerType.Id,
-                L(2, 10), L(2, 12), outdoor.Id, ReservationStatus.Booked,
+                WD(FRI, 10), WD(FRI, 12), outdoor.Id, ReservationStatus.Booked,
                 "Morning soccer camp, outdoor.", now, ct);
 
-            await AddReservationAsync(organizationId, carla.Id, demoUser.Id, privateType.Id,
-                L(10, 16), L(10, 16).AddMinutes(45), arena.Id, ReservationStatus.Canceled,
-                "Cancelled by client.", now, ct);
-
-            for (int i = 0; i < 7; i++)
-            {
-                await AddReservationAsync(organizationId, mike.Id, bob.Id, massageType.Id,
-                    L(i, 11), L(i, 12), studio2.Id, ReservationStatus.Booked,
-                    "Daily massage demo slot.", now, ct, allowDuplicate: false);
-            }
-
             await AddReservationAsync(organizationId, mike.Id, demoUser.Id, acupunctureType.Id,
-                L(1, 9), L(1, 10), studio2.Id, ReservationStatus.Booked,
+                WD(MON, 13), WD(MON, 14), studio2.Id, ReservationStatus.Booked,
                 "Initial consult + acupuncture.", now, ct);
 
             await AddReservationAsync(organizationId, nina.Id, demoUser.Id, acupunctureType.Id,
-                L(2, 13), L(2, 14), studio2.Id, ReservationStatus.Booked,
+                WD(TUE, 15), WD(TUE, 16), studio2.Id, ReservationStatus.Booked,
                 "Stress relief session.", now, ct);
 
-            await AddReservationAsync(organizationId, carla.Id, demoUser.Id, privateType.Id,
-                L(3, 16), L(3, 17), arena.Id, ReservationStatus.Booked,
-                "Core strength training.", now, ct);
-
-            await AddReservationAsync(organizationId, carla.Id, demoUser.Id, acupunctureType.Id,
-                L(-1, 15), L(-1, 16), studio2.Id, ReservationStatus.Completed,
-                "Follow-up acupuncture session.", now, ct);
-
+            // Blocked time this week — Thursday 12:00–15:00
             await AddBlockedTimeAsync(organizationId, arena.Id, "Floor waxing",
-                L(1, 12), L(1, 15), "#cccccc", demoUser.Id, ct);
+                WD(THU, 12), WD(THU, 15), "#cccccc", demoUser.Id, ct);
 
-            await AddBlockedTimeAsync(organizationId, arena.Id, "Private booking",
-                L(5, 18), L(5, 21), "#fcba03", bob.Id, ct);
-
-            // Completed — Today 8:00–9:00 local, Yoga in Arena (Nina with Demo user)
+            // --- CURRENT WEEK: weekend extras (kept minimal, unique content) ---
             await AddReservationAsync(organizationId, nina.Id, demoUser.Id, yogaType.Id,
-                L(0, 8), L(0, 9), arena.Id, ReservationStatus.Completed,
-                "Morning yoga — completed (demo).", now, ct);
+                WD(SAT, 9), WD(SAT, 10), arena.Id, ReservationStatus.Booked,
+                "Weekend yoga — open to all.", now, ct);
 
-            // Canceled — Tomorrow 15:00–15:45 local, Private Training in Arena (Mike with Demo user)
-            await AddReservationAsync(organizationId, mike.Id, demoUser.Id, privateType.Id,
-                L(1, 15), L(1, 15).AddMinutes(45), arena.Id, ReservationStatus.Canceled,
-                "Client canceled (demo).", now, ct);
+            await AddReservationAsync(organizationId, carla.Id, demoUser.Id, soccerType.Id,
+                WD(SUN, 13), WD(SUN, 15), outdoor.Id, ReservationStatus.Booked,
+                "Sunday family soccer clinic.", now, ct);
 
-            // NoShow — Day Before 9:00–10:00 local, Massage in Studio 2 (Carla with Bob)
-            await AddReservationAsync(organizationId, carla.Id, bob.Id, massageType.Id,
-                L(-1, 9), L(-1, 10), studio2.Id, ReservationStatus.NoShow,
-                "Client did not attend (demo).", now, ct);
+            // --- NEXT WEEK: a few items to make "Next Week" navigation interesting ---
+            await AddReservationAsync(organizationId, mike.Id, bob.Id, massageType.Id,
+                NWD(MON, 11), NWD(MON, 12), studio2.Id, ReservationStatus.Booked,
+                "Next week massage demo slot.", now, ct);
+
+            await AddReservationAsync(organizationId, carla.Id, demoUser.Id, soccerType.Id,
+                NWD(WED, 17), NWD(WED, 19), outdoor.Id, ReservationStatus.Booked,
+                "Next week soccer clinic.", now, ct);
+
+            await AddReservationAsync(organizationId, nina.Id, demoUser.Id, acupunctureType.Id,
+                NWD(TUE, 9), NWD(TUE, 10), studio2.Id, ReservationStatus.Booked,
+                "Next week acupuncture session.", now, ct);
+
+            // A future blocked slot late next week (Fri evening)
+            await AddBlockedTimeAsync(organizationId, arena.Id, "Private booking",
+                NWD(FRI, 18), NWD(FRI, 21), "#fcba03", bob.Id, ct);
         }
 
+        /// <summary>Ensures a role exists.</summary>
         private async Task EnsureRoleAsync(string roleName, CancellationToken ct)
         {
             if (!await _roleManager.RoleExistsAsync(roleName))
@@ -221,6 +318,9 @@ namespace BetterSchedule.Server.Services.Demo
             }
         }
 
+        /// <summary>
+        /// Returns the local "today" date for the organization's time zone.
+        /// </summary>
         private static DateOnly LocalToday(DateTimeOffset nowValue, string tzId)
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
@@ -228,15 +328,37 @@ namespace BetterSchedule.Server.Services.Demo
             return DateOnly.FromDateTime(localNow.Date);
         }
 
-        private static DateTimeOffset AtLocal(DateTimeOffset nowValue, string tzId, DateOnly baseLocalDay, int daysFromToday, int hour, int minute = 0)
+        /// <summary>
+        /// Returns the start of week for the given date and first day-of-week.
+        /// </summary>
+        private static DateOnly StartOfWeek(DateOnly date, DayOfWeek firstDow)
+        {
+            int diff = (7 + (date.DayOfWeek - firstDow)) % 7;
+            return date.AddDays(-diff);
+        }
+
+        /// <summary>
+        /// Builds a local DateTimeOffset at the specified weekday/hour within a Monday-based week.
+        /// The <paramref name="weekStartLocal"/> is expected to be a Monday of the target week.
+        /// </summary>
+        private static DateTimeOffset AtLocalWeek(
+            DateTimeOffset nowValue,
+            string tzId,
+            DateOnly weekStartLocal,
+            int dayOffset,
+            int hour,
+            int minute = 0)
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById(tzId);
-            var localDateTime = baseLocalDay.AddDays(daysFromToday).ToDateTime(new TimeOnly(hour, minute));
+            var localDateTime = weekStartLocal.AddDays(dayOffset).ToDateTime(new TimeOnly(hour, minute));
             var unspecified = DateTime.SpecifyKind(localDateTime, DateTimeKind.Unspecified);
             var offset = tz.GetUtcOffset(unspecified);
             return new DateTimeOffset(unspecified, offset);
         }
 
+        /// <summary>
+        /// Creates or returns an existing demo member with the specified role in the organization.
+        /// </summary>
         private async Task<ApplicationUser> EnsureDemoMemberAsync(
             string organizationId,
             string userName,
@@ -274,6 +396,9 @@ namespace BetterSchedule.Server.Services.Demo
             }
         }
 
+        /// <summary>
+        /// Ensures a named resource exists in the organization.
+        /// </summary>
         private async Task<CalendarResource> EnsureResourceAsync(
             string organizationId, string name, string? backColor, CancellationToken ct)
         {
@@ -295,6 +420,9 @@ namespace BetterSchedule.Server.Services.Demo
             return res;
         }
 
+        /// <summary>
+        /// Ensures a named appointment type exists in the organization.
+        /// </summary>
         private async Task<AppointmentType> EnsureAppointmentTypeAsync(
             string organizationId,
             string name,
@@ -331,6 +459,9 @@ namespace BetterSchedule.Server.Services.Demo
             return type;
         }
 
+        /// <summary>
+        /// Grants a provider access to a resource.
+        /// </summary>
         private void AddProviderResourceAccess(string orgId, string userId, int resourceId)
         {
             _db.ProviderResourceAccesses.Add(new ProviderResourceAccess
@@ -342,6 +473,9 @@ namespace BetterSchedule.Server.Services.Demo
             });
         }
 
+        /// <summary>
+        /// Grants a provider access to an appointment type.
+        /// </summary>
         private void AddProviderAppointmentTypeAccess(string orgId, string userId, int appointmentTypeId)
         {
             _db.ProviderAppointmentTypeAccesses.Add(new ProviderAppointmentTypeAccess
@@ -353,6 +487,9 @@ namespace BetterSchedule.Server.Services.Demo
             });
         }
 
+        /// <summary>
+        /// Associates an appointment type with a resource.
+        /// </summary>
         private void AddAppointmentTypeResourceAccess(string orgId, int appointmentTypeId, int resourceId)
         {
             _db.AppointmentTypeResourceAccesses.Add(new AppointmentTypeResourceAccess
@@ -364,6 +501,9 @@ namespace BetterSchedule.Server.Services.Demo
             });
         }
 
+        /// <summary>
+        /// Adds a reservation if an identical one does not already exist.
+        /// </summary>
         private async Task AddReservationAsync(
             string organizationId,
             string clientId,
@@ -408,6 +548,9 @@ namespace BetterSchedule.Server.Services.Demo
             await _db.SaveChangesAsync(ct);
         }
 
+        /// <summary>
+        /// Adds a blocked time if an identical one does not already exist.
+        /// </summary>
         private async Task AddBlockedTimeAsync(
             string organizationId,
             int resourceId,

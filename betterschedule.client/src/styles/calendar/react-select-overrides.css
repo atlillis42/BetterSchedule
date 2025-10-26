@@ -1,0 +1,149 @@
+/* BetterSchedule react-select theme (classNamePrefix="rs") */
+
+/* ---------- Tokens ---------- */
+:root {
+    --rs-bg: #ffffff;
+    --rs-fg: #0f172a; /* slate-900 */
+    --rs-muted: #64748b; /* slate-500 */
+    --rs-border: #cbd5e1; /* slate-300 */
+    --rs-hover: #f1f5f9; /* slate-100 */
+    --rs-focus: #3b82f6; /* blue-500 */
+    --rs-option-selected-bg: #dbeafe; /* blue-100 */
+    --rs-option-selected-fg: #1e3a8a; /* blue-900 */
+    --rs-shadow: 0 6px 18px rgba(0,0,0,.08), 0 2px 6px rgba(0,0,0,.06);
+}
+
+.dark {
+    --rs-bg: #0f172a; /* slate-900 */
+    --rs-fg: #e5e7eb; /* slate-200 */
+    --rs-muted: #94a3b8; /* slate-400 */
+    --rs-border: #475569; /* slate-600 */
+    --rs-hover: #1f2630; /* BS dark cell */
+    --rs-focus: #60a5fa; /* blue-400 */
+    --rs-option-selected-bg: #1e3a8a; /* blue-900 */
+    --rs-option-selected-fg: #e5edff; /* near-white */
+    --rs-shadow: 0 10px 24px rgba(2,6,23,.35); /* deeper, soft */
+}
+
+/* ---------- Control ---------- */
+.rs__control {
+    min-height: 38px;
+    background-color: var(--rs-bg);
+    border: 1px solid var(--rs-border);
+    border-radius: 10px;
+    box-shadow: none;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+
+    .rs__control:hover {
+        border-color: color-mix(in srgb, var(--rs-border) 60%, var(--rs-focus) 40%);
+    }
+
+.rs__control--is-focused {
+    border-color: var(--rs-focus);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--rs-focus) 35%, transparent);
+}
+
+/* Disabled */
+.rs__control--is-disabled {
+    background-color: color-mix(in srgb, var(--rs-bg) 85%, #94a3b8 15%);
+    border-color: color-mix(in srgb, var(--rs-border) 70%, #94a3b8 30%);
+    cursor: not-allowed;
+    opacity: .85;
+}
+
+/* Value / Input */
+.rs__value-container {
+    padding: 2px 10px;
+}
+
+.rs__single-value {
+    color: var(--rs-fg);
+}
+
+.rs__placeholder {
+    color: var(--rs-muted);
+}
+
+.rs__input-container input {
+    color: var(--rs-fg) !important;
+}
+
+/* Indicators */
+.rs__indicator-separator {
+    display: none;
+}
+
+.rs__dropdown-indicator, .rs__clear-indicator {
+    color: var(--rs-muted);
+}
+
+    .rs__dropdown-indicator:hover, .rs__clear-indicator:hover {
+        color: var(--rs-fg);
+    }
+
+/* ---------- Menu ---------- */
+.rs__menu {
+    background: var(--rs-bg);
+    border: 1px solid var(--rs-border);
+    border-radius: 10px;
+    margin-top: 6px;
+    box-shadow: var(--rs-shadow);
+    z-index: 60; /* above modal content */
+    overflow: hidden;
+}
+
+.rs__menu-list {
+    padding: 6px 0;
+}
+
+/* ---------- Options ---------- */
+.rs__option {
+    background: var(--rs-bg);
+    color: var(--rs-fg);
+    padding: 8px 12px;
+    cursor: pointer;
+}
+
+.rs__option--is-focused {
+    background: var(--rs-hover);
+}
+
+.rs__option--is-selected {
+    background: var(--rs-option-selected-bg) !important;
+    color: var(--rs-option-selected-fg) !important;
+}
+
+.rs__option--is-disabled {
+    color: var(--rs-muted);
+    cursor: not-allowed;
+}
+
+/* ---------- Multi-value (future-proof) ---------- */
+.rs__multi-value {
+    background: color-mix(in srgb, var(--rs-hover) 80%, var(--rs-bg));
+    border-radius: 6px;
+}
+
+.rs__multi-value__label {
+    color: var(--rs-fg);
+}
+
+.rs__multi-value__remove {
+    color: var(--rs-muted);
+}
+
+    .rs__multi-value__remove:hover {
+        color: var(--rs-fg);
+        background: transparent;
+    }
+
+/* Fix menu portal font/color inheritance */
+.rs__menu-portal {
+    color: var(--rs-fg);
+}
+
+.rs-container {
+    font-size: 0.875rem;
+}
+/* 14px to match inputs */

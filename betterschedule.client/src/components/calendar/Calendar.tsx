@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import "@/styles/calendar";
 
 import { useAuth } from "@/components/auth/auth-context";
@@ -23,23 +23,25 @@ import type { ProviderLite } from "@/services/providersService";
 import { formatResourcesDayLabel } from "@/utilities/calendarDisplay/formatWeekHeader";
 import { peekClientName, getClientNameCached } from "@/services/clientNameCache";
 
+type EventStyle = "tinted" | "bar";
+
 /**
- * Calendar (root shell)
- * -----------------------------------------------------------------------------
- * Orchestrates data, DayPilot view rendering, and modal workflows.
+ * Calendar shell composed of the navigator, toolbar, legend, and DayPilot body.
+ * Uses a Sunday-anchored week model so that WorkWeek shows the upcoming Mon–Fri when the anchor is Sunday.
  *
- * Key behaviors:
- * - Resources view uses DayPilotCalendar(Resources) with a 1-day fetch window.
- * - Business hours default to "BusinessHours" (off-hours remain scrollable).
- * - Legend shows a compact date badge when in Resources view.
- * - Toolbar order: Day, Resources, Week, Month.
+ * Rendering window (DayPilot.startDate) = calendarStartDate from useCalendarView
+ * Data window (fetch) = getVisibleRange(anchor=startDate, view)
+ * => These are consistent by design via shared Sunday-anchored logic.
  */
 const Calendar = () => {
     const { userId, isManager, isProvider } = useAuth();
     const canManageReservations = isManager || isProvider;
     const canManageBlocks = isManager || isProvider;
 
-    const { org, view, setView, startDate, setStartDate, tzLabel } = useCalendarView();
+    // Note: calendarStartDate is the DayPilot-facing start, aligned with Week/WorkWeek rules.
+    const { org, view, setView, startDate, setStartDate, tzLabel, calendarStartDate } = useCalendarView();
+
+    // Fetch resources/events/providers for the visible window derived from anchor startDate + view.
     const { resources, events, providers, refreshEvents, appointmentTypesById } =
         useCalendarData(startDate, view);
 
@@ -89,14 +91,12 @@ const Calendar = () => {
         return Number.isFinite(hh) ? hh : 17;
     }, [businessHours]);
 
-    // Cell shading: business-hours off-hours tint + odd-hour hint
+    // Cell shading + event rendering
     const beforeCellRender = useMemo(() => createBeforeCellRender({ businessHours }), [businessHours]);
     const beforeSchedulerCellRender = useMemo(
         () => createBeforeSchedulerCellRender({ businessHours }),
         [businessHours]
     );
-
-    // Event rendering: include client label hooks via clientNameCache
     const beforeEventRender = useMemo(
         () =>
             createBeforeEventRender({
@@ -108,14 +108,27 @@ const Calendar = () => {
         [appointmentTypesById]
     );
 
-    /**
-     * Day label shown in the legend when view === "Resources".
-     * Delegates to a utility that ensures local interpretation and ordinal suffix.
-     */
-    const resourcesDayLabel = useMemo(() => formatResourcesDayLabel(startDate as any), [startDate]);
+    // Use the DayPilot-facing start for header labels to avoid off-by-one-week headers.
+    const resourcesDayLabel = useMemo(
+        () => formatResourcesDayLabel(calendarStartDate as any),
+        [calendarStartDate]
+    );
 
     // Keep business hours visible by default; off-hours remain reachable via scroll.
     const heightSpec: "Full" | "BusinessHours" = "BusinessHours";
+
+    // ---- Event style (tinted vs bar-only) ----
+    const [eventStyle, setEventStyle] = useState<EventStyle>(() => {
+        const saved = typeof window !== "undefined" ? localStorage.getItem("bs:eventStyle") : null;
+        return saved === "bar" ? "bar" : "tinted";
+    });
+    useEffect(() => {
+        try {
+            localStorage.setItem("bs:eventStyle", eventStyle);
+        } catch {
+            // ignore
+        }
+    }, [eventStyle]);
 
     return (
         <>
@@ -135,28 +148,47 @@ const Calendar = () => {
                 onRefreshRequested={refreshEvents}
             />
 
-            <div className="bs-calendar calendar-container w-full h-full flex flex-row overflow-hidden">
+            {/* Shell */}
+            <div
+                className={`
+          bs-calendar calendar-container w-full h-full flex flex-row overflow-hidden
+          bg-gradient-to-br from-slate-50 to-slate-100
+          dark:from-slate-900 dark:to-slate-850
+          ${eventStyle === "bar" ? "ev-style--bar" : ""}
+        `}
+            >
                 <CalendarNavigatorPane
                     view={view as ViewMode}
                     visibleEvents={visibleEvents as UiEvent[]}
-                    onDateChange={(d) => setStartDate(d)}
+                    onDateChange={(d) => setStartDate(d)} // anchor change; calendarStartDate is derived
                 />
 
-                <div className="calendar-main flex flex-col flex-1 min-w-0">
+                <div
+                    className="
+            calendar-main flex flex-col flex-1 min-w-0
+            bg-white border-l border-slate-200
+            dark:bg-slate-800 dark:border-slate-700
+          "
+                >
                     <CalendarToolbar view={view as ViewMode} onSetView={(v) => setView(v)} tzLabel={tzLabel} />
 
                     <CalendarLegend
                         view={view as ViewMode}
                         onSetView={(v) => setView(v)}
                         resourcesDayLabel={resourcesDayLabel}
+                        eventStyle={eventStyle}
+                        onToggleEventStyle={(next) => setEventStyle(next)}
                     />
 
                     <CalendarBody
                         view={view as ViewMode}
-                        startDate={startDate}
+                        // IMPORTANT: render using the DayPilot-facing start date
+                        startDate={calendarStartDate}
                         resources={resources}
                         events={visibleEvents}
-                        onTimeRangeSelected={onTimeRangeSelected as (args: CalendarTimeRangeSelectedArgs) => void}
+                        onTimeRangeSelected={
+                            onTimeRangeSelected as (args: CalendarTimeRangeSelectedArgs) => void
+                        }
                         onEventClick={onEventClick}
                         beforeCellRender={beforeCellRender}
                         beforeSchedulerCellRender={beforeSchedulerCellRender}

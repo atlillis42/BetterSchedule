@@ -1,59 +1,76 @@
 /* 
 DayPilot Navigator Theme — BetterSchedule aligned
-Uses only existing --dp-nav-* variables and original selectors.
+Light + Dark modes matched to WeekView palette.
 */
 .navigator_main:not(.default) {
-	--dp-nav-border-color: #5e5d5e; /* match weekview strong border */
+	--dp-nav-border-color: #5e5d5e;
 	--dp-nav-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
 	--dp-nav-font-size: 12px;
-	/* Headers aligned with weekview */
+	/* Designer preset (kept, but unused in our app) */
 	--dp-nav-title-color: #030303;
 	--dp-nav-title-bg-color: #f7f8fa;
 	--dp-nav-dayheader-color: #333333;
 	--dp-nav-dayheader-bg-color: #ffffff;
-	/* Day cells */
 	--dp-nav-weeknumber-color: #000000;
 	--dp-nav-weeknumber-bg-color: #ffffff;
 	--dp-nav-day-color: #000000;
 	--dp-nav-day-bg-color: #ffffff;
 	--dp-nav-dayother-color: #808080;
 	--dp-nav-dayother-bg-color: #ffffff;
-	--dp-nav-weekend-bg-color: #f0f0f0;
-	/* Selection: brand blue tint (replaces yellow) */
+	/* Weekends = off-hours neutral */
+	--dp-nav-weekend-bg-color: #e5e7eb;
+	/* Selection tint */
 	--dp-nav-select-bg-color: #d9e6ff;
 	--dp-nav-text-align: center;
 }
 
+/* ===== Light (app default) ===== */
 .navigator_main {
-	--dp-nav-border-color: #c0c0c0;
+	--dp-nav-border-color: #d8dee6; /* match weekview border */
 	--dp-nav-font-family: -apple-system,system-ui,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
 	--dp-nav-font-size: 12px;
-	/* Keep base close to weekview as well */
-	--dp-nav-title-color: #333;
-	--dp-nav-title-bg-color: #f7f8fa;
-	--dp-nav-dayheader-color: #333;
+	--dp-nav-title-color: #0f172a; /* slate-900 */
+	--dp-nav-title-bg-color: #f6f8fc; /* subtle blue wash */
+	--dp-nav-dayheader-color: #0f172a;
 	--dp-nav-dayheader-bg-color: #ffffff;
-	--dp-nav-weeknumber-color: #999;
+	--dp-nav-weeknumber-color: #64748b; /* slate-500 */
 	--dp-nav-weeknumber-bg-color: #ffffff;
-	--dp-nav-day-color: #000;
+	--dp-nav-day-color: #0f172a;
 	--dp-nav-day-bg-color: #ffffff;
-	--dp-nav-dayother-color: gray;
+	--dp-nav-dayother-color: #94a3b8; /* slate-400 */
 	--dp-nav-dayother-bg-color: #ffffff;
-	--dp-nav-weekend-bg-color: #f0f0f0;
-	/* Selection tint unified */
-	--dp-nav-select-bg-color: #d9e6ff;
+	/* Weekends = off-hours neutral */
+	--dp-nav-weekend-bg-color: #e5e7eb;
+	--dp-nav-select-bg-color: #d9e6ff; /* brand selection */
 	--dp-nav-text-align: center;
 }
 
-	.navigator_main *, .navigator_main *:before, .navigator_main *:after {
-		box-sizing: content-box;
-	}
+/* ===== Dark (match WeekView dark) ===== */
+.dark .navigator_main {
+	--dp-nav-border-color: #2b313a;
+	--dp-nav-title-bg-color: #111827; /* header */
+	--dp-nav-title-color: #e5e7eb;
+	--dp-nav-dayheader-bg-color: #111827;
+	--dp-nav-dayheader-color: #e5e7eb;
+	--dp-nav-day-bg-color: #1f2630; /* business-ish base */
+	--dp-nav-day-color: #e5e7eb;
+	--dp-nav-dayother-bg-color: #1f2630;
+	--dp-nav-dayother-color: #9aa4b2;
+	/* Weekends = off-hours neutral */
+	--dp-nav-weekend-bg-color: #171b20;
+	/* Selection: soft blue glass */
+	--dp-nav-select-bg-color: #243b6b; /* ~blue-800/70 */
+}
+
+.navigator_main *, .navigator_main *:before, .navigator_main *:after {
+	box-sizing: content-box;
+}
 
 .navigator_main {
 	border-left: 1px solid var(--dp-nav-border-color);
 	border-right: 1px solid var(--dp-nav-border-color);
 	border-bottom: 1px solid var(--dp-nav-border-color);
-	background-color: white;
+	background-color: var(--dp-nav-day-bg-color);
 	color: var(--dp-nav-day-color);
 	box-sizing: content-box;
 }
@@ -88,12 +105,17 @@ Uses only existing --dp-nav-* variables and original selectors.
 	background-color: var(--dp-nav-dayother-bg-color);
 }
 
-/* Today: brand-colored ring + soft tint (no new variables) */
+/* Today: brand-colored ring + soft tint */
 .navigator_todaybox {
-	border: 1px solid #3c78d8;
+	border: 1px solid #60a5fa; /* lighter blue in both modes */
 	background-color: #eaf2fe;
 }
 
+.dark .navigator_todaybox {
+	background-color: #0f1b30; /* deep blue wash */
+}
+
+/* Title strip */
 .navigator_title, .navigator_titleleft, .navigator_titleright {
 	box-sizing: border-box;
 	border-top: 1px solid var(--dp-nav-border-color);
@@ -105,6 +127,7 @@ Uses only existing --dp-nav-* variables and original selectors.
 
 .navigator_busy {
 	font-weight: bold;
+	font-size: 14px
 }
 
 .navigator_cell {
@@ -127,7 +150,7 @@ Uses only existing --dp-nav-* variables and original selectors.
 	cursor: pointer;
 }
 
-/* "Today" button styled like toolbar buttons */
+/* "Today" button (kept consistent with app buttons) */
 .navigator_todaysection {
 	box-sizing: border-box;
 	display: flex;
@@ -139,7 +162,7 @@ Uses only existing --dp-nav-* variables and original selectors.
 .navigator_todaysection_button {
 	cursor: pointer;
 	color: #ffffff;
-	background-color: #3c78d8;
+	background-color: #2563eb; /* blue-600 */
 	border: 1px solid transparent;
 	padding: 6px 12px;
 	border-radius: 6px;
@@ -147,10 +170,11 @@ Uses only existing --dp-nav-* variables and original selectors.
 }
 
 	.navigator_todaysection_button:hover {
-		background-color: #2f66c4;
+		background-color: #1d4ed8;
 	}
-
+	/* blue-700 */
 	.navigator_todaysection_button:active {
-		background-color: #1c4587;
+		background-color: #1e40af;
 		transform: translateY(0.5px);
 	}
+/* blue-800 */

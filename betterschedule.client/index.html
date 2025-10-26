@@ -1,13 +1,30 @@
 <!doctype html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Helps built-in controls match the current theme -->
+    <meta name="color-scheme" content="light dark" />
     <title>BetterSchedule Demo</title>
-  </head>
-  <body>
+    <script>
+        (function () {
+            try {
+                var storageKey = "bs-theme"; // "light" | "dark" | "system"
+                var stored = localStorage.getItem(storageKey);
+                var mql = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+                var systemPrefersDark = !!(mql && mql.matches);
+                var choice = stored || "system";
+                var resolved = choice === "dark" || (choice === "system" && systemPrefersDark) ? "dark" : "light";
+                var root = document.documentElement;
+                if (resolved === "dark") root.classList.add("dark"); else root.classList.remove("dark");
+                root.setAttribute("data-theme", choice);
+            } catch (e) { }
+        })();
+    </script>
+</head>
+<body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+</body>
 </html>

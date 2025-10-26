@@ -263,206 +263,220 @@ namespace BetterSchedule.Server.Controllers.Scheduling
             [FromBody] UpdateReservationDto dto,
             CancellationToken ct)
         {
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            // IMPORTANT: wrap the whole transactional unit in EF's execution strategy
+            var strategy = _db.Database.CreateExecutionStrategy();
 
-            var reservation = await _db.Reservations
-                .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
-            if (reservation is null) return NotFound();
-
-            if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false))
-                return Forbid();
-
-            var settings = await _db.OrganizationSettings.AsNoTracking()
-                .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
-
-            var now = _clock.UtcNow;
-
-            // Parse and normalize status intent
-            var isStatusProvided = !string.IsNullOrWhiteSpace(dto.Status);
-            ReservationStatus? parsedStatus = null;
-            if (isStatusProvided)
+            return await strategy.ExecuteAsync(async () =>
             {
-                if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var sParsed))
-                    return BadRequest(ApiError.Validation($"Unknown status '{dto.Status}'."));
-                parsedStatus = sParsed;
-            }
+                await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            var isOnlyStatusChange =
-                isStatusProvided &&
-                dto.StartTime is null &&
-                dto.EndTime is null &&
-                dto.ResourceId is null &&
-                dto.ServiceProviderId is null &&
-                dto.AppointmentTypeId is null &&
-                !dto.PackageAssignmentId.HasValue;
-
-            if (isOnlyStatusChange && parsedStatus == reservation.Status && dto.Notes is null)
-                return NoContent();
-
-            // Effective values after patch
-            var newProviderId = dto.ServiceProviderId ?? reservation.ServiceProviderId;
-            var newTypeId = dto.AppointmentTypeId ?? reservation.AppointmentTypeId;
-            var newStart = dto.StartTime ?? reservation.StartTime;
-            var newEnd = dto.EndTime ?? reservation.EndTime;
-            var newResourceId = dto.ResourceId ?? reservation.ResourceId;
-
-            // For staff, allow rescheduling anytime; only require that End > Start
-            if (!isOnlyStatusChange && newEnd <= newStart)
-                return BadRequest(ApiError.Validation("EndTime must be after StartTime."));
-
-            // Conflict checks when changing schedule
-            var warnDoubleBook = false;
-            if (!isOnlyStatusChange)
-            {
-                var c = await _conflicts.CheckReservationUpdateAsync(
-                    id, OrganizationId, newProviderId, newStart, newEnd, newResourceId, ct);
-
-                // Provider/resource blocked -> warn for staff
-                if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
-                if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
-
-                // Double-book warning for staff updates
-                warnDoubleBook = c.ReservationOverlap;
-            }
-
-            // Package validations / consumption bookkeeping
-            var wasCompleted = reservation.Status == ReservationStatus.Completed;
-            var willBeCompleted = parsedStatus.HasValue ? parsedStatus.Value == ReservationStatus.Completed : wasCompleted;
-
-            var oldAssignmentId = reservation.PackageAssignmentId;
-            var newAssignmentId = dto.PackageAssignmentId.HasValue
-                ? dto.PackageAssignmentId
-                : oldAssignmentId;
-
-            var changingAssignment = dto.PackageAssignmentId.HasValue && newAssignmentId != oldAssignmentId;
-
-            if (changingAssignment && newAssignmentId.HasValue)
-            {
-                var requireRemaining = willBeCompleted;
-                var assignmentProblem = await ValidateAssignmentForReservationAsync(
-                    newAssignmentId.Value, OrganizationId, reservation.ClientId,
-                    newTypeId, newProviderId, requireRemainingUse: requireRemaining, ct: ct);
-                if (assignmentProblem is not null) return assignmentProblem;
-            }
-
-            if (!changingAssignment && willBeCompleted && oldAssignmentId.HasValue)
-            {
-                var assignmentProblem = await ValidateAssignmentForReservationAsync(
-                    oldAssignmentId.Value, OrganizationId, reservation.ClientId,
-                    newTypeId, newProviderId, requireRemainingUse: true, ct: ct);
-                if (assignmentProblem is not null) return assignmentProblem;
-            }
-
-            // Apply patch
-            if (dto.Notes is not null) reservation.Notes = dto.Notes;
-            if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
-            if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
-
-            if (parsedStatus.HasValue)
-            {
-                // Transition to Canceled -> record metadata and classify lateness
-                if (parsedStatus.Value == ReservationStatus.Canceled && reservation.Status != ReservationStatus.Canceled)
+                try
                 {
-                    var orgSettings = settings ?? new OrganizationSettings();
-                    reservation.CancelledAt = now;
-                    reservation.CancelledByUserId = UserId;
-                    reservation.CancelReason = "StaffAction";
-                    reservation.CancelSource = CancellationSource.Staff;
-                    reservation.IsLateCancel = BookingPolicy.IsLateCancel(
-                        now, reservation.StartTime, orgSettings.TimeZoneId, orgSettings.CancelWindowHours);
-                }
+                    var reservation = await _db.Reservations
+                        .FirstOrDefaultAsync(r => r.Id == id && r.OrganizationId == OrganizationId && !r.IsDeleted, ct);
+                    if (reservation is null) return NotFound();
 
-                reservation.Status = parsedStatus.Value;
-            }
+                    if (!ReservationScopes.CanModify(reservation, UserId, IsManager, IsProvider, isClient: false))
+                        return Forbid();
 
-            reservation.ServiceProviderId = newProviderId;
-            reservation.AppointmentTypeId = newTypeId;
-            reservation.StartTime = newStart;
-            reservation.EndTime = newEnd;
-            reservation.UpdatedAt = _clock.UtcNow;
+                    var settings = await _db.OrganizationSettings.AsNoTracking()
+                        .FirstOrDefaultAsync(s => s.OrganizationId == OrganizationId, ct);
 
-            // Redemption-aware counters
-            var currentRedemption = await _db.PackageRedemptions
-                .FirstOrDefaultAsync(x => x.OrganizationId == OrganizationId && x.ReservationId == reservation.Id, ct);
+                    var now = _clock.UtcNow;
 
-            var effectiveAssignmentId = reservation.PackageAssignmentId;
-            var assignmentChanged = changingAssignment;
-
-            async Task ConsumeAsync(int assignmentId, CancellationToken token)
-            {
-                var a = await _db.PackageAssignments
-                    .FirstOrDefaultAsync(x => x.Id == assignmentId && x.OrganizationId == OrganizationId && !x.IsDeleted, token);
-                if (a is null) throw new InvalidOperationException("Package assignment not found.");
-                if (a.RemainingUses <= 0) throw new InvalidOperationException("No remaining uses on the selected package.");
-                a.RemainingUses -= 1;
-                _db.PackageAssignments.Update(a);
-
-                _db.PackageRedemptions.Add(new PackageRedemption
-                {
-                    OrganizationId = OrganizationId,
-                    PackageAssignmentId = assignmentId,
-                    ReservationId = reservation.Id,
-                    Uses = 1,
-                    CreatedAt = _clock.UtcNow
-                });
-            }
-
-            async Task RestoreAsync(PackageRedemption red, CancellationToken token)
-            {
-                var a = await _db.PackageAssignments
-                    .FirstOrDefaultAsync(x => x.Id == red.PackageAssignmentId && x.OrganizationId == OrganizationId && !x.IsDeleted, token);
-                if (a is not null)
-                {
-                    a.RemainingUses += red.Uses;
-                    _db.PackageAssignments.Update(a);
-                }
-                _db.PackageRedemptions.Remove(red);
-            }
-
-            // 1) Not Completed -> Completed: consume
-            // 2) Completed -> Not Completed: restore
-            // 3) Completed + assignment changed: move redemption
-            if (!wasCompleted && willBeCompleted)
-            {
-                if (effectiveAssignmentId.HasValue)
-                {
-                    if (currentRedemption is null)
+                    // Parse and normalize status intent
+                    var isStatusProvided = !string.IsNullOrWhiteSpace(dto.Status);
+                    ReservationStatus? parsedStatus = null;
+                    if (isStatusProvided)
                     {
-                        await ConsumeAsync(effectiveAssignmentId.Value, ct);
+                        if (!Enum.TryParse<ReservationStatus>(dto.Status, true, out var sParsed))
+                            return BadRequest(ApiError.Validation($"Unknown status '{dto.Status}'."));
+                        parsedStatus = sParsed;
                     }
-                    else if (assignmentChanged && currentRedemption.PackageAssignmentId != effectiveAssignmentId.Value)
+
+                    var isOnlyStatusChange =
+                        isStatusProvided &&
+                        dto.StartTime is null &&
+                        dto.EndTime is null &&
+                        dto.ResourceId is null &&
+                        dto.ServiceProviderId is null &&
+                        dto.AppointmentTypeId is null &&
+                        !dto.PackageAssignmentId.HasValue;
+
+                    if (isOnlyStatusChange && parsedStatus == reservation.Status && dto.Notes is null)
+                        return NoContent();
+
+                    // Effective values after patch
+                    var newProviderId = dto.ServiceProviderId ?? reservation.ServiceProviderId;
+                    var newTypeId = dto.AppointmentTypeId ?? reservation.AppointmentTypeId;
+                    var newStart = dto.StartTime ?? reservation.StartTime;
+                    var newEnd = dto.EndTime ?? reservation.EndTime;
+                    var newResourceId = dto.ResourceId ?? reservation.ResourceId;
+
+                    // For staff, allow rescheduling anytime; only require that End > Start
+                    if (!isOnlyStatusChange && newEnd <= newStart)
+                        return BadRequest(ApiError.Validation("EndTime must be after StartTime."));
+
+                    // Conflict checks when changing schedule
+                    var warnDoubleBook = false;
+                    if (!isOnlyStatusChange)
                     {
-                        await RestoreAsync(currentRedemption, ct);
-                        await ConsumeAsync(effectiveAssignmentId.Value, ct);
+                        var c = await _conflicts.CheckReservationUpdateAsync(
+                            id, OrganizationId, newProviderId, newStart, newEnd, newResourceId, ct);
+
+                        // Provider/resource blocked -> warn for staff
+                        if (c.ProviderBlocked) Response.Headers["X-Warned-Provider-Blocked"] = "true";
+                        if (c.ResourceBlocked) Response.Headers["X-Warned-Resource-Blocked"] = "true";
+
+                        // Double-book warning for staff updates
+                        warnDoubleBook = c.ReservationOverlap;
                     }
-                }
-            }
-            else if (wasCompleted && !willBeCompleted)
-            {
-                if (currentRedemption is not null)
-                {
-                    await RestoreAsync(currentRedemption, ct);
-                }
-            }
-            else if (wasCompleted && willBeCompleted && assignmentChanged)
-            {
-                if (effectiveAssignmentId.HasValue)
-                {
-                    if (currentRedemption is not null)
-                        await RestoreAsync(currentRedemption, ct);
-                    await ConsumeAsync(effectiveAssignmentId.Value, ct);
-                }
-                else if (currentRedemption is not null)
-                {
-                    await RestoreAsync(currentRedemption, ct);
-                }
-            }
 
-            await _db.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
+                    // Package validations / consumption bookkeeping
+                    var wasCompleted = reservation.Status == ReservationStatus.Completed;
+                    var willBeCompleted = parsedStatus.HasValue ? parsedStatus.Value == ReservationStatus.Completed : wasCompleted;
 
-            if (warnDoubleBook) Response.Headers["X-Warned-Double-Booking"] = "true";
-            return NoContent();
+                    var oldAssignmentId = reservation.PackageAssignmentId;
+                    var newAssignmentId = dto.PackageAssignmentId.HasValue
+                        ? dto.PackageAssignmentId
+                        : oldAssignmentId;
+
+                    var changingAssignment = dto.PackageAssignmentId.HasValue && newAssignmentId != oldAssignmentId;
+
+                    if (changingAssignment && newAssignmentId.HasValue)
+                    {
+                        var requireRemaining = willBeCompleted;
+                        var assignmentProblem = await ValidateAssignmentForReservationAsync(
+                            newAssignmentId.Value, OrganizationId, reservation.ClientId,
+                            newTypeId, newProviderId, requireRemainingUse: requireRemaining, ct: ct);
+                        if (assignmentProblem is not null) return assignmentProblem;
+                    }
+
+                    if (!changingAssignment && willBeCompleted && oldAssignmentId.HasValue)
+                    {
+                        var assignmentProblem = await ValidateAssignmentForReservationAsync(
+                            oldAssignmentId.Value, OrganizationId, reservation.ClientId,
+                            newTypeId, newProviderId, requireRemainingUse: true, ct: ct);
+                        if (assignmentProblem is not null) return assignmentProblem;
+                    }
+
+                    // Apply patch
+                    if (dto.Notes is not null) reservation.Notes = dto.Notes;
+                    if (dto.ResourceId is not null) reservation.ResourceId = dto.ResourceId;
+                    if (dto.PackageAssignmentId.HasValue) reservation.PackageAssignmentId = dto.PackageAssignmentId;
+
+                    if (parsedStatus.HasValue)
+                    {
+                        // Transition to Canceled -> record metadata and classify lateness
+                        if (parsedStatus.Value == ReservationStatus.Canceled && reservation.Status != ReservationStatus.Canceled)
+                        {
+                            var orgSettings = settings ?? new OrganizationSettings();
+                            reservation.CancelledAt = now;
+                            reservation.CancelledByUserId = UserId;
+                            reservation.CancelReason = "StaffAction";
+                            reservation.CancelSource = CancellationSource.Staff;
+                            reservation.IsLateCancel = BookingPolicy.IsLateCancel(
+                                now, reservation.StartTime, orgSettings.TimeZoneId, orgSettings.CancelWindowHours);
+                        }
+
+                        reservation.Status = parsedStatus.Value;
+                    }
+
+                    reservation.ServiceProviderId = newProviderId;
+                    reservation.AppointmentTypeId = newTypeId;
+                    reservation.StartTime = newStart;
+                    reservation.EndTime = newEnd;
+                    reservation.UpdatedAt = _clock.UtcNow;
+
+                    // Redemption-aware counters
+                    var currentRedemption = await _db.PackageRedemptions
+                        .FirstOrDefaultAsync(x => x.OrganizationId == OrganizationId && x.ReservationId == reservation.Id, ct);
+
+                    var effectiveAssignmentId = reservation.PackageAssignmentId;
+                    var assignmentChanged = changingAssignment;
+
+                    async Task ConsumeAsync(int assignmentId, CancellationToken token)
+                    {
+                        var a = await _db.PackageAssignments
+                            .FirstOrDefaultAsync(x => x.Id == assignmentId && x.OrganizationId == OrganizationId && !x.IsDeleted, token);
+                        if (a is null) throw new InvalidOperationException("Package assignment not found.");
+                        if (a.RemainingUses <= 0) throw new InvalidOperationException("No remaining uses on the selected package.");
+                        a.RemainingUses -= 1;
+                        _db.PackageAssignments.Update(a);
+
+                        _db.PackageRedemptions.Add(new PackageRedemption
+                        {
+                            OrganizationId = OrganizationId,
+                            PackageAssignmentId = assignmentId,
+                            ReservationId = reservation.Id,
+                            Uses = 1,
+                            CreatedAt = _clock.UtcNow
+                        });
+                    }
+
+                    async Task RestoreAsync(PackageRedemption red, CancellationToken token)
+                    {
+                        var a = await _db.PackageAssignments
+                            .FirstOrDefaultAsync(x => x.Id == red.PackageAssignmentId && x.OrganizationId == OrganizationId && !x.IsDeleted, token);
+                        if (a is not null)
+                        {
+                            a.RemainingUses += red.Uses;
+                            _db.PackageAssignments.Update(a);
+                        }
+                        _db.PackageRedemptions.Remove(red);
+                    }
+
+                    // 1) Not Completed -> Completed: consume
+                    // 2) Completed -> Not Completed: restore
+                    // 3) Completed + assignment changed: move redemption
+                    if (!wasCompleted && willBeCompleted)
+                    {
+                        if (effectiveAssignmentId.HasValue)
+                        {
+                            if (currentRedemption is null)
+                            {
+                                await ConsumeAsync(effectiveAssignmentId.Value, ct);
+                            }
+                            else if (assignmentChanged && currentRedemption.PackageAssignmentId != effectiveAssignmentId.Value)
+                            {
+                                await RestoreAsync(currentRedemption, ct);
+                                await ConsumeAsync(effectiveAssignmentId.Value, ct);
+                            }
+                        }
+                    }
+                    else if (wasCompleted && !willBeCompleted)
+                    {
+                        if (currentRedemption is not null)
+                        {
+                            await RestoreAsync(currentRedemption, ct);
+                        }
+                    }
+                    else if (wasCompleted && willBeCompleted && assignmentChanged)
+                    {
+                        if (effectiveAssignmentId.HasValue)
+                        {
+                            if (currentRedemption is not null)
+                                await RestoreAsync(currentRedemption, ct);
+                            await ConsumeAsync(effectiveAssignmentId.Value, ct);
+                        }
+                        else if (currentRedemption is not null)
+                        {
+                            await RestoreAsync(currentRedemption, ct);
+                        }
+                    }
+
+                    await _db.SaveChangesAsync(ct);
+                    await tx.CommitAsync(ct);
+
+                    if (!isOnlyStatusChange && warnDoubleBook) Response.Headers["X-Warned-Double-Booking"] = "true";
+                    return NoContent();
+                }
+                catch
+                {
+                    await tx.RollbackAsync(ct);
+                    throw;
+                }
+            });
         }
 
         /// <summary>

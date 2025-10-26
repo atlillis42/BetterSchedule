@@ -17,7 +17,7 @@ export function blockedTimeToUiEvent(block: BlockedTimeDto): UiEvent {
         start: utcIsoToDayPilotLocal(block.startTime),
         end: utcIsoToDayPilotLocal(block.endTime),
         resource: resourceKey,
-        cssClass: "ev-blocked",
+        cssClass: "ev-blocked ev-chip", 
         type: "blockedTime",
         blockedTime: block,
         createdByUserId: block.createdByUserId,
