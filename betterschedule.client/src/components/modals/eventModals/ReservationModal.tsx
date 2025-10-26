@@ -1,3 +1,8 @@
+/**
+ * Reservation modal for creating/editing reservations.
+ * Integrates react-select dark-mode inline style tokens via buildReactSelectStyles.
+ */
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import { toast } from "react-toastify";
@@ -5,17 +10,15 @@ import { useAuth } from "@/components/auth/auth-context";
 import ClientSearchInput from "@/components/modals/lookup/ClientSearchInput";
 import ProviderSearchInput from "@/components/modals/lookup/ProviderSearchInput";
 import { getAppointmentTypes, type AppointmentTypeDto } from "@/api/appointmenttype-api";
-import {
-    setReservationStatus,
-    cancelReservationAsClient,
-    updateReservation,
-} from "@/api/reservation-api";
+import { setReservationStatus, cancelReservationAsClient, updateReservation } from "@/api/reservation-api";
 import { getClientNameCached } from "@/services/clientNameCache";
 import { getProviderLiteById } from "@/api/user-api";
 import { colorForReservationStatus } from "@/domain/calendar/eventStyle";
+import { buildReactSelectStyles } from "@/styles/reactSelectStyles"; 
 
 type ProviderLite = { id: string; name: string };
 type CalendarResource = { id: number; name: string };
+/** Single-value option used by the Number-based selects. */
 type NumberOption = { value: number; label: string };
 
 type Props = {
@@ -40,17 +43,9 @@ function reservationIdFromValues(values: any): number | undefined {
     return undefined;
 }
 
-function fmtDate(value?: string) {
-    return value || "";
-}
-function fmtTime(value?: string) {
-    return value || "";
-}
-
-function labelForStatus(s?: string) {
-    if (s === "NoShow") return "No-Show / Late Cancel";
-    return s || "";
-}
+function fmtDate(value?: string) { return value || ""; }
+function fmtTime(value?: string) { return value || ""; }
+function labelForStatus(s?: string) { return s === "NoShow" ? "No-Show / Late Cancel" : s || ""; }
 
 const ReservationModal: React.FC<Props> = ({
     mode,
@@ -71,6 +66,12 @@ const ReservationModal: React.FC<Props> = ({
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
     const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
+    // Where to portal react-select menus (prefer the modal so dark mode applies)
+    const menuPortalTarget =
+        typeof document !== "undefined"
+            ? (document.querySelector(".bs-modal") as HTMLElement) ?? document.body
+            : undefined;
+
     useEffect(() => {
         if (!providers?.length) return;
         setProviderNameMap((prev) => {
@@ -80,7 +81,6 @@ const ReservationModal: React.FC<Props> = ({
         });
     }, [providers]);
 
-    // Resolve primary IDs from varied shapes we see flowing through modals
     const primaryClientId: string | undefined =
         (typeof values?.clientId === "string" && values.clientId) ||
         (typeof values?.reservation?.clientId === "string" && values.reservation.clientId) ||
@@ -107,15 +107,14 @@ const ReservationModal: React.FC<Props> = ({
                 }
             } catch { }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [primaryClientId, primaryProviderId]);
 
     const resourceOptionsRS: NumberOption[] = useMemo(
         () => (resources ?? []).map((r) => ({ value: r.id, label: r.name })),
         [resources]
     );
+
     const selectedResourceOption: NumberOption | null = useMemo(() => {
         if (values?.resourceId == null) return null;
         const id = Number(values.resourceId);
@@ -123,10 +122,12 @@ const ReservationModal: React.FC<Props> = ({
     }, [values?.resourceId, resourceOptionsRS]);
 
     const [selectedAppointmentType, setSelectedAppointmentType] = useState<AppointmentTypeDto | undefined>(undefined);
+
     const appointmentTypeOptionsRS: NumberOption[] = useMemo(
         () => appointmentTypes.map((t) => ({ value: t.id, label: t.name })),
         [appointmentTypes]
     );
+
     const selectedAppointmentTypeOption: NumberOption | null = useMemo(() => {
         if (values?.appointmentTypeId == null) return null;
         const id = Number(values.appointmentTypeId);
@@ -141,9 +142,7 @@ const ReservationModal: React.FC<Props> = ({
                 if (!cancelled) setAppointmentTypes(list);
             } catch { }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, []);
 
     useEffect(() => {
@@ -169,14 +168,11 @@ const ReservationModal: React.FC<Props> = ({
 
     // Client is allowed to cancel only if they own the reservation
     const userOwnsReservation =
-        !!isClientOnly &&
-        !!userId &&
-        !!primaryClientId &&
-        String(userId) === String(primaryClientId);
+        !!isClientOnly && !!userId && !!primaryClientId && String(userId) === String(primaryClientId);
 
-    // -------------------------------------
+    // ---------------------------
     // Quick status action (staff only)
-    // -------------------------------------
+    // ---------------------------
     const runQuickStatus = async (status: "Booked" | "Completed" | "Canceled" | "NoShow") => {
         if (!reservationId || busyRef.current) return;
         busyRef.current = true;
@@ -326,44 +322,54 @@ const ReservationModal: React.FC<Props> = ({
     const currentStatus: string | undefined =
         values?.status ?? values?.reservation?.status ?? values?.reservationStatus;
 
-    const disableEdits = isClientOnly; // read-only fields for clients
+    const disableEdits = isClientOnly;
+
+    // NEW: unified react-select styles using CSS vars
+    const rsStyles = useMemo(() => buildReactSelectStyles<NumberOption>(), []);
 
     return (
         <div className="flex flex-col gap-4">
             {/* Staff-only quick status row */}
             {mode === "edit" && reservationId && !isClientOnly && (
-                <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="rounded-lg border bg-slate-50 p-3 border-slate-200 dark:bg-slate-800/60 dark:border-slate-700">
                     <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                            <div className="font-medium text-sm">Quick status:</div>
+                            <div className="font-medium text-sm text-slate-800 dark:text-slate-100">Quick status:</div>
                             <div className="flex flex-wrap gap-2">
+                                {/* Booked (blue) */}
                                 <button
                                     type="button"
-                                    className="px-3 py-1.5 text-sm rounded border bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+                                    className="px-3 py-1.5 text-sm rounded-lg shadow-sm border border-transparent text-white bg-[#3b82f6] hover:bg-[#2563eb] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-800 disabled:opacity-60"
                                     onClick={() => runQuickStatus("Booked")}
                                     disabled={busyRef.current}
                                 >
                                     Booked
                                 </button>
+
+                                {/* Completed (emerald) */}
                                 <button
                                     type="button"
-                                    className="px-3 py-1.5 text-sm rounded border bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                    className="px-3 py-1.5 text-sm rounded-lg shadow-sm border border-transparent text-white bg-[#10b981] hover:bg-[#059669] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-800 disabled:opacity-60"
                                     onClick={() => runQuickStatus("Completed")}
                                     disabled={busyRef.current}
                                 >
                                     Completed
                                 </button>
+
+                                {/* Canceled (amber) */}
                                 <button
                                     type="button"
-                                    className="px-3 py-1.5 text-sm rounded border bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-60"
+                                    className="px-3 py-1.5 text-sm rounded-lg shadow-sm border border-transparent text-white bg-[#f59e0b] hover:bg-[#d97706] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-800 disabled:opacity-60"
                                     onClick={() => runQuickStatus("Canceled")}
                                     disabled={busyRef.current}
                                 >
                                     Canceled
                                 </button>
+
+                                {/* No-Show (red) */}
                                 <button
                                     type="button"
-                                    className="px-3 py-1.5 text-sm rounded border bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+                                    className="px-3 py-1.5 text-sm rounded-lg shadow-sm border border-transparent text-white bg-[#ef4444] hover:bg-[#dc2626] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-800 disabled:opacity-60"
                                     onClick={() => runQuickStatus("NoShow")}
                                     disabled={busyRef.current}
                                 >
@@ -374,19 +380,16 @@ const ReservationModal: React.FC<Props> = ({
 
                         {currentStatus && (
                             <div className="flex items-center gap-2 text-xs" title={`Reservation • ${labelForStatus(currentStatus)}`}>
-                                <span
-                                    className="inline-block h-2.5 w-2.5 rounded-full"
-                                    style={{ backgroundColor: colorForReservationStatus(currentStatus as any) }}
-                                />
-                                <span className="text-gray-700">{labelForStatus(currentStatus)}</span>
+                                <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colorForReservationStatus(currentStatus as any) }} />
+                                <span className="text-slate-700 dark:text-slate-300">{labelForStatus(currentStatus)}</span>
                             </div>
                         )}
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
-                        <label className="text-xs text-gray-600">Reason (optional)</label>
+                        <label className="text-xs text-slate-600 dark:text-slate-300">Reason (optional)</label>
                         <input
-                            className="flex-1 border rounded px-2 py-1 text-sm"
+                            className="flex-1 border rounded px-2 py-1 text-sm border-slate-300 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             placeholder="e.g., client requested, illness, no answer…"
                             value={statusReason}
                             onChange={(e) => setStatusReason(e.target.value)}
@@ -396,17 +399,16 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
             )}
 
-            {/* Client-only: informational banner */}
+            {/* Client-only banner */}
             {isClientOnly && mode === "edit" && (
-                <div className="rounded-lg border bg-blue-50 p-3 text-xs text-blue-900">
-                    You can cancel this appointment here. If it’s within your organization’s late-cancel window, it will be marked
-                    as a <strong>late cancel</strong> and may be subject to the organization’s policy.
+                <div className="rounded-lg border bg-blue-50 p-3 text-xs text-blue-900 border-blue-200 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700">
+                    You can cancel this appointment here. If it’s within your organization’s late-cancel window, it will be marked as a <strong>late cancel</strong> and may be subject to the organization’s policy.
                 </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">Client</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Client</label>
                     <ClientSearchInput
                         valueId={typeof values.clientId === "string" ? values.clientId : null}
                         initialLabel={values.clientName ?? (values.clientId ? clientNameMap.get(values.clientId) ?? null : null)}
@@ -418,7 +420,7 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">Service Provider</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Service Provider</label>
                     <ProviderSearchInput
                         valueId={typeof values.serviceProviderId === "string" ? values.serviceProviderId : null}
                         initialLabel={values.serviceProviderId ? providerNameMap.get(values.serviceProviderId) ?? null : null}
@@ -430,9 +432,9 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">Appointment Type</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Appointment Type</label>
                     <Select
-                        className="text-sm"
+                        className="text-sm rs-container"
                         classNamePrefix="rs"
                         options={appointmentTypeOptionsRS}
                         value={selectedAppointmentTypeOption}
@@ -441,9 +443,12 @@ const ReservationModal: React.FC<Props> = ({
                         placeholder={disableEdits ? "" : "Select type…"}
                         noOptionsMessage={() => "No appointment types"}
                         isDisabled={disableEdits}
+                        menuPortalTarget={menuPortalTarget}
+                        menuPosition="fixed"
+                        styles={rsStyles}  // <-- integrated
                     />
                     {selectedAppointmentType && (
-                        <div className="mt-1 text-xs text-gray-600">
+                        <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                             Duration: {selectedAppointmentType.duration}
                             {typeof selectedAppointmentType.price === "number" ? ` • $${selectedAppointmentType.price}` : ""}
                             {selectedAppointmentType.assignedResourceName ? ` • Default resource: ${selectedAppointmentType.assignedResourceName}` : ""}
@@ -453,9 +458,9 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">Resource (optional)</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Resource (optional)</label>
                     <Select
-                        className="text-sm"
+                        className="text-sm rs-container"
                         classNamePrefix="rs"
                         options={resourceOptionsRS}
                         value={selectedResourceOption}
@@ -466,22 +471,25 @@ const ReservationModal: React.FC<Props> = ({
                         placeholder={disableEdits ? "" : "None"}
                         noOptionsMessage={() => "No resources"}
                         isDisabled={disableEdits}
+                        menuPortalTarget={menuPortalTarget}
+                        menuPosition="fixed"
+                        styles={rsStyles}  // <-- integrated
                     />
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">Start</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Start</label>
                     <div className="flex gap-2">
                         <input
                             type="date"
-                            className="border rounded-lg px-3 py-2 w-1/2"
+                            className="border rounded-lg px-3 py-2 w-1/2 border-slate-300 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={fmtDate(values.startDate) || ""}
                             onChange={(e) => handleField("startDate", e.target.value)}
                             disabled={disableEdits}
                         />
                         <input
                             type="time"
-                            className="border rounded-lg px-3 py-2 w-1/2"
+                            className="border rounded-lg px-3 py-2 w-1/2 border-slate-300 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={fmtTime(values.startTime) || ""}
                             onChange={(e) => handleField("startTime", e.target.value)}
                             disabled={disableEdits}
@@ -490,18 +498,18 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium">End</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">End</label>
                     <div className="flex gap-2">
                         <input
                             type="date"
-                            className="border rounded-lg px-3 py-2 w-1/2"
+                            className="border rounded-lg px-3 py-2 w-1/2 border-slate-300 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={fmtDate(values.endDate) || ""}
                             onChange={(e) => handleField("endDate", e.target.value)}
                             disabled={disableEdits}
                         />
                         <input
                             type="time"
-                            className="border rounded-lg px-3 py-2 w-1/2"
+                            className="border rounded-lg px-3 py-2 w-1/2 border-slate-300 bg-white text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                             value={fmtTime(values.endTime) || ""}
                             onChange={(e) => handleField("endTime", e.target.value)}
                             disabled={disableEdits}
@@ -510,9 +518,9 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="md:col-span-2 flex flex-col gap-1">
-                    <label className="text-sm font-medium">Notes</label>
+                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Notes</label>
                     <textarea
-                        className="border rounded-lg px-3 py-2 min-h-[72px]"
+                        className="border rounded-lg px-3 py-2 min-h-[72px] border-slate-300 bg-white text-slate-900 placeholder-slate-400 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400"
                         value={values.notes || ""}
                         onChange={(e) => handleField("notes", e.target.value)}
                         placeholder={disableEdits ? "" : "optional notes"}
@@ -521,7 +529,7 @@ const ReservationModal: React.FC<Props> = ({
                 </div>
             </div>
 
-            {/* Client-only footer action (must own the reservation) */}
+            {/* Client-only footer action */}
             {isClientOnly && mode === "edit" && reservationId && userOwnsReservation && (
                 <div className="mt-2 flex items-center justify-end">
                     <button

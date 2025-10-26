@@ -25,8 +25,13 @@ const AppNavLinks: React.FC<AppNavLinksProps> = ({ canManage, variant = "inline"
 
     const linkClass = (isActive: boolean) =>
         variant === "inline"
-            ? isActive ? "font-semibold" : ""
-            : `block px-3 py-2 rounded ${isActive ? "bg-blue-50 font-semibold" : "hover:bg-slate-50"}`;
+            ? isActive
+                ? "font-semibold"
+                : "hover:text-slate-900 dark:hover:text-white"
+            : `block px-3 py-2 rounded ${isActive
+                ? "bg-blue-50 font-semibold dark:bg-slate-700"
+                : "hover:bg-slate-50 dark:hover:bg-slate-700"
+            }`;
 
     return (
         <nav className={wrapClass}>

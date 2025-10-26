@@ -1,13 +1,52 @@
 <!doctype html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Helps built-in controls match the current theme -->
+    <meta name="color-scheme" content="light dark" />
     <title>BetterSchedule Demo</title>
-  </head>
-  <body>
+
+    <!-- URL/theme bootstrap: honors ?theme=dark|light|system before React mounts -->
+    <script>
+        (function () {
+            try {
+                var storageKey = "bs-theme"; // "light" | "dark" | "system"
+
+                // 1) Check URL override (bookmarkable)
+                var qs = new URLSearchParams(window.location.search);
+                var urlTheme = qs.get("theme"); // expect "dark" | "light" | "system"
+                var isValid = urlTheme === "dark" || urlTheme === "light" || urlTheme === "system";
+                if (isValid) {
+                    try { localStorage.setItem(storageKey, urlTheme); } catch { }
+                    // Optionally clean the URL after applying (no reload)
+                    if (history.replaceState) {
+                        qs.delete("theme");
+                        var clean = location.pathname + (qs.toString() ? "?" + qs.toString() : "") + location.hash;
+                        history.replaceState(null, "", clean);
+                    }
+                }
+
+                // 2) Resolve choice from storage (or default to system)
+                var stored = null;
+                try { stored = localStorage.getItem(storageKey); } catch { }
+                var mql = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+                var systemPrefersDark = !!(mql && mql.matches);
+
+                var choice = (isValid ? urlTheme : stored) || "system"; // persisted or system
+                var resolved = (choice === "dark") || (choice === "system" && systemPrefersDark) ? "dark" : "light";
+
+                // 3) Apply to <html>
+                var root = document.documentElement;
+                if (resolved === "dark") root.classList.add("dark"); else root.classList.remove("dark");
+                root.setAttribute("data-theme", choice);
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
+</head>
+<body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+</body>
 </html>

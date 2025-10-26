@@ -20,7 +20,9 @@ type Props = {
 };
 
 const DividerLabel: React.FC<{ label: string }> = ({ label }) => (
-    <div className="text-[11px] uppercase tracking-wide text-gray-500 px-3 py-1 border-t mt-2">{label}</div>
+    <div className="text-[11px] uppercase tracking-wide text-slate-500 px-3 py-1 border-t mt-2 border-slate-200 dark:text-slate-400 dark:border-slate-700">
+        {label}
+    </div>
 );
 
 const GuestAdder: React.FC<{ onAdd: (guest: { guestName: string; guestPhone?: string }) => void }> = ({ onAdd }) => {
@@ -29,20 +31,23 @@ const GuestAdder: React.FC<{ onAdd: (guest: { guestName: string; guestPhone?: st
     return (
         <div className="flex items-center gap-2">
             <input
-                className="border rounded px-2 py-2 text-sm flex-1"
+                className="border rounded px-2 py-2 text-sm flex-1 border-slate-300 bg-white text-slate-900 placeholder-slate-400
+                   dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400"
                 placeholder="Guest name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
             />
             <input
-                className="border rounded px-2 py-2 text-sm w-44"
+                className="border rounded px-2 py-2 text-sm w-44 border-slate-300 bg-white text-slate-900 placeholder-slate-400
+                   dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400"
                 placeholder="Phone (optional)"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
             />
             <button
                 type="button"
-                className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
+                className="px-3 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50
+                   dark:border-slate-600 dark:hover:bg-slate-700"
                 onClick={() => {
                     const guestName = name.trim();
                     const guestPhone = phone.trim();
@@ -62,7 +67,6 @@ const GuestAdder: React.FC<{ onAdd: (guest: { guestName: string; guestPhone?: st
 };
 
 const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, providers, reservationId }) => {
-    // name maps
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
     const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
@@ -71,16 +75,13 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
     const [providerParticipants, setProviderParticipants] = useState<ReservationParticipantDto[]>([]);
     const [guestParticipants, setGuestParticipants] = useState<ReservationParticipantDto[]>([]);
 
-    // pending (create mode)
     const pending: PendingParticipantAdd[] = Array.isArray(values?.pendingParticipants) ? values.pendingParticipants : [];
 
-    // Local selection state
     const [clientToAddId, setClientToAddId] = useState<string | null>(null);
     const [clientPickerKey, setClientPickerKey] = useState(0);
     const [providerToAddId, setProviderToAddId] = useState<string | null>(null);
     const [providerPickerKey, setProviderPickerKey] = useState(0);
 
-    // Prime provider names from props
     useEffect(() => {
         if (!providers?.length) return;
         setProviderNameMap((prev) => {
@@ -90,7 +91,6 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
         });
     }, [providers]);
 
-    // Load participants in edit mode (and hydrate names)
     useEffect(() => {
         let cancelled = false;
         if (mode !== "edit" || !reservationId) return;
@@ -108,7 +108,6 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                 setProviderParticipants(provs);
                 setGuestParticipants(guests);
 
-                // resolve client names (primary + participants)
                 const clientIds = new Set<string>();
                 if (typeof values?.clientId === "string" && values.clientId) clientIds.add(values.clientId);
                 for (const c of clients) if (c.userId) clientIds.add(c.userId);
@@ -121,7 +120,6 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                     }
                 }
 
-                // resolve provider names (primary + participants)
                 const provIds = new Set<string>();
                 if (typeof values?.serviceProviderId === "string" && values.serviceProviderId) provIds.add(values.serviceProviderId);
                 for (const p of provs) if (p.userId) provIds.add(p.userId);
@@ -155,7 +153,6 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
         };
     }, [mode, reservationId, values?.clientId, values?.serviceProviderId]);
 
-    // ---------- Create-mode name hydration (primary + pending) ----------
     const primaryClientId: string | undefined =
         typeof values?.clientId === "string" && values.clientId ? values.clientId : undefined;
     const primaryProviderId: string | undefined =
@@ -167,12 +164,9 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
 
         (async () => {
             try {
-                // clients to resolve
                 const clientIds = new Set<string>();
                 if (primaryClientId) clientIds.add(primaryClientId);
-                pending.forEach((p) => {
-                    if (p.role === "Client" && p.userId) clientIds.add(p.userId);
-                });
+                pending.forEach((p) => { if (p.role === "Client" && p.userId) clientIds.add(p.userId); });
                 if (clientIds.size) {
                     const pairs = await Promise.all(Array.from(clientIds).map(async (id) => [id, await getClientNameCached(id)] as const));
                     if (!cancelled) {
@@ -184,21 +178,14 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                     }
                 }
 
-                // providers to resolve
                 const providerIds = new Set<string>();
                 if (primaryProviderId) providerIds.add(primaryProviderId);
-                pending.forEach((p) => {
-                    if (p.role === "ServiceProvider" && p.userId) providerIds.add(p.userId);
-                });
+                pending.forEach((p) => { if (p.role === "ServiceProvider" && p.userId) providerIds.add(p.userId); });
                 if (providerIds.size) {
                     const pairs = await Promise.all(
                         Array.from(providerIds).map(async (id) => {
-                            try {
-                                const dto = await getProviderLiteById(id);
-                                return [id, dto?.name || id] as const;
-                            } catch {
-                                return [id, id] as const;
-                            }
+                            try { const dto = await getProviderLiteById(id); return [id, dto?.name || id] as const; }
+                            catch { return [id, id] as const; }
                         })
                     );
                     if (!cancelled) {
@@ -209,17 +196,12 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                         });
                     }
                 }
-            } catch {
-                /* no-op */
-            }
+            } catch { /* no-op */ }
         })();
 
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [mode, pending, primaryClientId, primaryProviderId]);
 
-    // ---------- Cross-role de-dupe sets ----------
     const createSelectedClientIds = useMemo(() => {
         const set = new Set<string>();
         if (primaryClientId) set.add(primaryClientId);
@@ -256,7 +238,6 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
         return set;
     }, [primaryProviderId, primaryClientId, providerParticipants, clientParticipants]);
 
-    // pending helpers
     const addPending = (p: PendingParticipantAdd) =>
         setValues((prev: any) => {
             const arr: PendingParticipantAdd[] = Array.isArray(prev.pendingParticipants) ? [...prev.pendingParticipants] : [];
@@ -271,17 +252,12 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
             return { ...prev, pendingParticipants: arr };
         });
 
-    // remove (edit)
     const handleRemoveParticipant = async (p: ReservationParticipantDto, role: "Client" | "ServiceProvider" | "Guest") => {
         if (!reservationId) return;
         try {
-            if (role === "Client") {
-                setClientParticipants((prev) => prev.filter((x) => x.id !== p.id));
-            } else if (role === "ServiceProvider") {
-                setProviderParticipants((prev) => prev.filter((x) => x.id !== p.id));
-            } else {
-                setGuestParticipants((prev) => prev.filter((x) => x.id !== p.id));
-            }
+            if (role === "Client") setClientParticipants((prev) => prev.filter((x) => x.id !== p.id));
+            else if (role === "ServiceProvider") setProviderParticipants((prev) => prev.filter((x) => x.id !== p.id));
+            else setGuestParticipants((prev) => prev.filter((x) => x.id !== p.id));
             await removeParticipant(reservationId, p.id);
             toast.success("Removed from this reservation.");
         } catch (err) {
@@ -298,10 +274,8 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
         }
     };
 
-    // current view models
     const currentProviders = (() => {
         if (mode === "edit") return [...providerParticipants];
-        // create: primary + pending
         const pend = pending.filter((p) => p.role === "ServiceProvider" && p.userId);
         const uniq = new Map<string, PendingParticipantAdd>();
         if (primaryProviderId) uniq.set(primaryProviderId, { role: "ServiceProvider", userId: primaryProviderId });
@@ -324,14 +298,13 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
 
     return (
         <div className="flex flex-col gap-6">
-            {mode === "edit" && loading && <div className="text-sm text-gray-500">Loading participants…</div>}
+            {mode === "edit" && loading && <div className="text-sm text-slate-500 dark:text-slate-400">Loading participants…</div>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Clients */}
                 <div>
-                    <div className="mb-2 font-medium">Clients</div>
+                    <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">Clients</div>
 
-                    {/* Existing clients list */}
                     {mode === "edit" && (
                         <div className="flex flex-col gap-2">
                             {clientParticipants.map((p) => (
@@ -347,7 +320,7 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                                     </div>
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => handleRemoveParticipant(p, "Client")}
                                         aria-label="Remove client"
                                         title="Remove"
@@ -373,7 +346,7 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                         </div>
                         <button
                             type="button"
-                            className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
+                            className="px-3 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                             onClick={async () => {
                                 const userId = clientToAddId;
                                 if (!userId) return;
@@ -402,12 +375,15 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                                         toast.error((err as Error)?.message || "We couldn't add that client.");
                                     }
                                 } else {
-                                    // create mode: prime name map immediately so UI shows name, not GUID
                                     try {
                                         const name = await getClientNameCached(userId);
                                         setClientNameMap((prev) => new Map(prev).set(userId, name));
-                                    } catch { /* no-op */ }
-                                    addPending({ role: "Client", userId });
+                                    } catch { }
+                                    setValues((prev: any) => {
+                                        const arr: PendingParticipantAdd[] = Array.isArray(prev.pendingParticipants) ? [...prev.pendingParticipants] : [];
+                                        arr.push({ role: "Client", userId });
+                                        return { ...prev, pendingParticipants: arr };
+                                    });
                                     setClientToAddId(null);
                                     setClientPickerKey((k) => k + 1);
                                     toast.success("Client added.");
@@ -421,21 +397,21 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
 
                 {/* Providers */}
                 <div>
-                    <div className="mb-2 font-medium">Service Providers</div>
+                    <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">Service Providers</div>
 
-                    {/* Existing providers list */}
                     {mode === "edit" && (
                         <div className="flex flex-col gap-2">
                             {providerParticipants.map((p) => (
                                 <div key={p.id} className="flex items-center gap-2">
                                     <input
-                                        className="flex-1 border rounded-lg px-3 py-2 bg-gray-50"
+                                        className="flex-1 border rounded-lg px-3 py-2 bg-slate-50 text-slate-800 border-slate-300
+                               dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600"
                                         value={providerNameMap.get(p.userId) ?? p.userId}
                                         readOnly
                                     />
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => handleRemoveParticipant(p, "ServiceProvider")}
                                         aria-label="Remove provider"
                                         title="Remove"
@@ -462,7 +438,7 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                         </div>
                         <button
                             type="button"
-                            className="px-3 py-2 text-sm rounded border hover:bg-gray-50"
+                            className="px-3 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                             onClick={async () => {
                                 const userId = providerToAddId;
                                 if (!userId) return;
@@ -493,14 +469,17 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                                         toast.error((err as Error)?.message || "We couldn't add that provider.");
                                     }
                                 } else {
-                                    // create mode: prime name map immediately so UI shows name, not GUID
                                     try {
                                         const dto = await getProviderLiteById(userId);
                                         setProviderNameMap((prev) => new Map(prev).set(userId, dto?.name || userId));
                                     } catch {
                                         setProviderNameMap((prev) => new Map(prev).set(userId, userId));
                                     }
-                                    addPending({ role: "ServiceProvider", userId });
+                                    setValues((prev: any) => {
+                                        const arr: PendingParticipantAdd[] = Array.isArray(prev.pendingParticipants) ? [...prev.pendingParticipants] : [];
+                                        arr.push({ role: "ServiceProvider", userId });
+                                        return { ...prev, pendingParticipants: arr };
+                                    });
                                     setProviderToAddId(null);
                                     setProviderPickerKey((k) => k + 1);
                                     toast.success("Service provider added.");
@@ -514,8 +493,8 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
             </div>
 
             {/* Guests */}
-            <div className="rounded-lg border p-3">
-                <div className="mb-2 font-medium">Guests</div>
+            <div className="rounded-lg border p-3 border-slate-200 dark:border-slate-700">
+                <div className="mb-2 font-medium text-slate-800 dark:text-slate-100">Guests</div>
                 <GuestAdder
                     onAdd={async ({ guestName, guestPhone }) => {
                         if (mode === "edit") {
@@ -527,8 +506,11 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                                 toast.error((err as Error)?.message || "We couldn't add that guest.");
                             }
                         } else {
-                            // create mode
-                            addPending({ role: "Guest", guestName, guestPhone });
+                            setValues((prev: any) => {
+                                const arr: PendingParticipantAdd[] = Array.isArray(prev.pendingParticipants) ? [...prev.pendingParticipants] : [];
+                                arr.push({ role: "Guest", guestName, guestPhone });
+                                return { ...prev, pendingParticipants: arr };
+                            });
                             toast.success("Guest added.");
                         }
                     }}
@@ -536,32 +518,35 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
             </div>
 
             {/* Current Participants */}
-            <div className="rounded-lg border">
-                <div className="px-3 py-2 text-sm font-medium bg-gray-50">Current Participants</div>
+            <div className="rounded-lg border border-slate-200 dark:border-slate-700">
+                <div className="px-3 py-2 text-sm font-medium bg-slate-50 text-slate-800 border-b border-slate-200
+                        dark:bg-slate-800/60 dark:text-slate-100 dark:border-slate-700">
+                    Current Participants
+                </div>
 
                 <DividerLabel label="Provider" />
-                <ul className="divide-y">
+                <ul className="divide-y divide-slate-200 dark:divide-slate-700">
                     {currentProviders.map((p, idx) => {
                         const id = (p as any).userId;
                         const isPrimary = id === primaryProviderId;
                         const key = "id" in p && typeof (p as any).id === "number" ? (p as any).id : `${id}-${idx}`;
                         return (
-                            <li key={`prov-${key}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                            <li key={`prov-${key}`} className="flex items-center justify-between px-3 py-2 text-sm text-slate-800 dark:text-slate-100">
                                 <div className="truncate">{providerNameMap.get(id) ?? id}</div>
                                 {mode === "edit" && "id" in p && (p as any).id > 0 ? (
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => handleRemoveParticipant(p as ReservationParticipantDto, "ServiceProvider")}
                                     >
                                         Remove
                                     </button>
                                 ) : isPrimary ? (
-                                    <span className="text-xs text-gray-400">Primary</span>
+                                    <span className="text-xs text-slate-400">Primary</span>
                                 ) : mode === "create" ? (
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => {
                                             const index = pending.findIndex((x) => x.role === "ServiceProvider" && x.userId === id);
                                             if (index >= 0) removePendingAt(index);
@@ -576,28 +561,28 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                 </ul>
 
                 <DividerLabel label="Attendants" />
-                <ul className="divide-y">
+                <ul className="divide-y divide-slate-200 dark:divide-slate-700">
                     {currentClients.map((c, index) => {
                         const userId = (c as any).userId;
                         const isPrimary = userId === primaryClientId;
                         const key = "id" in c && typeof (c as any).id === "number" ? (c as any).id : `${userId}-${index}`;
                         return (
-                            <li key={`cli-${key}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                            <li key={`cli-${key}`} className="flex items-center justify-between px-3 py-2 text-sm text-slate-800 dark:text-slate-100">
                                 <div className="truncate">{clientNameMap.get(userId) || userId}</div>
                                 {mode === "edit" && "id" in c && (c as any).id > 0 ? (
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => handleRemoveParticipant(c as ReservationParticipantDto, "Client")}
                                     >
                                         Remove
                                     </button>
                                 ) : isPrimary ? (
-                                    <span className="text-xs text-gray-400">Primary</span>
+                                    <span className="text-xs text-slate-400">Primary</span>
                                 ) : mode === "create" ? (
                                     <button
                                         type="button"
-                                        className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                        className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                         onClick={() => {
                                             const idx = pending.findIndex((x) => x.role === "Client" && x.userId === userId);
                                             if (idx >= 0) removePendingAt(idx);
@@ -611,7 +596,7 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                     })}
 
                     {currentGuests.length === 0 && currentClients.length === 0 && (
-                        <li className="px-3 py-2 text-sm text-gray-400">No attendants</li>
+                        <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">No attendants</li>
                     )}
 
                     {currentGuests.map((g, index) => {
@@ -619,21 +604,21 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                             const sg = g as ReservationParticipantDto;
                             const label = (sg.guestName ?? "Guest") + (sg.guestPhone ? ` • ${sg.guestPhone}` : "");
                             return (
-                                <li key={`guest-saved-${sg.id}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                <li key={`guest-saved-${sg.id}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm text-slate-800 dark:text-slate-100">
                                     <div className="truncate">
                                         {label}
-                                        <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                        <span className="ml-2 text-xs italic text-slate-500 dark:text-slate-400">Guest</span>
                                     </div>
                                     {mode === "edit" && sg.id > 0 ? (
                                         <button
                                             type="button"
-                                            className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                            className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                             onClick={() => handleRemoveParticipant(sg, "Guest")}
                                         >
                                             Remove
                                         </button>
                                     ) : (
-                                        <span className="text-xs text-gray-400">Saved</span>
+                                        <span className="text-xs text-slate-400">Saved</span>
                                     )}
                                 </li>
                             );
@@ -641,15 +626,15 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                             const pg = g as PendingParticipantAdd & { guestName?: string; guestPhone?: string };
                             const label = (pg.guestName ?? "Guest") + (pg.guestPhone ? ` • ${pg.guestPhone}` : "");
                             return (
-                                <li key={`guest-pending-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
+                                <li key={`guest-pending-${index}`} className="flex items-center justify-between px-3 py-2 text-sm text-slate-800 dark:text-slate-100">
                                     <div className="truncate">
                                         {label}
-                                        <span className="ml-2 text-xs italic text-gray-500">Guest</span>
+                                        <span className="ml-2 text-xs italic text-slate-500 dark:text-slate-400">Guest</span>
                                     </div>
                                     {mode === "create" ? (
                                         <button
                                             type="button"
-                                            className="px-2 py-1 text-xs rounded border hover:bg-gray-50"
+                                            className="px-2 py-1 text-xs rounded border border-slate-300 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
                                             onClick={() => {
                                                 const idx = pending.findIndex(
                                                     (x) => x.role === "Guest" && (x as any).guestName === pg.guestName && (x as any).guestPhone === pg.guestPhone
@@ -660,7 +645,7 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                                             Remove
                                         </button>
                                     ) : (
-                                        <span className="text-xs text-gray-400">Saved</span>
+                                        <span className="text-xs text-slate-400">Saved</span>
                                     )}
                                 </li>
                             );
@@ -669,7 +654,9 @@ const GroupReservationModal: React.FC<Props> = ({ mode, values, setValues, provi
                 </ul>
             </div>
 
-            <div className="text-xs text-gray-500">Changes you make here are saved immediately.</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+                Changes you make here are saved immediately.
+            </div>
         </div>
     );
 };

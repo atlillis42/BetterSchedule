@@ -9,48 +9,28 @@ import {
 import type { CalendarResource } from "@/types/calendarDataTypes";
 import { toast } from "react-toastify";
 
-/**
- * @file AppointmentTypeModal.tsx
- * @summary Modal dialog to create or edit an Appointment Type.
- * @remarks
- * - 15-minute duration increments (15–240), plus optional custom HH:MM.
- * - Stores duration as HH:MM:SS; displays without seconds.
- * - Includes a disabled "Assigned Provider (optional)" field to prime UX for scoping.
- */
-
 /** Props for AppointmentTypeModal. */
 export interface AppointmentTypeModalProps {
-    /** Whether the modal is open. */
     open: boolean;
-    /** Create or edit mode. */
     mode: "create" | "edit";
-    /** Initial appointment type data used only for edit mode. */
     initial?: AppointmentTypeDto | undefined;
-    /** Available resources to assign. */
     resources: CalendarResource[];
-    /** Close handler (called on Cancel/Close). */
     onClose: () => void;
-    /** Callback invoked after a successful save; parent should refresh data. */
     onSaved: () => void | Promise<void>;
 }
 
-/** Converts minutes to "HH:MM:SS". */
 function minutesToHms(minutes: number): string {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     const pad = (n: number) => n.toString().padStart(2, "0");
     return `${pad(h)}:${pad(m)}:00`;
 }
-
-/** Parses "HH:MM:SS" into total minutes (or null). */
 function hmsToMinutes(hhmmss: string | undefined | null): number | null {
     if (!hhmmss) return null;
     const m = /^(\d{2}):([0-5]\d):([0-5]\d)$/.exec(hhmmss);
     if (!m) return null;
     return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }
-
-/** Formats "HH:MM:SS" for display without seconds. */
 function formatDurationLabel(hhmmss: string | undefined | null): string {
     const mins = hmsToMinutes(hhmmss);
     if (mins == null) return "—";
@@ -60,17 +40,10 @@ function formatDurationLabel(hhmmss: string | undefined | null): string {
     if (h) return `${h}h`;
     return `${m}m`;
 }
-
-/** Validates HH:MM input for custom duration. */
 function isValidHhMm(input: string): boolean {
     return /^(\d{1,2}):([0-5]\d)$/.test(input);
 }
 
-/**
- * Modal dialog for creating or editing an Appointment Type.
- * @param props Component props.
- * @returns JSX element for the modal.
- */
 export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
     const { open, mode, initial, resources, onClose, onSaved } = props;
 
@@ -82,15 +55,12 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
     const [requiresWaiver, setRequiresWaiver] = useState<boolean>(false);
     const [assignedResourceId, setAssignedResourceId] = useState<number | undefined>(undefined);
 
-    // Duration state: default to 60 minutes for create; keep initial on edit
     const [durationMinutes, setDurationMinutes] = useState<number>(60);
     const [useCustomDuration, setUseCustomDuration] = useState<boolean>(false);
     const [customHhMm, setCustomHhMm] = useState<string>("");
 
-    // Edit-only: clear resource
     const [willUnassign, setWillUnassign] = useState<boolean>(false);
 
-    // Preload initial data on open/edit
     useEffect(() => {
         if (!open) return;
 
@@ -108,7 +78,6 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
             setUseCustomDuration(mins % 15 !== 0);
             setCustomHhMm(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`);
         } else {
-            // create defaults
             setName("");
             setPrice(0);
             setDescription("");
@@ -122,7 +91,6 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
         }
     }, [open, mode, initial]);
 
-    /** 15-minute options from 15 to 240 minutes. */
     const durationOptions = useMemo(() => {
         const mins: number[] = [];
         for (let m = 15; m <= 240; m += 15) mins.push(m);
@@ -132,7 +100,6 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
         }));
     }, []);
 
-    /** Returns "HH:MM:SS" from current duration state. */
     const durationHms = useMemo(() => {
         if (useCustomDuration) {
             if (!isValidHhMm(customHhMm)) return null;
@@ -143,7 +110,6 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
         return minutesToHms(durationMinutes);
     }, [useCustomDuration, customHhMm, durationMinutes]);
 
-    /** Basic form validation returning user-facing errors. */
     function validate(): string[] {
         const errs: string[] = [];
         if (!name.trim()) errs.push("Name is required.");
@@ -155,7 +121,6 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
         return errs;
     }
 
-    /** Handles save for create/edit. Shows a single success toast here. */
     async function handleSave() {
         const errors = validate();
         if (errors.length) {
@@ -210,17 +175,17 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
             aria-label={mode === "edit" ? "Edit Appointment Type" : "Create Appointment Type"}
         >
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
             {/* Panel */}
-            <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-5 shadow-xl">
+            <div className="bs-modal relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-800 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
                 {/* Header */}
                 <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">
+                    <h2 className="text-lg font-semibold">
                         {mode === "edit" ? "Edit Appointment Type" : "Create Appointment Type"}
                     </h2>
                     <button
-                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                        className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
                         onClick={onClose}
                     >
                         Close
@@ -231,23 +196,23 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {/* Name */}
                     <label className="flex flex-col text-sm">
-                        <span className="mb-1 font-medium text-gray-700">Name</span>
+                        <span className="mb-1 font-medium">Name</span>
                         <input
-                            className="rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 dark:focus-visible:ring-offset-slate-800"
                             placeholder="e.g., 60-Minute Massage"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                         />
-                        <span className="mt-1 text-xs text-gray-500">Unique within your organization.</span>
+                        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">Unique within your organization.</span>
                     </label>
 
-                    {/* Duration (15-min increments + optional custom) */}
+                    {/* Duration */}
                     <div className="grid grid-cols-1 gap-2">
                         <label className="flex flex-col text-sm">
-                            <span className="mb-1 font-medium text-gray-700">Duration</span>
+                            <span className="mb-1 font-medium">Duration</span>
                             <div className="flex items-stretch gap-2">
                                 <select
-                                    className="w-40 rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-500"
+                                    className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus-visible:ring-offset-slate-800"
                                     value={useCustomDuration ? "__custom__" : String(durationMinutes)}
                                     onChange={(e) => {
                                         if (e.target.value === "__custom__") {
@@ -266,14 +231,14 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                                     <option value="__custom__">Other…</option>
                                 </select>
                                 <input
-                                    className="w-28 rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-500 disabled:bg-gray-50"
+                                    className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 dark:disabled:bg-slate-800 dark:focus-visible:ring-offset-slate-800"
                                     placeholder="HH:MM"
                                     value={useCustomDuration ? customHhMm : (formatDurationLabel(minutesToHms(durationMinutes)) || "")}
                                     disabled={!useCustomDuration}
                                     onChange={(e) => setCustomHhMm(e.target.value)}
                                 />
                             </div>
-                            <span className="mt-1 text-xs text-gray-500">
+                            <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                                 Defaults to 15-minute increments. Custom accepts <code>HH:MM</code>. Stored as{" "}
                                 <code>HH:MM:SS</code>.
                             </span>
@@ -282,26 +247,26 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
 
                     {/* Price */}
                     <label className="flex flex-col text-sm">
-                        <span className="mb-1 font-medium text-gray-700">Price</span>
+                        <span className="mb-1 font-medium">Price</span>
                         <input
                             type="number"
                             min={0}
                             step={1}
-                            className="w-32 rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
+                            className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus-visible:ring-offset-slate-800"
                             value={Number.isFinite(price) ? price : 0}
                             onChange={(e) => setPrice(Number(e.target.value))}
                         />
-                        <span className="mt-1 text-xs text-gray-500">
+                        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             Displayed to clients (e.g., {Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(Number.isFinite(price) ? price : 0)}).
                         </span>
                     </label>
 
                     {/* Assigned Resource */}
                     <label className="flex flex-col text-sm">
-                        <span className="mb-1 font-medium text-gray-700">Assigned Resource (optional)</span>
+                        <span className="mb-1 font-medium">Assigned Resource (optional)</span>
                         <div className="flex items-center gap-2">
                             <select
-                                className="flex-1 rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
+                                className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:focus-visible:ring-offset-slate-800"
                                 value={assignedResourceId ?? ""}
                                 onChange={(e) => {
                                     const val = e.target.value === "" ? undefined : Number(e.target.value);
@@ -320,9 +285,9 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                             {mode === "edit" ? (
                                 <button
                                     type="button"
-                                    className={`rounded-lg border px-3 py-2 text-xs font-medium ${willUnassign
-                                            ? "border-amber-400 bg-amber-50 text-amber-700"
-                                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                    className={`rounded-lg border px-3 py-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-800 ${willUnassign
+                                            ? "border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-500 dark:bg-amber-500/10 dark:text-amber-300"
+                                            : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                                         }`}
                                     title="Mark to unassign resource on save"
                                     onClick={() => {
@@ -336,54 +301,54 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                             ) : null}
                         </div>
 
-                        <span className="mt-1 text-xs text-gray-500">
+                        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             Assign location or equipment this service uses. Depending on your organization's rules, bookings can
-                            reserve the resource and help prevent double-booking. 
+                            reserve the resource and help prevent double-booking.
                         </span>
                     </label>
 
-                    {/* Assigned Provider (disabled placeholder for future scoping) */}
+                    {/* Assigned Provider (placeholder) */}
                     <label className="flex flex-col text-sm">
-                        <span className="mb-1 font-medium text-gray-700">Assigned Provider (optional)</span>
+                        <span className="mb-1 font-medium">Assigned Provider (optional)</span>
                         <select
-                            className="flex-1 rounded-lg border px-3 py-2 outline-none disabled:bg-gray-50"
+                            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800"
                             disabled
                             value=""
                             onChange={() => undefined}
                         >
                             <option value="">(None)</option>
                         </select>
-                        <span className="mt-1 text-xs text-gray-500">
+                        <span className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                             <span className="font-medium">Provider scoping</span> coming soon.
                         </span>
                     </label>
 
                     {/* Description */}
                     <label className="md:col-span-2 flex flex-col text-sm">
-                        <span className="mb-1 font-medium text-gray-700">Description</span>
+                        <span className="mb-1 font-medium">Description</span>
                         <textarea
-                            className="min-h-[80px] rounded-lg border px-3 py-2 outline-none focus:border-blue-500"
+                            className="min-h-[80px] rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none placeholder-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-400 dark:focus-visible:ring-offset-slate-800"
                             placeholder="Optional details clients will see during booking."
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         />
                     </label>
 
-                    {/* Flags - single non-wrapping line */}
+                    {/* Flags */}
                     <div className="col-span-1 md:col-span-2 flex items-center gap-6 overflow-x-auto whitespace-nowrap text-sm">
-                        <label className="inline-flex items-center gap-2 whitespace-nowrap">
+                        <label className="inline-flex items-center gap-2 whitespace-nowrap text-slate-700 dark:text-slate-200">
                             <input
                                 type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300"
+                                className="h-4 w-4 rounded border-slate-300 accent-blue-600 dark:border-slate-600 dark:accent-blue-500"
                                 checked={isPublic}
                                 onChange={(e) => setIsPublic(e.target.checked)}
                             />
                             Allow Clients to Self-Book this Appointment Type
                         </label>
-                        <label className="inline-flex items-center gap-2 whitespace-nowrap">
+                        <label className="inline-flex items-center gap-2 whitespace-nowrap text-slate-700 dark:text-slate-200">
                             <input
                                 type="checkbox"
-                                className="h-4 w-4 rounded border-gray-300"
+                                className="h-4 w-4 rounded border-slate-300 accent-blue-600 dark:border-slate-600 dark:accent-blue-500"
                                 checked={requiresWaiver}
                                 onChange={(e) => setRequiresWaiver(e.target.checked)}
                             />
@@ -395,13 +360,13 @@ export default function AppointmentTypeModal(props: AppointmentTypeModalProps) {
                 {/* Actions */}
                 <div className="mt-5 flex gap-2">
                     <button
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700"
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus-visible:ring-offset-slate-800"
                         onClick={handleSave}
                     >
                         Save
                     </button>
                     <button
-                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                         onClick={onClose}
                     >
                         Cancel

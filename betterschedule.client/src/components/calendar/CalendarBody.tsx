@@ -5,46 +5,27 @@ import { themeForView } from "@/domain/calendar/daypilotThemes";
 import type { CalendarResource, UiEvent, CalendarTimeRangeSelectedArgs } from "@/types";
 import type { ViewMode } from "@/types/calendarView";
 
-/**
- * CalendarBody
- * -----------------------------------------------------------------------------
- * Renders Day/Week/WorkWeek/Month/Resources using DayPilot Lite calendar components.
- *
- * Layout model:
- * - Day/Week/WorkWeek/Resources use {@link DayPilotCalendar} (time on rows).
- * - Month uses {@link DayPilotMonth}.
- * - Resources uses DayPilotCalendar in "resources mode" (horizontal columns = resources).
- *
- * UX/behaviors:
- * - Business hours and heightSpec are respected across Day/Week/Resources.
- * - Keys force remount on height/layout changes (avoids first-toggle no-op).
- * - Day view header: suppress "today" highlight (only one column is shown).
- * - Resources header: show default resource name, bolded via CSS (no swatches/tint).
- */
 export default function CalendarBody(props: {
-    /** Active high-level view selection. */
+    /** Current view mode. */
     view: ViewMode;
-    /** Anchor date for the current view. */
     startDate: any;
-    /** Events to render (already filtered for the active view). */
+    /** Events already filtered for visibility in the current view. */
     events: UiEvent[];
-    /** Schedulable resources; used in Resources view as columns. */
+    /** Resource columns for Resources view (id/name/backColor). */
     resources: CalendarResource[];
-    /** Fired when the user drag-selects a time range. */
     onTimeRangeSelected: (args: CalendarTimeRangeSelectedArgs) => void;
-    /** Fired when the user clicks an event. */
     onEventClick: (args: any) => void;
-    /** Cell render callback for Day/Week/Resources (Lite: mutate args.cell.properties). */
+    /** Day/Week cell shading callback. */
     beforeCellRender: (args: any) => void;
-    /** Kept for compatibility with external code paths (no-op here). */
+    /** Scheduler-specific cell shading (kept for parity; may be used by Resources). */
     beforeSchedulerCellRender: (args: any) => void;
-    /** Event render callback (add classes, text, etc.). */
+    /** Event rendering callback (labels, bars, etc.). */
     beforeEventRender: (args: any) => void;
-    /** Start of business hours (0–23). */
+    /** First business hour (e.g., 9). */
     businessBeginsHour?: number;
-    /** End of business hours (0–23). */
+    /** Last business hour (e.g., 17). */
     businessEndsHour?: number;
-    /** Vertical height behavior for the time grid. */
+    /** Height behavior for DayPilot. */
     heightSpec?: "Full" | "BusinessHours" | "BusinessHoursNoScroll";
 }) {
     const {
@@ -63,7 +44,6 @@ export default function CalendarBody(props: {
 
     const theme = view === "Resources" ? themeForView("Day") : themeForView(view);
 
-    // Control refs allow explicit update() when layout-affecting props change.
     const dayRef = useRef<DayPilot.Calendar | null>(null);
     const weekRef = useRef<DayPilot.Calendar | null>(null);
     const resourcesRef = useRef<DayPilot.Calendar | null>(null);
@@ -79,28 +59,25 @@ export default function CalendarBody(props: {
         } else if (view === "Month" && monthRef.current) {
             monthRef.current.update();
         }
-    }, [view, businessBeginsHour, businessEndsHour, heightSpec, startDate]);
+    }, [view, businessBeginsHour, businessEndsHour, heightSpec, startDate, events]);
 
-    // Helpers
     const appendClass = (existing: string | undefined, add?: string) =>
         add ? [existing, add].filter(Boolean).join(" ") : existing || "";
 
-    // Keys to force remount when the vertical model changes
     const dayKey = `day-${heightSpec ?? "Full"}`;
     const weekKey = `week-${view}-${heightSpec ?? "Full"}`;
     const resourcesKey = `resources-${heightSpec ?? "Full"}`;
 
-    // Resource columns (ids are strings to match event.resource normalization).
     type CalendarColumn = { id: string; name: string; backColor?: string };
     const columns: CalendarColumn[] = resources.map((r) => ({
         id: String(r.id),
         name: r.name,
-        backColor: r.backColor, // TODO: Deprecate fully
+        backColor: r.backColor,
     }));
 
     return (
-        <div className="calendar-body flex-1 overflow-hidden min-h-0">
-            {/* === DAY ============================================================= */}
+        <div className="calendar-body flex-1 overflow-hidden min-h-0 bg-white dark:bg-slate-800">
+            {/* DAY */}
             {view === "Day" && (
                 <DayPilotCalendar
                     key={dayKey}
@@ -120,12 +97,12 @@ export default function CalendarBody(props: {
                     headerHeight={40}
                     onBeforeHeaderRender={(args) => {
                         const info = formatWeekHeader(args.header.start);
-                        args.header.html = info.html; 
+                        args.header.html = info.html;
                     }}
                 />
             )}
 
-            {/* === WEEK / WORKWEEK =============================================== */}
+            {/* WEEK / WORKWEEK */}
             {(view === "Week" || view === "WorkWeek") && (
                 <DayPilotCalendar
                     key={weekKey}
@@ -143,7 +120,7 @@ export default function CalendarBody(props: {
                     onBeforeCellRender={beforeCellRender}
                     onBeforeEventRender={beforeEventRender}
                     headerHeight={40}
-                    onBeforeHeaderRender={(args) => {                       
+                    onBeforeHeaderRender={(args) => {
                         const info = formatWeekHeader(args.header.start);
                         args.header.html = info.html;
                         args.header.cssClass = appendClass(args.header.cssClass, info.cssClass);
@@ -151,7 +128,7 @@ export default function CalendarBody(props: {
                 />
             )}
 
-            {/* === MONTH ========================================================== */}
+            {/* MONTH */}
             {view === "Month" && (
                 <div className="month-wrapper">
                     <DayPilotMonth
@@ -169,7 +146,7 @@ export default function CalendarBody(props: {
                 </div>
             )}
 
-            {/* === RESOURCES (calendar resources mode) ============================ */}
+            {/* RESOURCES */}
             {view === "Resources" && (
                 <DayPilotCalendar
                     key={resourcesKey}

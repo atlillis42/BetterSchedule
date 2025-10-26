@@ -2,16 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DayPilot } from "@daypilot/daypilot-lite-react";
 import { getOrgSettings, type OrgSettingsDto } from "@/api/org-settings-api";
 import type { ViewMode } from "@/types/calendarView";
+import { getStartDateForCalendar } from "@/utilities/calendarDisplay/getVisibleRange";
 
 /**
- * Manages calendar view state (view mode, start date) and loads organization settings.
- * Always defaults to WorkWeek. If the org default is "Week", coerce it to "WorkWeek".
- * Other org defaults (Day/Month/Resources) are respected.
+ * Manages calendar view state (view mode, anchor date) and loads organization settings.
+ * - Defaults to WorkWeek; coerces org "Week" to "WorkWeek" for a work-focused default.
+ * - Exposes `calendarStartDate`: the correct DayPilot startDate for the current view,
+ *   ensuring the rendered strip aligns with our data-fetching window.
  */
 export function useCalendarView() {
     const [org, setOrg] = useState<OrgSettingsDto | null>(null);
-    const [view, setView] = useState<ViewMode>("WorkWeek"); // hard default to WorkWeek
-    const [startDate, setStartDate] = useState(DayPilot.Date.today());
+    const [view, setView] = useState<ViewMode>("WorkWeek");
+    const [startDate, setStartDate] = useState(DayPilot.Date.today()); // anchor
     const appliedDefaultViewRef = useRef(false);
 
     useEffect(() => {
@@ -33,6 +35,7 @@ export function useCalendarView() {
         })();
     }, []);
 
+    // Timezone label (unchanged)
     const tzLabel = useMemo(() => {
         try {
             return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -41,7 +44,13 @@ export function useCalendarView() {
         }
     }, []);
 
+    // What DayPilot should receive as startDate (keeps UI window aligned with data)
+    const calendarStartDate = useMemo(
+        () => getStartDateForCalendar(view, startDate),
+        [view, startDate]
+    );
+
     const goToday = () => setStartDate(DayPilot.Date.today());
 
-    return { org, view, setView, startDate, setStartDate, tzLabel, goToday };
+    return { org, view, setView, startDate, setStartDate, calendarStartDate, tzLabel, goToday };
 }

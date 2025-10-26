@@ -1,46 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import AsyncSelect from "react-select/async";
-import type { CSSObjectWithLabel } from "react-select";
-import { searchClients, type ClientSearchItem } from "@/api/client-api";
-import { getClientLiteById } from "@/api/client-api";
+import { searchClients, type ClientSearchItem, getClientLiteById } from "@/api/client-api";
+import { buildReactSelectStyles } from "@/styles/reactSelectStyles"; 
 
-/**
- * Value object for the ClientSearchInput selection.
- */
-export type ClientPick = {
-    /** Client user identifier (GUID). */
-    id: string;
-    /** Display name. */
-    name: string;
-};
+export type ClientPick = { id: string; name: string };
 
 export interface ClientSearchInputProps {
-    /**
-     * Current selected client ID (GUID). Can be null/undefined for "no selection".
-     * When provided, the control resolves the display label from the backend.
-     */
     valueId?: string | null;
-    /**
-     * Optional initial label to use *until* the control resolves by ID.
-     * Useful if the reservation DTO already contains clientName.
-     */
     initialLabel?: string | null;
-    /** Called when user picks (or clears) a client. Passes the picked client or null on clear. */
     onChange: (client: ClientPick | null) => void;
-    /** Placeholder text. */
     placeholder?: string;
-    /** Disable input. */
     disabled?: boolean;
-    /** Autofocus input on mount. */
     autoFocus?: boolean;
 }
 
-/**
- * Client async typeahead built on react-select/async.
- * - Loads options via `searchClients(q)`
- * - Resolves initial label by `valueId` via `getClientLiteById`
- * - Emits `{id, name}` to parent on change
- */
 const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
     valueId,
     initialLabel,
@@ -51,55 +24,42 @@ const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
 }) => {
     type Opt = { value: string; label: string };
 
-    // Simple in-memory caches to avoid redundant fetches.
     const idCache = useRef(new Map<string, ClientSearchItem>());
     const [selected, setSelected] = useState<Opt | null>(null);
     const [defaultOptions, setDefaultOptions] = useState<Opt[]>([]);
 
-    // Map API items to react-select options
     const toOpt = (c: ClientSearchItem): Opt => ({ value: c.id, label: c.name });
 
-    // Resolve selected label by ID on mount/changes
+    // Portal target inside modal for dark-mode inheritance
+    const menuPortalTarget =
+        typeof document !== "undefined"
+            ? (document.querySelector(".bs-modal") as HTMLElement) ?? document.body
+            : undefined;
+
     useEffect(() => {
         let cancelled = false;
-
-        const hydrate = async () => {
+        (async () => {
             if (!valueId) {
                 setSelected(null);
                 return;
             }
-
-            // Use cache first
             const cached = idCache.current.get(valueId);
             if (cached) {
                 if (!cancelled) setSelected(toOpt(cached));
                 return;
             }
-
-            // Show temporary label if provided while fetching
-            if (initialLabel) {
-                setSelected({ value: valueId, label: initialLabel });
-            }
-
+            if (initialLabel) setSelected({ value: valueId, label: initialLabel });
             try {
                 const item = await getClientLiteById(valueId);
                 idCache.current.set(valueId, item);
                 if (!cancelled) setSelected(toOpt(item));
             } catch {
-                // Fall back to showing the GUID if resolution fails
-                if (!cancelled && !initialLabel) {
-                    setSelected({ value: valueId, label: valueId });
-                }
+                if (!cancelled && !initialLabel) setSelected({ value: valueId, label: valueId });
             }
-        };
-
-        void hydrate();
-        return () => {
-            cancelled = true;
-        };
+        })();
+        return () => { cancelled = true; };
     }, [valueId, initialLabel]);
 
-    // Preload a small default options set
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -107,16 +67,11 @@ const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
                 const items = await searchClients("", { take: 20 });
                 if (!cancelled) setDefaultOptions(items.map(toOpt));
                 items.forEach((c) => idCache.current.set(c.id, c));
-            } catch {
-                /* no-op */
-            }
+            } catch { /* no-op */ }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, []);
 
-    // Loader for react-select/async
     const loadOptions = useMemo(
         () => async (inputValue: string): Promise<Opt[]> => {
             const items = await searchClients(inputValue, { take: 20 });
@@ -128,36 +83,16 @@ const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
 
     const handleChange = (opt: Opt | null) => {
         setSelected(opt);
-        if (!opt) {
-            onChange(null);
-            return;
-        }
-        onChange({ id: opt.value, name: opt.label });
+        onChange(opt ? { id: opt.value, name: opt.label } : null);
     };
 
-    // Styling compatible with Tailwind
-    const styles = useMemo(
-        () => ({
-            control: (base: CSSObjectWithLabel) => ({
-                ...base,
-                minHeight: 40,
-                borderRadius: 8,
-                borderColor: "#d1d5db", // tailwind gray-300
-                boxShadow: "none",
-                ":hover": { borderColor: "#9ca3af" }, // gray-400
-                fontSize: 14,
-            }),
-            menu: (base: CSSObjectWithLabel) => ({
-                ...base,
-                zIndex: 9999,
-            }),
-        }),
-        []
-    );
+    const styles = useMemo(() => buildReactSelectStyles<Opt>(), []);
 
     return (
         <AsyncSelect
             inputId="client-search"
+            className="rs-container"
+            classNamePrefix="rs"
             cacheOptions
             defaultOptions={defaultOptions}
             loadOptions={loadOptions}
@@ -167,8 +102,9 @@ const ClientSearchInput: React.FC<ClientSearchInputProps> = ({
             isDisabled={disabled}
             placeholder={placeholder}
             autoFocus={autoFocus}
-            styles={styles}
-            // ensure the component doesn't submit form on Enter in some contexts
+            styles={styles}                 
+            menuPortalTarget={menuPortalTarget}
+            menuPosition="fixed"
             onKeyDown={(e) => {
                 if (e.key === "Enter") e.stopPropagation();
             }}

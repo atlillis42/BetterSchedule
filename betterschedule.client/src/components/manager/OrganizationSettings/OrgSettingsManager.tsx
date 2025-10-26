@@ -4,9 +4,6 @@ import { getOrgSettings } from "@/api/org-settings-api";
 import { useAuth } from "@auth/auth-context";
 import OrgSettingsModal from "./OrgSettingsModal";
 
-/**
- * Shape aligned to OrgSettingsDto.
- */
 export type OrgSettingsForm = {
     minLeadMinutes: number;
     cancelWindowHours: number;
@@ -21,10 +18,6 @@ export type OrgSettingsForm = {
     reminderHoursBefore: number | null;
 };
 
-/**
- * Convert "HH:mm:ss" to a 12-hour label like "h:mmam/pm".
- * @param hhmmss - Time string in "HH:mm:ss".
- */
 function hhmmssTo12(hhmmss: string): string {
     const [hStr, mStr] = hhmmss.split(":");
     const h = Math.max(0, Math.min(23, parseInt(hStr || "0", 10)));
@@ -34,11 +27,6 @@ function hhmmssTo12(hhmmss: string): string {
     return `${hour12}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
-/**
- * Formats an IANA time zone into a short label like "EDT — UTC -4".
- * Falls back gracefully if the environment lacks support.
- * @param tzId - IANA zone.
- */
 function formatTimeZoneDisplay(tzId: string): string {
     const now = new Date();
 
@@ -75,10 +63,6 @@ function formatTimeZoneDisplay(tzId: string): string {
     return `${abbr} — ${utc}`;
 }
 
-/**
- * Read-only overview of organization settings with an Edit action for managers.
- * Strictly limited to the server DTO surface.
- */
 export default function OrgSettingsManager() {
     const { isManager } = useAuth();
     const [loading, setLoading] = useState(true);
@@ -113,8 +97,8 @@ export default function OrgSettingsManager() {
 
     const canEdit = isManager;
 
-    if (loading) return <div className="p-6 text-sm text-gray-600">Loading settings…</div>;
-    if (!settings) return <div className="p-6 text-sm text-red-600">Unable to load settings.</div>;
+    if (loading) return <div className="p-6 text-sm text-slate-600 dark:text-slate-300">Loading settings…</div>;
+    if (!settings) return <div className="p-6 text-sm text-red-600 dark:text-red-400">Unable to load settings.</div>;
 
     const hours12 = `${hhmmssTo12(settings.businessHoursStartLocal)}–${hhmmssTo12(settings.businessHoursEndLocal)}`;
     const tzDisplay = formatTimeZoneDisplay(settings.timeZoneId);
@@ -124,11 +108,11 @@ export default function OrgSettingsManager() {
             <div className="mx-auto w-full max-w-3xl space-y-6">
                 <header className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-xl font-semibold">Organization Settings</h1>
-                        <p className="text-sm text-gray-600">Current configuration overview</p>
+                        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Organization Settings</h1>
+                        <p className="text-sm text-slate-600 dark:text-slate-300">Current configuration overview</p>
                     </div>
                     <button
-                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                        className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 dark:bg-blue-500 dark:hover:bg-blue-600 dark:focus-visible:ring-offset-slate-800"
                         onClick={() => setEditing(true)}
                         disabled={!canEdit}
                     >
@@ -137,44 +121,44 @@ export default function OrgSettingsManager() {
                 </header>
 
                 {/* Booking Policy */}
-                <section className="rounded-2xl border bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-gray-800">Booking Policy</div>
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <div className="mb-3 text-sm font-medium text-slate-800 dark:text-slate-200">Booking Policy</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
-                            <dt className="text-gray-500">Minimum advance booking time</dt>
-                            <dd className="font-medium">{settings.minLeadMinutes} minutes</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Minimum advance booking time</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.minLeadMinutes} minutes</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Late-cancellation window</dt>
-                            <dd className="font-medium">{settings.cancelWindowHours} hours</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Late-cancellation window</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.cancelWindowHours} hours</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Confirm overrides</dt>
-                            <dd className="font-medium">{settings.requireConfirmOnOverrides ? "On" : "Off"}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Confirm overrides</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.requireConfirmOnOverrides ? "On" : "Off"}</dd>
                         </div>
                     </dl>
                 </section>
 
                 {/* Business Time */}
-                <section className="rounded-2xl border bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-gray-800">Business Time &amp; Locale</div>
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <div className="mb-3 text-sm font-medium text-slate-800 dark:text-slate-200">Business Time &amp; Locale</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
-                            <dt className="text-gray-500">Business hours</dt>
-                            <dd className="font-medium">{hours12}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Business hours</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{hours12}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Business time zone</dt>
-                            <dd className="font-medium">
-                                <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-gray-200">
+                            <dt className="text-slate-500 dark:text-slate-400">Business time zone</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">
+                                <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-slate-200 dark:bg-slate-700/50 dark:text-slate-200 dark:ring-slate-600">
                                     {tzDisplay}
                                 </span>
                             </dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Locale</dt>
-                            <dd className="font-medium">
-                                <span className="inline-flex items-center gap-2 rounded-full bg-gray-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-gray-200">
+                            <dt className="text-slate-500 dark:text-slate-400">Locale</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">
+                                <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-2 py-0.5 text-xs ring-1 ring-inset ring-slate-200 dark:bg-slate-700/50 dark:text-slate-200 dark:ring-slate-600">
                                     {settings.locale}
                                 </span>
                             </dd>
@@ -183,24 +167,24 @@ export default function OrgSettingsManager() {
                 </section>
 
                 {/* Notifications */}
-                <section className="rounded-2xl border bg-white p-4">
-                    <div className="mb-3 text-sm font-medium text-gray-800">Notifications &amp; Messaging</div>
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+                    <div className="mb-3 text-sm font-medium text-slate-800 dark:text-slate-200">Notifications &amp; Messaging</div>
                     <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                         <div>
-                            <dt className="text-gray-500">Email delivery</dt>
-                            <dd className="font-medium">{settings.emailEnabled ? "Enabled" : "Disabled"}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Email delivery</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.emailEnabled ? "Enabled" : "Disabled"}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">SMS delivery</dt>
-                            <dd className="font-medium">{settings.smsEnabled ? "Enabled" : "Disabled"}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">SMS delivery</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.smsEnabled ? "Enabled" : "Disabled"}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Reminders enabled</dt>
-                            <dd className="font-medium">{settings.sendBookingConfirmation ? "On" : "Off"}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Reminders enabled</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.sendBookingConfirmation ? "On" : "Off"}</dd>
                         </div>
                         <div>
-                            <dt className="text-gray-500">Reminder (hours before)</dt>
-                            <dd className="font-medium">{settings.reminderHoursBefore ?? "—"}</dd>
+                            <dt className="text-slate-500 dark:text-slate-400">Reminder (hours before)</dt>
+                            <dd className="font-medium text-slate-800 dark:text-slate-200">{settings.reminderHoursBefore ?? "—"}</dd>
                         </div>
                     </dl>
                 </section>

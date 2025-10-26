@@ -1,55 +1,60 @@
 .bs-calendar .calendar-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
 }
 
-.bs-calendar .calendar-toolbar button {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  background-color: #3c78d8;
-  color: white;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s ease;
-}
+    /* IMPORTANT:
+   Scope legacy button styles to toolbars that are NOT the modern Tailwind toolbar.
+   The modern toolbar sets data-toolbar="modern" in CalendarToolbar.tsx. */
+    .bs-calendar .calendar-toolbar:not([data-toolbar="modern"]) button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        background-color: #3c78d8;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background-color 0.2s ease;
+    }
 
-.bs-calendar .calendar-toolbar button:hover {
-  background-color: #2f66c4;
-}
+        .bs-calendar .calendar-toolbar:not([data-toolbar="modern"]) button:hover {
+            background-color: #2f66c4;
+        }
 
-.bs-calendar .calendar-toolbar button.selected {
-  background-color: #1c4587;
-}
+        .bs-calendar .calendar-toolbar:not([data-toolbar="modern"]) button.selected {
+            background-color: #1c4587;
+        }
 
-.bs-calendar .calendar-toolbar .standalone {
-  margin-left: auto;
-  background-color: #f6b26b;
-  color: #333;
-}
+    /* This "standalone" style remains opt-in by class and is safe to keep */
+    .bs-calendar .calendar-toolbar .standalone {
+        margin-left: auto;
+        background-color: #f6b26b;
+        color: #333;
+    }
 
 /* Calendar body sizing helpers (kept minimal; most layout is handled with Tailwind in JSX) */
 .bs-calendar .calendar-body {
-  flex-grow: 1;
-  min-height: 0; /* allow children to size within flex */
-  overflow: hidden;
-  position: relative;
+    flex-grow: 1;
+    min-height: 0; /* allow children to size within flex */
+    overflow: hidden;
+    position: relative;
 }
 
 /* Month view should fill available space */
 .bs-calendar .month-wrapper {
-  height: 100%;
-  width: 100%;
+    height: 100%;
+    width: 100%;
 }
 
-.bs-calendar .month-wrapper .daypilot-month {
-  height: 100% !important;
-  width: 100% !important;
-}
+    .bs-calendar .month-wrapper .daypilot-month {
+        height: 100% !important;
+        width: 100% !important;
+    }
 
+/* Navigator banner (desktop sidebar header helper) */
 .bs-calendar .navigator-banner {
     display: block;
     width: 100%;
@@ -60,8 +65,15 @@
     color: #1d4ed8; /* blue-700-ish */
     border: 1px solid #bfdbfe; /* blue-200-ish */
 }
+/* Dark variant to match the lighter slate palette */
+.dark .bs-calendar .navigator-banner {
+    background: #0f172a; /* slate-900 */
+    color: #e5e7eb; /* slate-200 */
+    border: 1px solid #334155; /* slate-600 */
+}
 
 /* Generic helper used by DayPilot to hide elements */
 .bs-calendar .dp-hidden {
-  display: none !important;
+    display: none !important;
 }
+
