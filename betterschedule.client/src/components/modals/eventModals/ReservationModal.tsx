@@ -1,8 +1,3 @@
-/**
- * Reservation modal for creating/editing reservations.
- * Integrates react-select dark-mode inline style tokens via buildReactSelectStyles.
- */
-
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Select, { type SingleValue } from "react-select";
 import { toast } from "react-toastify";
@@ -14,23 +9,32 @@ import { setReservationStatus, cancelReservationAsClient, updateReservation } fr
 import { getClientNameCached } from "@/services/clientNameCache";
 import { getProviderLiteById } from "@/api/user-api";
 import { colorForReservationStatus } from "@/domain/calendar/eventStyle";
-import { buildReactSelectStyles } from "@/styles/reactSelectStyles"; 
+import { buildReactSelectStyles } from "@/styles/reactSelectStyles";
 
 type ProviderLite = { id: string; name: string };
 type CalendarResource = { id: number; name: string };
+
 /** Single-value option used by the Number-based selects. */
 type NumberOption = { value: number; label: string };
 
 type Props = {
+    /** "create" to build a new reservation; "edit" to modify an existing one. */
     mode: "create" | "edit";
+    /** Form state bag; contains reservation fields and UI helpers. */
     values: any;
+    /** Updater for the form state. */
     setValues: (updater: (prev: any) => any) => void;
+    /** Optional list of reservable resources. */
     resources: CalendarResource[];
+    /** List of selectable service providers. */
     providers: ProviderLite[];
+    /** Ask parent to reload calendar data after a successful action. */
     onRefreshRequested?: () => void;
+    /** Close the modal. */
     onCancel: () => void;
 };
 
+/** Defensive extraction for reservation id from various shapes. */
 function reservationIdFromValues(values: any): number | undefined {
     if (typeof values?.reservationId === "number") return values.reservationId;
     if (typeof values?.reservation?.id === "number") return values.reservation.id;
@@ -47,6 +51,9 @@ function fmtDate(value?: string) { return value || ""; }
 function fmtTime(value?: string) { return value || ""; }
 function labelForStatus(s?: string) { return s === "NoShow" ? "No-Show / Late Cancel" : s || ""; }
 
+/**
+ * ReservationModal
+ */
 const ReservationModal: React.FC<Props> = ({
     mode,
     values,
@@ -66,7 +73,7 @@ const ReservationModal: React.FC<Props> = ({
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
     const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
-    // Where to portal react-select menus (prefer the modal so dark mode applies)
+    // Portal react-select menus into the modal so dark mode tokens apply
     const menuPortalTarget =
         typeof document !== "undefined"
             ? (document.querySelector(".bs-modal") as HTMLElement) ?? document.body
@@ -99,13 +106,13 @@ const ReservationModal: React.FC<Props> = ({
                     const name = await getClientNameCached(primaryClientId);
                     if (!cancelled) setClientNameMap((m) => new Map(m).set(primaryClientId, name));
                 }
-            } catch { }
+            } catch { /* non-fatal */ }
             try {
                 if (primaryProviderId) {
                     const dto = await getProviderLiteById(primaryProviderId);
                     if (!cancelled) setProviderNameMap((m) => new Map(m).set(primaryProviderId, dto?.name || primaryProviderId));
                 }
-            } catch { }
+            } catch { /* non-fatal */ }
         })();
         return () => { cancelled = true; };
     }, [primaryClientId, primaryProviderId]);
@@ -140,7 +147,7 @@ const ReservationModal: React.FC<Props> = ({
             try {
                 const list = await getAppointmentTypes();
                 if (!cancelled) setAppointmentTypes(list);
-            } catch { }
+            } catch { /* non-fatal */ }
         })();
         return () => { cancelled = true; };
     }, []);
@@ -170,9 +177,7 @@ const ReservationModal: React.FC<Props> = ({
     const userOwnsReservation =
         !!isClientOnly && !!userId && !!primaryClientId && String(userId) === String(primaryClientId);
 
-    // ---------------------------
-    // Quick status action (staff only)
-    // ---------------------------
+    // ---- Quick status (staff only) ------------------------------------------
     const runQuickStatus = async (status: "Booked" | "Completed" | "Canceled" | "NoShow") => {
         if (!reservationId || busyRef.current) return;
         busyRef.current = true;
@@ -292,9 +297,7 @@ const ReservationModal: React.FC<Props> = ({
         }
     };
 
-    // ---------------------------
-    // Client cancel action
-    // ---------------------------
+    // ---- Client cancel action -----------------------------------------------
     const runClientCancel = async () => {
         if (!reservationId || busyRef.current) return;
         const proceed = window.confirm(
@@ -326,6 +329,13 @@ const ReservationModal: React.FC<Props> = ({
 
     // NEW: unified react-select styles using CSS vars
     const rsStyles = useMemo(() => buildReactSelectStyles<NumberOption>(), []);
+
+    // --- Editable vs read-only client logic ----------------------------------
+    const canEditClient = mode === "create" && !isClientOnly;
+    const displayClientName =
+        (typeof values?.clientName === "string" && values.clientName) ||
+        (primaryClientId ? clientNameMap.get(primaryClientId) ?? null : null) ||
+        (primaryClientId ?? "");
 
     return (
         <div className="flex flex-col gap-4">
@@ -407,17 +417,35 @@ const ReservationModal: React.FC<Props> = ({
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1">
-                    <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Client</label>
-                    <ClientSearchInput
-                        valueId={typeof values.clientId === "string" ? values.clientId : null}
-                        initialLabel={values.clientName ?? (values.clientId ? clientNameMap.get(values.clientId) ?? null : null)}
-                        onChange={(c) => setValues((prev: any) => ({ ...prev, clientId: c?.id ?? "" }))}
-                        placeholder={disableEdits ? "" : "Search clients…"}
-                        disabled={disableEdits}
-                        autoFocus={mode === "create" && !disableEdits}
-                    />
-                </div>
+                {/* Client field:
+                    - CREATE: show searchable picker
+                    - EDIT: show read-only value (no reassignment)
+                */}
+                {canEditClient ? (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Client</label>
+                        <ClientSearchInput
+                            valueId={typeof values.clientId === "string" ? values.clientId : null}
+                            initialLabel={values.clientName ?? (values.clientId ? clientNameMap.get(values.clientId) ?? null : null)}
+                            onChange={(c) => setValues((prev: any) => ({ ...prev, clientId: c?.id ?? "" }))}
+                            placeholder="Search clients…"
+                            disabled={disableEdits}
+                            autoFocus={mode === "create" && !disableEdits}
+                        />
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-1">
+                        <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Client</label>
+                        <div
+                            className="rounded-lg border px-3 py-2 text-sm text-slate-900 bg-slate-50 border-slate-200
+                                       dark:text-slate-100 dark:bg-slate-800/60 dark:border-slate-700"
+                            aria-readonly
+                            title="Client is fixed for existing reservations"
+                        >
+                            {displayClientName || "—"}
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex flex-col gap-1">
                     <label className="text-sm font-medium text-slate-800 dark:text-slate-200">Service Provider</label>
@@ -445,7 +473,7 @@ const ReservationModal: React.FC<Props> = ({
                         isDisabled={disableEdits}
                         menuPortalTarget={menuPortalTarget}
                         menuPosition="fixed"
-                        styles={rsStyles}  // <-- integrated
+                        styles={rsStyles}
                     />
                     {selectedAppointmentType && (
                         <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
@@ -473,7 +501,7 @@ const ReservationModal: React.FC<Props> = ({
                         isDisabled={disableEdits}
                         menuPortalTarget={menuPortalTarget}
                         menuPosition="fixed"
-                        styles={rsStyles}  // <-- integrated
+                        styles={rsStyles}
                     />
                 </div>
 
