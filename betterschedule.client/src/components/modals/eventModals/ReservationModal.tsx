@@ -51,9 +51,7 @@ function fmtDate(value?: string) { return value || ""; }
 function fmtTime(value?: string) { return value || ""; }
 function labelForStatus(s?: string) { return s === "NoShow" ? "No-Show / Late Cancel" : s || ""; }
 
-/**
- * ReservationModal
- */
+
 const ReservationModal: React.FC<Props> = ({
     mode,
     values,
@@ -73,7 +71,6 @@ const ReservationModal: React.FC<Props> = ({
     const [clientNameMap, setClientNameMap] = useState<Map<string, string>>(new Map());
     const [providerNameMap, setProviderNameMap] = useState<Map<string, string>>(new Map());
 
-    // Portal react-select menus into the modal so dark mode tokens apply
     const menuPortalTarget =
         typeof document !== "undefined"
             ? (document.querySelector(".bs-modal") as HTMLElement) ?? document.body
